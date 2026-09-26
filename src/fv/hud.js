@@ -36,6 +36,16 @@ const CSS = `
 #arsenal .card.locked .heat i { background: #ff3b2e; }
 #arsenal .card.locked .name::after { content: " · " attr(data-hot); color: #ff7a5a; }
 @media (max-width: 1000px) { #arsenal { bottom: 70px; } }
+#bossbar { position: fixed; left: 50%; top: 18px; width: min(460px, 60vw); transform: translate(-50%, 0); z-index: 3; pointer-events: none; text-align: center; font: 800 13px/1.2 var(--hud-font, var(--font-body)); color: #fff4ea; letter-spacing: 0.08em; text-transform: uppercase; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); opacity: 0; transition: opacity 0.4s; }
+#bossbar.shown { opacity: 1; }
+#habitat.building #bossbar, #habitat.menu #bossbar { display: none; }
+#bossbar .track { margin-top: 6px; height: 7px; border-radius: 4px; background: rgba(10, 16, 14, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14); overflow: hidden; }
+#bossbar .track b { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #b3121b, #ff4a2a); transition: width 0.15s; }
+#foes { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+#habitat.building #foes, #habitat.menu #foes { display: none; }
+#foes i { position: absolute; left: 0; top: 0; width: 38px; height: 4px; margin: -2px 0 0 -19px; border-radius: 2px; background: rgba(10, 16, 14, 0.55); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); opacity: 0; transition: opacity 0.25s; will-change: transform; }
+#foes i b { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #ff5a3c, #ffb25a); transform-origin: 0 50%; will-change: transform; }
+#foes i.shown { opacity: 1; }
 `;
 
 export function createCombatHud(habitat, { weapons }) {
@@ -67,6 +77,27 @@ export function createCombatHud(habitat, { weapons }) {
     cards[place] = { card, name: card.querySelector(".name"), heat: card.querySelector(".heat i"), shown: null, width: -1, locked: null };
   }
   habitat.appendChild(arsenal);
+
+  // Bars over enemies that have been hit, while they are near and in view.
+  const foes = document.createElement("div");
+  foes.id = "foes";
+  habitat.appendChild(foes);
+  const bars = Array.from({ length: 10 }, () => {
+    const bar = document.createElement("i");
+    bar.innerHTML = "<b></b>";
+    foes.appendChild(bar);
+    return { bar, fill: bar.firstChild, shown: false, width: -1, x: 0, y: 0 };
+  });
+  // The boss's name and strength across the top of the screen.
+  const bossbar = document.createElement("div");
+  bossbar.id = "bossbar";
+  bossbar.innerHTML = '<div class="name"></div><div class="track"><b></b></div>';
+  habitat.appendChild(bossbar);
+  const bossName = bossbar.querySelector(".name"),
+    bossFill = bossbar.querySelector(".track b");
+  let bossShown = null,
+    bossWidth = -1;
+  let projector = null;
 
   let markUntil = 0,
     calloutUntil = 0,
@@ -118,6 +149,59 @@ export function createCombatHud(habitat, { weapons }) {
       if (calloutUntil && clock > calloutUntil) {
         calloutUntil = 0;
         callout.classList.remove("shown");
+      }
+    },
+    // The boss bar: a name and its strength 0..1, or null to hide it.
+    boss(name, fraction = 1) {
+      if (name !== bossShown) {
+        bossShown = name;
+        if (name) bossName.textContent = t(name);
+        bossbar.classList.toggle("shown", !!name);
+      }
+      const width = Math.round(Math.max(0, fraction) * 100);
+      if (name && width !== bossWidth) {
+        bossWidth = width;
+        bossFill.style.width = `${width}%`;
+      }
+    },
+    // `list`: the enemies; `camera`; `time`: the game's clock (for how long a bar stays).
+    bars(list, camera, time) {
+      projector ??= new camera.position.constructor();
+      let n = 0;
+      const w = window.innerWidth,
+        h = window.innerHeight;
+      for (const e of list) {
+        if (n >= bars.length) break;
+        if (e.dead || e.spec.boss || e.hp >= e.maxHp || time - (e.hitAt ?? -1e9) > 3) continue;
+        projector.copy(e.position);
+        projector.y += e.size * 0.35;
+        if (projector.distanceTo(camera.position) > 30) continue;
+        projector.project(camera);
+        if (projector.z > 1 || Math.abs(projector.x) > 1.1 || Math.abs(projector.y) > 1.1) continue;
+        const b = bars[n++];
+        const x = Math.round((projector.x * 0.5 + 0.5) * w),
+          y = Math.round((0.5 - projector.y * 0.5) * h);
+        if (x !== b.x || y !== b.y) {
+          b.x = x;
+          b.y = y;
+          b.bar.style.transform = `translate(${x}px, ${y}px)`;
+        }
+        const width = Math.max(0, Math.round((e.hp / e.maxHp) * 100));
+        if (width !== b.width) {
+          b.width = width;
+          b.fill.style.transform = `scaleX(${width / 100})`;
+        }
+        if (!b.shown) {
+          b.shown = true;
+          b.bar.classList.add("shown");
+        }
+      }
+      for (let i = n; i < bars.length; i++) {
+        const b = bars[i];
+        if (b.shown) {
+          b.shown = false;
+          b.bar.classList.remove("shown");
+        }
       }
     },
     hit(kill = false) {

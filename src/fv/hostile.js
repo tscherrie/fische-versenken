@@ -2,8 +2,17 @@
 // apart from the players' own shots (projectiles.js): they hit players, not enemies, fly a
 // little slower so a salmon that sees them coming can get out of the way, and each carries
 // the enemy that fired it, for the cause of death.
+//
+// Water stops a bullet: it loses its speed fast, does harm only over a short distance and
+// less the slower it gets, and once it is spent it hangs in the water and sinks to the bed.
 
 import { bed, level, locate } from "../course.js";
+
+// Below this share of its first speed a bullet is spent: harmless, sinking.
+const SPENT = 0.25;
+const SINK = 0.45;
+// A spent round that reached the bed lies there this long, then goes.
+const REST = 8;
 
 export function createHostile({ capacity = 160 } = {}) {
   const live = [];
@@ -42,9 +51,17 @@ export function createHostile({ capacity = 160 } = {}) {
     return dx * dx + dy * dy + dz * dz;
   }
 
+  // A shot: `drag` is how fast the water takes its speed (per second).
   function fire(shot) {
+    // (Full: the oldest goes, which is most likely a round lying on the bed.)
     if (live.length >= capacity) live.shift();
     shot.age = 0;
+    shot.speed0 = shot.velocity.length();
+    shot.drag ??= 1.5;
+    shot.spent = false;
+    // Seconds since it was spent, and whether it lies on the bed.
+    shot.spentAge = 0;
+    shot.rested = false;
     shot.river = { s: shot.s ?? null, u: 0 };
     shot.last = shot.position.clone();
     live.push(shot);
@@ -59,13 +76,28 @@ export function createHostile({ capacity = 160 } = {}) {
         live.splice(i, 1);
         continue;
       }
+      if (p.rested) {
+        p.spentAge += dt;
+        if (p.spentAge > REST + (p.restAt ?? 0)) live.splice(i, 1);
+        continue;
+      }
       p.last.copy(p.position);
+      p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
+      if (p.spent) p.spentAge += dt;
+      if (!p.spent && p.velocity.length() < SPENT * p.speed0) {
+        p.spent = true;
+        // Where it will come down: worked out once, not asked of the river every step (it
+        // barely drifts from here on).
+        locate(p.position.x, p.position.z, p.river.s, p.river);
+        p.floor = bed(p.river.s, p.river.u);
+      }
+      if (p.spent) p.velocity.y += (-SINK - p.velocity.y) * (1 - Math.exp(-dt * 2));
       p.position.addScaledVector(p.velocity, dt);
       let struck = null,
         best = 2;
       for (const player of players) {
         const f = player.fish;
-        if (!f || player.down || f.captive || f.safe) continue;
+        if (p.spent || !f || player.down || f.captive || f.safe) continue;
         const L = f.length,
           h = f.heading,
           c = f.position;
@@ -80,11 +112,31 @@ export function createHostile({ capacity = 160 } = {}) {
       if (struck) {
         p.position.lerpVectors(p.last, p.position, best);
         live.splice(i, 1);
+        // The slower it has become, the less it does.
+        p.hitDamage = p.damage * Math.min(1, Math.max(0.4, p.velocity.length() / p.speed0));
         onPlayer?.(p, struck);
         continue;
       }
+      if (p.spent) {
+        if (p.position.y < p.floor) {
+          p.position.y = p.floor;
+          p.velocity.set(0, 0, 0);
+          p.rested = true;
+          p.restAt = p.spentAge;
+        }
+        continue;
+      }
       locate(p.position.x, p.position.z, p.river.s, p.river);
-      if (p.position.y < bed(p.river.s, p.river.u)) {
+      const floor = bed(p.river.s, p.river.u);
+      if (p.position.y < floor) {
+        // A spent round settles on the bed; a live one strikes it and is gone.
+        if (p.spent) {
+          p.position.y = floor;
+          p.velocity.set(0, 0, 0);
+          p.rested = true;
+          p.restAt = p.spentAge;
+          continue;
+        }
         live.splice(i, 1);
         onGround?.(p);
         continue;
