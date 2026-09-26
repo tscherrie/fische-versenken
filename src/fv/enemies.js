@@ -372,6 +372,11 @@ export function createEnemies(scene, { random }) {
         }
       } else {
         let speed = think(e, dt, time, players, hooks);
+        // A boss keeps to its place: past its leash it turns for home.
+        if (e.home && e.spec.leash && e.position.distanceTo(e.home) > e.spec.leash) {
+          steer(e, tmp.subVectors(e.home, e.position), e.spec.turn * 1.5, dt);
+          if (e.mode === "hover" || e.mode === "approach") speed = e.spec.cruise;
+        }
         if (e.stagger > 0) {
           e.stagger -= dt;
           speed *= 0.25;

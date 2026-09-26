@@ -40,6 +40,12 @@ const WORDS = [
     "<b>砂利に幼虫！</b>ヤゴとゲンゴロウの幼虫が稚魚に這い寄ってくる。S で砂利にしがみつき、左クリックで撃ち払え。",
     "<b>Ларви в чакъла!</b> Ларви на водни кончета и плавачи пълзят към малките. Задръж се в чакъла с S и ги отстреляй с левия бутон на мишката.",
   ],
+  ["Der alte König", "The old king", "老国王", "老いた王", "Старият крал"],
+  ["Minigun", "Minigun", "转管机枪", "ミニガン", "Миниган"],
+  ["Vom alten König gefressen", "Eaten by the old king", "被老国王吃掉", "老いた王に食われた", "Изядена от стария крал"],
+  ["Vom alten König durchsiebt", "Riddled by the old king", "被老国王打成筛子", "老いた王に蜂の巣にされた", "Надупчена от стария крал"],
+  ["Der alte König ist versenkt!", "The old king is sunk!", "老国王被击沉了！", "老いた王を撃沈した！", "Старият крал е потопен!"],
+  ["Das Katana, das er bewacht hat, gehört dir.", "The katana he guarded is yours.", "他守护的武士刀归你了。", "彼が守っていた刀はきみのものだ。", "Катаната, която пазеше, е твоя."],
   ["Kampfmesser", "Combat knife", "战斗刀", "コンバットナイフ", "Боен нож"],
   ["Maschinenpistole", "Submachine gun", "冲锋枪", "サブマシンガン", "Автомат"],
 ];

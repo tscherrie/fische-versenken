@@ -9,6 +9,7 @@ import { STAGES } from "../salmon.js";
 import { clamp } from "../course.js";
 import "./i18n.js";
 import { createAim } from "./aim.js";
+import { createBosses } from "./bosses.js";
 import { createDifficulty } from "./difficulty.js";
 import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
@@ -41,6 +42,7 @@ export function createCombat(game) {
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
   const rules = createRules();
+  const bosses = createBosses({ enemies, hud, random });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
@@ -237,6 +239,7 @@ export function createCombat(game) {
     enemies.hpScale = difficulty.level.hp;
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
     gravel.update(dt, { fish, enemies, players: players.length });
+    bosses.update(dt, { fish, onBeaten: (boss) => game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6) });
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
     hostile.update(dt, players, {
       onPlayer(shot, player) {
@@ -315,6 +318,7 @@ export function createCombat(game) {
     projectiles,
     hostile,
     director,
+    bosses,
     aim,
     step,
     frame,

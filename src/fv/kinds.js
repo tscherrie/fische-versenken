@@ -91,6 +91,31 @@ export const KINDS = {
     regions: { brook: 1, upper: 0.8 },
     weapon: { id: "smg", title: "Maschinenpistole", kind: "ranged", range: [3, 9], tell: 0.5, burst: 6, interval: 0.085, pellets: 1, spread: 0.045, speed: 16, drag: 1.4, damage: 0.028, reload: 1.9, cause: "Von einer Bachforelle erschossen" },
   },
+  // The old king of the trout: a boss (bosses.js), huge, in his own deep pool, with a minigun
+  // on his back. He guards the katana.
+  king: {
+    title: "Der alte König",
+    name: "Vom alten König gefressen",
+    body: "trout",
+    coat: "trout",
+    size: [10, 11],
+    hp: 900,
+    capacity: 1,
+    behaviour: "stalker",
+    boss: true,
+    leash: 42,
+    swallows: true,
+    bite: 0.35,
+    sight: 16,
+    cruise: 2,
+    chase: 3.6,
+    strike: 15,
+    range: 3.4,
+    turn: 2.4,
+    coil: 0.45,
+    regions: {},
+    weapon: { id: "minigun", title: "Minigun", kind: "ranged", range: [3, 14], tell: 0.8, burst: 26, interval: 0.05, pellets: 1, spread: 0.08, speed: 18, drag: 1.2, damage: 0.018, reload: 2.2, cause: "Vom alten König durchsiebt" },
+  },
   // The gravel defence (gravel.js): water-insect larvae crawling through the redd at the
   // alevins. They are drawn by their own models (look/larvae.js), not with a fish body
   // (`render`); until those are in, a stand-in body shows where they are.

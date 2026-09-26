@@ -21,6 +21,8 @@ export const SCENES = [
   { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 100, still: true },
+  // The old king in his pool: a yearling comes in and fights him (the pilot).
+  { name: "koenig", stage: "yearling", at: 690, season: "summer", hour: 13, pilot: 60 },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
   // shooting at whatever comes: kills, bites, deaths.
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
@@ -68,6 +70,10 @@ async function runScene(salmon, extreme, query) {
     return;
   }
   const scene = list[index];
+  // (Tests start with every boss unbeaten.)
+  try {
+    localStorage.removeItem("extreme-bosses");
+  } catch {}
   const errors = [];
   window.addEventListener("error", (e) => errors.push(String(e.message)));
   const consoleError = console.error;
