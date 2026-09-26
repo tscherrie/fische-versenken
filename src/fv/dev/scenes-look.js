@@ -37,24 +37,32 @@ const nextTask = () =>
   });
 
 // A method replaced by one that adds up how long it takes. `fn` is what it calls, and can be
-// swapped for a variant while the timing stays in place.
+// swapped for a variant while the timing stays in place. While `watch.heap` is on, it also
+// adds up what the calls leave on the heap (calls in which the collector ran are missed; the
+// heap is read only then, for reading it takes time of its own).
+const watch = { heap: false };
+const heapSize = () => performance.memory?.usedJSHeapSize ?? 0;
 function meter(object, key) {
   const m = {
     fn: object[key],
     sum: 0,
     calls: 0,
+    heap: 0,
     reset() {
       m.sum = 0;
       m.calls = 0;
+      m.heap = 0;
     },
   };
   const original = m.fn;
   m.restore = () => (object[key] = original);
   object[key] = function (a, b, c, d) {
+    const h = watch.heap ? heapSize() : 0;
     const t = performance.now();
     const result = m.fn.call(this, a, b, c, d);
     m.sum += performance.now() - t;
     m.calls++;
+    if (watch.heap) m.heap += Math.max(0, heapSize() - h);
     return result;
   };
   return m;
@@ -396,17 +404,21 @@ async function measure(ctx, here, name) {
   const SERIES = ["world", "frame", "layout", "draw", "total", "combatStep", "combatFrame", "combat", "calls", "triangles", "glTimer", "heap", ...COUNTS];
   // What a frame leaves on the heap for the collector (Chrome's performance.memory, exact with
   // --enable-precise-memory-info): frames in which it collected are left out.
-  const heap = () => performance.memory?.usedJSHeapSize ?? 0;
+  const heap = heapSize;
   const series = {};
   for (const key of SERIES) series[key] = new Float64Array(Math.max(frames, 1));
-  const pending = [];
+  const queries = [];
   // Frames timed one by one, each begun with the card idle, so the script's time is not
   // held up by the card: the world's step, combat's frame, the draw.
   async function timedFrames(n) {
     for (const m of Object.values(meters)) m.reset();
     hits = kills = 0;
-    let glCount = 0,
-      heapCount = 0;
+    const firedBefore = fired;
+    let heapCount = 0;
+    queries.length = 0;
+    // (Reading the flag clears it: it then tells whether anything upset the card's clock
+    // during these frames.)
+    if (timer) gl.getParameter(timer.GPU_DISJOINT_EXT);
     for (let i = 0; i < n; i++) {
       keep();
       await sync();
@@ -431,7 +443,7 @@ async function measure(ctx, here, name) {
       salmon.draw(dt);
       if (query) {
         gl.endQuery(timer.TIME_ELAPSED_EXT);
-        pending.push(query);
+        queries.push(query);
       }
       const t3 = now();
       const grown = heap() - h0;
@@ -462,9 +474,16 @@ async function measure(ctx, here, name) {
       series.rested[i] = rested;
       series.glow[i] = glowCloud?.count ?? 0;
       series.bubbles[i] = bubbleCloud?.count ?? 0;
-      while (timer && pending.length && gl.getQueryParameter(pending[0], gl.QUERY_RESULT_AVAILABLE)) {
-        const q = pending.shift();
-        if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) series.glTimer[glCount++] = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
+    }
+    // The card's own clock for each of these frames: the results come back only once the
+    // page has returned to the browser.
+    let glCount = 0,
+      disjoint = false;
+    if (queries.length) {
+      for (let tries = 0; tries < 500 && !gl.getQueryParameter(queries.at(-1), gl.QUERY_RESULT_AVAILABLE); tries++) await nextTask();
+      disjoint = gl.getParameter(timer.GPU_DISJOINT_EXT);
+      for (const q of queries) {
+        if (gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) series.glTimer[glCount++] = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
         gl.deleteQuery(q);
       }
     }
@@ -472,7 +491,8 @@ async function measure(ctx, here, name) {
     for (const key of ["world", "frame", "layout", "draw", "total", "combatStep", "combatFrame", "combat"]) out[key] = stats(series[key], n);
     out.calls = median(series.calls.subarray(0, n));
     out.triangles = median(series.triangles.subarray(0, n));
-    if (glCount) out.glTimer = stats(series.glTimer, glCount);
+    if (glCount && !disjoint) out.glTimer = stats(series.glTimer, glCount);
+    if (disjoint) out.glDisjoint = true;
     if (heapCount && performance.memory) out.heapKB = stats(series.heap, heapCount);
     out.parts = {};
     for (const key of ["enemies", "projectiles", "hostile", "aim", "director", "colliders", "threats"]) out.parts[key] = +(meters[key].sum / n).toFixed(4);
@@ -481,7 +501,8 @@ async function measure(ctx, here, name) {
       const s = stats(series[key], n);
       out.counts[key] = { mean: +s.mean.toFixed(1), min: s.min, max: s.max };
     }
-    out.events = { hitsPerSecond: +(hits / (n * dt)).toFixed(1), killsPerSecond: +(kills / (n * dt)).toFixed(1) };
+    // (firedPerSecond: the players' shots the bench fired to keep their number up.)
+    out.events = { hitsPerSecond: +(hits / (n * dt)).toFixed(1), killsPerSecond: +(kills / (n * dt)).toFixed(1), firedPerSecond: +((fired - firedBefore) / (n * dt)).toFixed(0) };
     return out;
   }
   // Frames drawn back to back and then waited for (the scene as it stands, drawn again):
@@ -766,6 +787,7 @@ async function measure(ctx, here, name) {
     ["original", original, collidersNear],
     ["copy", projectileUpdate(THREE, combat.projectiles.live, course), collidersNear],
     ["noLookup", projectileUpdate(THREE, combat.projectiles.live, course, { lookup: false }), collidersNear],
+    ["lookupHalf", projectileUpdate(THREE, combat.projectiles.live, course, { every: 2 }), collidersNear],
     ["stoneCells", projectileUpdate(THREE, combat.projectiles.live, course, { cells: true }), collidersNear],
     ["stoneCellsKept", projectileUpdate(THREE, combat.projectiles.live, course, { cells: "kept" }), collidersNear],
     ["noStones", original, noStones],
@@ -779,6 +801,37 @@ async function measure(ctx, here, name) {
   }
   meters.projectiles.fn = original;
   meters.colliders.fn = collidersNear;
+
+  // What the page's style and layout cost with the fight on: parts of the HUD taken off the
+  // page (display: none) in turn -- the health bars, all of combat's HUD, and with it the
+  // game's threat arrows, which show combat's enemies too.
+  const hud = {};
+  for (const [key, selector] of [
+    ["all", null],
+    ["noBars", "#foes"],
+    ["noCombatHud", "#xh, #callout, #arsenal, #foes, #bossbar"],
+    ["noCombatHudNoArrows", "#xh, #callout, #arsenal, #foes, #bossbar, #threats"],
+  ]) {
+    const hidden = selector ? [...document.querySelectorAll(selector)] : [];
+    for (const e of hidden) e.style.display = "none";
+    setLoad(MAIN);
+    await settle(0.5);
+    const t = await timedFrames(frames);
+    hud[key] = { layout: t.layout.trimmed, combatFrame: t.combatFrame.trimmed, total: t.total.trimmed };
+    for (const e of hidden) e.style.display = "";
+  }
+
+  // What each part leaves on the heap a frame (KB), timed apart from everything else.
+  let allocation = null;
+  if (performance.memory) {
+    setLoad(MAIN);
+    await settle(0.5);
+    watch.heap = true;
+    const t = await timedFrames(frames);
+    watch.heap = false;
+    allocation = { whole: t.heapKB?.trimmed ?? null };
+    for (const [key, m] of Object.entries(meters)) allocation[key] = +(m.heap / frames / 1024).toFixed(1);
+  }
 
   // The fight scaled: more and fewer enemies, players' shots and enemies' shots.
   const scaled = [];
@@ -850,13 +903,13 @@ async function measure(ctx, here, name) {
   combat.enemies.update = enemyUpdate;
   combat.enemies.hit = enemyHit;
   renderer.info.autoReset = true;
-  return { config, place, load: { ...MAIN, aimShare, hpScale, capped: shotsCapped }, runs, groups, lookups, rounds, toggles, scaled, soak };
+  return { config, place, load: { ...MAIN, aimShare, hpScale, capped: shotsCapped }, runs, groups, lookups, rounds, toggles, hud, allocation, scaled, soak };
 }
 
 // projectiles.js's update, copied so it can be timed with and without the lookup of the bed
 // and the surface under each shot (without it, a shot flies on until it hits an enemy or a
 // stone or its time is up), and with the stones sorted into cells.
-function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, cells = false } = {}) {
+function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, cells = false, every = 1 } = {}) {
   const tail = new THREE.Vector3();
   const head = new THREE.Vector3();
   const from = new THREE.Vector3();
@@ -947,6 +1000,9 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
         continue;
       }
       if (!lookup) continue;
+      // (every > 1: each shot looks only every so many of its steps, its own count staggering
+      // them.)
+      if (every > 1 && (p.looks = (p.looks ?? 0) + 1) % every) continue;
       locate(p.position.x, p.position.z, p.river.s, p.river);
       if (p.position.y < bed(p.river.s, p.river.u)) {
         live.splice(i, 1);
