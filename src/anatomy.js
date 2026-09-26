@@ -2009,10 +2009,14 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
   // (With the distance detail, finish() gathers the frame's fish here, so the split can be
   // made again from them when the camera has moved.)
   const staging = far ? { matrices: new Float32Array(count * 16), swim: new Float32Array(count * 4), finMouth: new Float32Array(count * 2), slots: new Uint16Array(count), n: 0, drawn: -1 } : null;
+  // The otter and the seal have no fins of a fish: their fin mesh stays out of the scene, or
+  // it would be drawn with no triangles whenever the animal is (and in the first frame,
+  // which draws everything to build it). It still takes the crowd's counts and matrices.
+  const finned = geometry.fins.index.count > 0;
   for (const mesh of far ? [body, membranes, far.mesh] : [body, membranes]) {
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    scene.add(mesh);
+    if (mesh !== membranes || finned) scene.add(mesh);
   }
   const matrices = body.instanceMatrix.array;
   const upload = (list, n) => {
