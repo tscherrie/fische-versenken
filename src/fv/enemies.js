@@ -116,12 +116,18 @@ export function createEnemies(scene, { random }) {
     return best;
   }
 
-  function steer(e, dir, rate, dt) {
+  // Turn toward `dir` at up to `rate` radians a second, climbing or diving at most `steepest`
+  // radians (a larva swimming up at its prey may go steeper than a fish).
+  function steer(e, dir, rate, dt, steepest = e.climbing ? 1.1 : 0.6) {
     tmp.copy(dir);
     if (tmp.lengthSq() < 1e-8) return;
     tmp.normalize();
-    tmp.y = clamp(tmp.y, -0.6, 0.6);
-    tmp.normalize();
+    const flat = Math.hypot(tmp.x, tmp.z);
+    const pitch = clamp(Math.atan2(tmp.y, flat), -steepest, steepest);
+    if (flat > 1e-6) {
+      const k = Math.cos(pitch) / flat;
+      tmp.set(tmp.x * k, Math.sin(pitch), tmp.z * k);
+    } else tmp.set(Math.cos(pitch), Math.sin(pitch), 0);
     const cos = clamp(e.heading.dot(tmp), -1, 1);
     const angle = Math.acos(cos);
     if (angle < 1e-4) return void e.heading.copy(tmp);
