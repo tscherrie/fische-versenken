@@ -405,9 +405,13 @@ export function eelgrass(batch, x, z, ground, surface, flow, random, scale = 1) 
   }
 }
 
-// Kelp: a stiff stalk and a crown of brown straps.
+// Kelp (Laminaria): a stiff stalk and on it a broad brown blade split into straps, or two.
+// (Of the straps the crown once had, one or two are grown, broad; the rest are only drawn
+// for, and the width drawn for each gives way to a width from the plant's own stream.)
 export function kelp(batch, x, z, ground, surface, flow, random, scale = 1) {
   const range = ranger(random);
+  const stream = plantRandom(x, z, 5);
+  const own = ranger(stream);
   const root = vec(x, ground - 0.05, z);
   const height = Math.min(surface - ground - 2, range(8, 18) * scale);
   if (height < 3) return;
@@ -421,20 +425,24 @@ export function kelp(batch, x, z, ground, surface, flow, random, scale = 1) {
   const { curve } = stem(batch, points, range(0.1, 0.18) * scale, PALETTE.kelp, root, 0.25, null, { age: [1, 0.6] });
   const top = curve.getPoint(1);
   const straps = Math.floor(range(5, 10));
+  const laminae = own(0, 1) < 0.5 ? 1 : 2;
   for (let i = 0; i < straps; i++) {
     const a = flow + range(-1.2, 1.2);
     const dir = vec(Math.cos(a), 0, Math.sin(a));
     const length = range(4, 11) * scale;
+    const lift = length * range(-0.05, 0.15);
+    // (Lowered as a whole where it would reach the surface, never point by point.)
+    const k = Math.min(1, Math.max(0, surface - 0.3 - top.y) / Math.max(1e-3, length * 0.25));
     const p = [
       top.clone(),
-      top.clone().addScaledVector(dir, length * 0.3).add(vec(0, length * 0.25, 0)),
-      top.clone().addScaledVector(dir, length * 0.7).add(vec(0, length * 0.2, 0)),
-      top.clone().addScaledVector(dir, length).add(vec(0, length * range(-0.05, 0.15), 0)),
+      top.clone().addScaledVector(dir, length * 0.3).add(vec(0, length * 0.25 * k, 0)),
+      top.clone().addScaledVector(dir, length * 0.7).add(vec(0, length * 0.2 * k, 0)),
+      top.clone().addScaledVector(dir, length).add(vec(0, Math.min(lift, length * 0.25) * k, 0)),
     ];
-    for (const q of p) q.y = Math.min(q.y, surface - 0.3);
     // (A kelp blade grows from its foot: the tip is the oldest part, worn and paler.)
     const color = tones(PALETTE.kelp, random(), random(), random());
-    blade(batch, p, range(0.35, 0.7) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.9, twist: a + Math.PI / 2, age: [0.6, 0] });
+    range(0.35, 0.7);
+    blade(batch, p, own(1.2, 2) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.55, twist: a + Math.PI / 2, age: [0.6, 0], cut: CUT.FINGERS, emit: i < laminae });
   }
 }
 
@@ -453,7 +461,7 @@ export function sugarKelp(batch, x, z, ground, surface, flow, random, scale = 1)
     root.clone().addScaledVector(dir, length).add(vec(0, h * 0.7, 0)),
   ];
   const color = tones(PALETTE.sugarKelp, random(), random(), random());
-  blade(batch, p, range(0.8, 1.3) * scale, color, root, 1.0, { rows: 22, cols: 4, ribbon: true, thin: 1, twist: a + Math.PI / 2, age: [0.3, 0.8] });
+  blade(batch, p, range(0.8, 1.3) * scale, color, root, 1.0, { rows: 22, cols: 4, ribbon: true, thin: 1, twist: a + Math.PI / 2, age: [0.3, 0.8], cut: CUT.FRILL, crinkle: 0.12 });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -531,8 +539,9 @@ export function waterLily(batch, x, z, ground, surface, flow, random, scale = 1)
   }
 }
 
-// Bladderwrack: olive-brown fronds forking again and again from a holdfast on the rocks of
-// the shore, a pair of air bladders at each fork, lifting them toward the light.
+// Bladderwrack: olive-brown straps forking again and again from a holdfast on the rocks of
+// the shore, each fork growing on out of the one below, round-ended at the tips, and a pair
+// of air bladders at each fork, lifting them toward the light.
 export function bladderwrack(batch, x, z, ground, surface, flow, random, scale = 1) {
   const range = ranger(random);
   const root = vec(x, ground - 0.03, z);
@@ -546,16 +555,21 @@ export function bladderwrack(batch, x, z, ground, surface, flow, random, scale =
     const shade = range(0.85, 1.15);
     const c = {};
     for (const k in olive) c[k] = olive[k].clone().multiplyScalar(shade);
-    blade(batch, [from, mid, to], length * 0.18 * scale, c, root, 0.7, { rows: 4, cols: 2, thin: 0.8, twist: Math.atan2(dir.z, dir.x) + Math.PI / 2, age: [0.35 + 0.2 * depth, 0.2 + 0.2 * depth] });
+    blade(batch, [from, mid, to], length * 0.12 * scale, c, root, 0.7, { rows: 4, cols: 2, thin: 0.8, twist: Math.atan2(dir.z, dir.x) + Math.PI / 2, age: [0.35 + 0.2 * depth, 0.2 + 0.2 * depth], envelope: depth > 0 ? "strap" : "strapEnd" });
     if (depth > 0) {
-      // The bladders, a pair of small swellings just below the fork.
+      // The bladders, a pair of small swellings just below the fork. (The blade each once
+      // was is still drawn for.)
       for (const side of [-1, 1]) {
         const at = from.clone().lerp(to, 0.8).add(vec(-dir.z * side * length * 0.08, 0, dir.x * side * length * 0.08));
-        blade(batch, [at.clone().addScaledVector(dir, -length * 0.07), at, at.clone().addScaledVector(dir, length * 0.07)], length * 0.09, bladder, root, 0.7, { rows: 3, cols: 2, thin: 0.5 });
+        const ends = [at.clone().addScaledVector(dir, -length * 0.07), at, at.clone().addScaledVector(dir, length * 0.07)];
+        blade(batch, ends, length * 0.09, bladder, root, 0.7, { rows: 3, cols: 2, thin: 0.5, emit: false });
+        stem(batch, ends, length * 0.05, bladder, root, 0.7, null, { rows: 3, taper: 0.5 });
       }
+      // (Each fork grows on out of the end of the one below.)
+      const on = from.clone().lerp(to, 0.92);
       for (const turn of [-0.45, 0.45]) {
         const d = dir.clone().applyAxisAngle(vec(0, 1, 0), turn + range(-0.15, 0.15)).add(vec(0, range(0.05, 0.25), 0)).normalize();
-        fork(to, d, length * range(0.7, 0.85), depth - 1);
+        fork(on, d, length * range(0.7, 0.85), depth - 1);
       }
     }
   };
@@ -579,7 +593,7 @@ export function redWeed(batch, x, z, ground, surface, flow, random, scale = 1) {
     const h = Math.min(surface - ground - 0.4, length * range(0.5, 0.9));
     const points = [root.clone(), root.clone().addScaledVector(dir, length * 0.2).add(vec(0, h * 0.6, 0)), root.clone().addScaledVector(dir, length * 0.6).add(vec(0, h, 0)), root.clone().addScaledVector(dir, length).add(vec(0, h * 0.8, 0))];
     const color = tones(PALETTE.dulse, random(), random(), random());
-    blade(batch, points, range(0.35, 0.6) * scale, color, root, 1.0, { rows: 10, cols: 3, ribbon: true, thin: 1, twist: a + Math.PI / 2, age: [0.8, 0.2] });
+    blade(batch, points, range(0.35, 0.6) * scale, color, root, 1.0, { rows: 10, cols: 3, ribbon: true, thin: 1, twist: a + Math.PI / 2, age: [0.8, 0.2], cut: CUT.FRILL, crinkle: 0.05 });
   }
 }
 
