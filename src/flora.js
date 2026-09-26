@@ -236,12 +236,12 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
     const near = tip && surface - tip.y < 1.6;
     const at = near ? tip.clone() : root.clone();
     at.y = surface - 0.03;
-    if (near) stem(batch, [tip.clone(), tip.clone().lerp(at, 0.5).addScaledVector(d, 0.1), at.clone()], 0.012 * scale, PALETTE.crowfoot, root, 0.6, null, { rows: 3, age: [0.3, 0] });
+    if (near) stem(batch, [tip.clone(), tip.clone().lerp(at, 0.5).addScaledVector(d, 0.1), at.clone()], 0.012 * scale, PALETTE.crowfoot, root, 0.6, null, { rows: 3, age: [0.3, 0], cut: CUT.FLOWER, low: true });
     for (let p = 0; p < 5; p++) {
       const a = (p / 5) * TAU + range(-0.1, 0.1);
       const petal = at.clone().add(vec(Math.cos(a) * 0.14, 0.01, Math.sin(a) * 0.14));
       const mid = at.clone().add(vec(Math.cos(a) * 0.08, 0.015, Math.sin(a) * 0.08));
-      blade(batch, [at, mid, petal], 0.06, PETAL, root, 0.4, { rows: 2, cols: 2, thin: 1, emit: near });
+      blade(batch, [at, mid, petal], 0.06, PETAL, root, 0.4, { rows: 2, cols: 2, thin: 1, emit: near, cut: CUT.FLOWER, low: true });
     }
   }
 }
@@ -528,13 +528,13 @@ export function waterLily(batch, x, z, ground, surface, flow, random, scale = 1)
     const a = range(0, TAU);
     const out = range(0.3, 1.8) * scale;
     const at = vec(x + Math.cos(a) * out, surface + 0.35 * scale, z + Math.sin(a) * out);
-    stem(batch, [root.clone(), root.clone().lerp(at, 0.5), at], 0.03 * scale, stalk, root, 0.3);
+    stem(batch, [root.clone(), root.clone().lerp(at, 0.5), at], 0.03 * scale, stalk, root, 0.3, null, { cut: CUT.FLOWER });
     const yellow = new THREE.Color("#d8b028");
     for (let q = 0; q < 5; q++) {
       const b = (q / 5) * TAU + range(-0.1, 0.1);
       const dir = vec(Math.cos(b), 0, Math.sin(b));
       const r = 0.3 * scale;
-      blade(batch, [at.clone(), at.clone().addScaledVector(dir, r * 0.7).add(vec(0, r * 0.45, 0)), at.clone().addScaledVector(dir, r * 0.9).add(vec(0, r * 1.1, 0))], r * 0.55, yellow, root, 0.2, { rows: 4, cols: 2, thin: 0.6, twist: b + Math.PI / 2 });
+      blade(batch, [at.clone(), at.clone().addScaledVector(dir, r * 0.7).add(vec(0, r * 0.45, 0)), at.clone().addScaledVector(dir, r * 0.9).add(vec(0, r * 1.1, 0))], r * 0.55, yellow, root, 0.2, { rows: 4, cols: 2, thin: 0.6, twist: b + Math.PI / 2, cut: CUT.FLOWER });
     }
   }
 }

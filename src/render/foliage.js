@@ -123,7 +123,8 @@ const vPlantFade = varyingProperty("float", "vPlantFade");
 //   FRILL     a frilled margin (dulse, sugar kelp)
 //   FINGERS   a kelp blade split into straps
 //   MONOCOT   whole, with the parallel veins of a grass-like leaf
-export const CUT = { NONE: 0, BEDLEAF: 1, FEATHER: 2, BRUSH: 3, SCALES: 4, NOTCH: 5, FRILL: 6, FINGERS: 7, MONOCOT: 8 };
+//   FLOWER    a petal: out only in summer (plantSeason.bloom), each plant's in its own week
+export const CUT = { NONE: 0, BEDLEAF: 1, FEATHER: 2, BRUSH: 3, SCALES: 4, NOTCH: 5, FRILL: 6, FINGERS: 7, MONOCOT: 8, FLOWER: 9 };
 export const LOW = 16;
 const packThin = (thin, cut, low) => thin + 2 * (cut + (low ? LOW : 0));
 const thinCode = attribute("thin", "vec2").x;
@@ -162,6 +163,9 @@ const valueNoise3 = (p) => {
 // (From the eye, set each frame by main.js: in the sun's shadow pass the camera is the
 // sun's, and a plant must not lose its shadow by its distance from that.)
 export const plantEye = uniform(new THREE.Vector3());
+// The weed's year, set each frame by main.js from the season: bloom, how far summer's
+// flowers are out (0 to 1); fade, how far autumn and winter have browned the leaves.
+export const plantSeason = { bloom: uniform(1), fade: uniform(0) };
 // shadow: the same motion for the sun's shadow map, with nothing handed on to be shaded.
 function strandPosition({ shadow = false } = {}) {
   const anchor = attribute("anchor", "vec3");
@@ -202,8 +206,11 @@ function strandPosition({ shadow = false } = {}) {
       moved.y.assign(min(moved.y, ceiling.sub(rest.y).add(position.y)));
     });
     // A plant faded out altogether is folded into its root: no pixels at all. (And in the
-    // sun's shadow map, so is a plant low on the bed: turf and fallen leaves.)
-    return select(shadow ? fade.greaterThan(0).and(lowPlant.not()) : fade.greaterThan(0), moved, anchor);
+    // sun's shadow map, so is a plant low on the bed: turf and fallen leaves, and flowers;
+    // and out of season, so are a plant's flowers, each plant's a little earlier or later.)
+    if (shadow) return select(fade.greaterThan(0).and(lowPlant.not()), moved, anchor);
+    const out = cutMode.equal(CUT.FLOWER).and(plantSeason.bloom.lessThan(hash13(root.xzx.add(5.3)).mul(0.8).add(0.1)));
+    return select(fade.greaterThan(0).and(out.not()), moved, anchor);
   })();
 }
 
@@ -251,6 +258,9 @@ export function foliageMaterial() {
     base.assign(mix(base, base.mul(1.22).add(vec3(0.008, 0.012, 0)), midrib.mul(0.6)));
     // Leaf undersides are paler and warmer than the upper surface.
     base.mulAssign(select(faceDirection.lessThan(0), vec3(0.82, 0.76, 0.66), vec3(1)));
+    // In autumn the weed dies back: browner, the old growth more than the tips.
+    const withered = vec3(1.25, 0.95, 0.45).mul(dot(base, vec3(0.2126, 0.7152, 0.0722)));
+    base.assign(mix(base, withered, plantSeason.fade.mul(0.35).mul(v.mul(-0.5).add(1))));
 
     // The cut shapes. Each edge is softened over the width of a pixel (the alpha test's
     // dither makes that a clean edge over a few frames), and once its detail is too fine for
@@ -506,11 +516,12 @@ export function blade(
 // taper: how much of its radius a stem has lost at its tip; rows: rings along it (more
 // for a long thin stem, so it bends without corners); age: as for a blade, when the colour
 // is a palette (old at the foot, young at the tip).
-export function stem(batch, points, radius, color, root, compliance, attached = null, { taper = 0.65, rows: ringCount = 0, age = [0.9, 0.1] } = {}) {
+export function stem(batch, points, radius, color, root, compliance, attached = null, { taper = 0.65, rows: ringCount = 0, age = [0.9, 0.1], cut = CUT.NONE, low = false } = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
   const length = curve.getLength();
   const rows = ringCount || Math.max(4, points.length * 3),
     cols = 5;
+  const code = packThin(0, cut, low);
   const start = batch.positions.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows,
@@ -528,7 +539,7 @@ export function stem(batch, points, radius, color, root, compliance, attached = 
         .clone()
         .addScaledVector(a, Math.cos(angle) * radius * (1 - taper * t))
         .addScaledVector(b, Math.sin(angle) * radius * (1 - taper * t));
-      batch.vertex(v, [j / cols, t], tint, root, strand, 0);
+      batch.vertex(v, [j / cols, t], tint, root, strand, code);
       if (i < rows && j < cols) {
         const k = start + i * (cols + 1) + j;
         batch.quad(k, k + 1, k + cols + 1, k + cols + 2);
