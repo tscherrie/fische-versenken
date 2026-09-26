@@ -623,7 +623,7 @@ export function horsetail(batch, x, z, ground, surface, random, scale = 1) {
 }
 
 // Bur-reed: long soft ribbons rising from the bed of the slow river and trailing out
-// along the surface downstream.
+// along the surface downstream (in deep water, streaming under it).
 export function burReed(batch, x, z, ground, surface, flow, random, scale = 1) {
   const range = ranger(random);
   const root = vec(x, ground - 0.03, z);
@@ -633,7 +633,14 @@ export function burReed(batch, x, z, ground, surface, flow, random, scale = 1) {
     const a = flow + range(-0.4, 0.4);
     const dir = vec(Math.cos(a), 0, Math.sin(a));
     const float = range(3, 9) * scale;
-    const points = [root.clone(), root.clone().addScaledVector(dir, depth * 0.3).add(vec(0, depth * 0.6, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float * 0.3).add(vec(0, depth - 0.08, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float).add(vec(0, depth - 0.05, 0))];
+    // In water deeper than a bur-reed can reach the surface through (some 4 m), its leaves
+    // stay submerged: ribbons streaming in the current a few metres over the bed, not
+    // strands twenty metres tall.
+    const reach = float * 0.8;
+    const points =
+      depth < 4
+        ? [root.clone(), root.clone().addScaledVector(dir, depth * 0.3).add(vec(0, depth * 0.6, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float * 0.3).add(vec(0, depth - 0.08, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float).add(vec(0, depth - 0.05, 0))]
+        : [root.clone(), root.clone().addScaledVector(dir, reach * 0.1).add(vec(0, reach * 0.45, 0)), root.clone().addScaledVector(dir, reach * 0.5).add(vec(0, reach * 0.7, 0)), root.clone().addScaledVector(dir, reach).add(vec(0, reach * 0.6, 0))];
     const color = tones(PALETTE.burReed, random(), random(), random());
     blade(batch, points, range(0.1, 0.16) * scale, color, root, 1.1, { rows: 16, cols: 1, ribbon: true, thin: 1, twist: a + Math.PI / 2, browning: random() < 0.3 ? 0.25 : 0, age: [0.8, 0.2], spacing: 0.6, cut: CUT.MONOCOT });
   }
