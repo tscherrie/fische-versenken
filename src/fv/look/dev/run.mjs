@@ -102,6 +102,8 @@ if (there === null) {
 
 function address(scene) {
   const q = new URLSearchParams({ capture: "1", seed: "7", day: "still", rain: "0", quality: option("quality") || "detail", fvtest: set, scene: scene.name, stage: scene.stage, at: String(scene.at), season: scene.season, hour: String(scene.hour), only: scene.name });
+  // (No place given: the fish starts as a new life does, in the gravel of the redd.)
+  if (scene.at === null) q.delete("at");
   let url = `http://localhost:${port}/?${q}&new`;
   if (args.includes("--webgl")) url += "&webgl";
   for (const a of args) if (a.startsWith("--x")) url += `&${a.slice(2)}`;

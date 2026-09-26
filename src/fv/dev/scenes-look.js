@@ -34,11 +34,11 @@ LOOK_SCENES.push(
   // Crawling in motion, one draw a frame.
   { name: "larven-bewegung", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // The gravel defence as it runs, the larvae drawn by their models instead of stand-ins.
-  { name: "larven-kiesbett", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+  { name: "larven-kiesbett", look: true, models: true, manual: true, stage: "alevin", at: null, season: "spring", hour: 11 },
   // The same, only the game's camera, with and without the larvae and where each one is.
-  { name: "larven-redd", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+  { name: "larven-redd", look: true, models: true, manual: true, stage: "alevin", at: null, season: "spring", hour: 11 },
   // And without shooting back: the larvae come up to the alevin.
-  { name: "larven-redd-wehrlos", look: true, models: true, manual: true, nofire: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+  { name: "larven-redd-wehrlos", look: true, models: true, manual: true, nofire: true, stage: "alevin", at: null, season: "spring", hour: 11 },
   // Weapon capsules in the brook: idle, taken (the burst), one behind a stone.
   { name: "kapsel-nah", look: true, models: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // Capsules as the parr meets them, in motion, late in a long game, and taken.
