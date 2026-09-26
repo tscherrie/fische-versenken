@@ -17,8 +17,10 @@ import { createFx } from "./fx.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
 import { createGravel } from "./gravel.js";
+import { createGround } from "./ground.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
+import { ARSENAL, createPickups } from "./pickups.js";
 import { createProjectiles } from "./projectiles.js";
 import { createRules } from "./rules.js";
 import { createSfx } from "./sfx.js";
@@ -41,8 +43,10 @@ export function createCombat(game) {
   const difficulty = createDifficulty(habitat);
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
+  const ground = createGround({ terrain, pebbles: game.pebbles });
   const rules = createRules();
   const bosses = createBosses({ enemies, hud, random });
+  const pickups = createPickups({ weapons: WEAPONS });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
@@ -56,7 +60,8 @@ export function createCombat(game) {
     keys.insertBefore(item, keys.children[3] ?? null);
   }
   const local = players[0];
-  const trigger = { back: false, belly: false, test: false };
+  // What holds the triggers: the mouse buttons, the tests, and on a phone the auto-fire.
+  const trigger = { back: false, belly: false, test: false, auto: false };
   const stones = [];
   const muzzle = new THREE.Vector3();
   const aimDir = new THREE.Vector3();
@@ -66,7 +71,8 @@ export function createCombat(game) {
 
   // The mouse buttons, while the pointer is caught and the fish can fight. (mousedown and
   // mouseup come for each button, pointer events only for the first one pressed.)
-  const canFire = () => game.now.locked && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
+  // (On a phone there is no caught pointer: the view is swiped, and the weapons fire themselves.)
+  const canFire = () => (game.now.locked || touchMode) && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
   canvas.addEventListener("mousedown", (event) => {
     if (!canFire()) return;
     if (event.button === 0) trigger.back = true;
@@ -87,7 +93,7 @@ export function createCombat(game) {
   function held(player, place) {
     const a = player.arsenal;
     const single = !(a.back && a.belly);
-    if (trigger.test) return true;
+    if (trigger.test || trigger.auto) return true;
     if (single) return trigger.back;
     return place === "back" ? trigger.back : trigger.belly;
   }
@@ -224,6 +230,11 @@ export function createCombat(game) {
     // A death: the enemies fall back and no new ones come for a while, so the sibling that
     // takes over has a moment to find its feet.
     if (local.down && !wasDown) {
+      // The weapons it carried wait where it died (a minute); the sibling starts with the laser.
+      const a = local.arsenal;
+      for (const id of [a.back, a.belly]) if (id && id !== "piu") pickups.revenge(local, id, fish.position);
+      a.back = "piu";
+      a.belly = null;
       for (const e of enemies.list) if (!e.dead) {
         e.mode = "recover";
         e.t = -4;
@@ -234,13 +245,42 @@ export function createCombat(game) {
     rules.step(dt, local, enemies);
     wild.step();
     const L = fish.length;
-    if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
+    const reach = (WEAPONS[local.arsenal.back] ?? WEAPONS.piu).reach(L);
+    if (touchMode) {
+      // Auto-fire: whenever an enemy is in reach near the middle of the view (a wider cone
+      // than with a mouse), every weapon fires at it.
+      aim.update(enemies.list, reach, Math.tan((9 * Math.PI) / 180));
+      trigger.auto = !!aim.target && !local.down;
+    } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, reach);
     fireWeapons(local, dt);
     enemies.hpScale = difficulty.level.hp;
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
     gravel.update(dt, { fish, enemies, players: players.length });
-    bosses.update(dt, { fish, onBeaten: (boss) => game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6) });
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
+    bosses.update(dt, {
+      fish,
+      onBeaten: (boss, e) => {
+        game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6);
+        pickups.deliver(local, "katana", e.position);
+      },
+    });
+    // A new stage of life: the new stage's weapon sinks down in a capsule.
+    if (!local.down && fish.stage > (local.stageSeen ?? fish.stage)) {
+      for (const [id, w] of Object.entries(ARSENAL)) if (w.stage === fish.stage && !w.boss && !w.secret) pickups.deliver(local, id);
+    }
+    local.stageSeen = fish.stage;
+    pickups.update(dt, {
+      players,
+      terrain,
+      onTake: (player, id) => {
+        if (!player.local) return;
+        hud.say(WEAPONS[id]?.title ?? id, "Neue Waffe", 1.6);
+        sfx.pickup?.(id);
+      },
+    });
+    // (The stones for the crawlers, gathered once, only while there are crawlers about.)
+    const crawling = enemies.list.some((e) => e.spec.crawls);
+    if (crawling) ground.refresh(fish.position, 12);
+    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
     hostile.update(dt, players, {
       onPlayer(shot, player) {
         hurt(player, shot.source, outcome, shot);
@@ -298,6 +338,7 @@ export function createCombat(game) {
       fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     }
     models.update(players);
+    for (const item of pickups.items) if (item.state === "idle") fx.add(item.x, item.y + Math.sin(item.age * 2) * 0.05, item.z, item.size * 0.5, 2.2, 2.4, 2.8, 1);
     // (The enemies' own weapons, strapped on the same way, once the models draw them.)
     models.enemies?.(enemies.list);
     // A weapon that is hot glows at the muzzle.
@@ -319,6 +360,7 @@ export function createCombat(game) {
     hostile,
     director,
     bosses,
+    pickups,
     aim,
     step,
     frame,

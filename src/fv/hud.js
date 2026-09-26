@@ -44,7 +44,7 @@ const CSS = `
 #foes { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
 #habitat.building #foes, #habitat.menu #foes { display: none; }
 #foes i { position: absolute; left: 0; top: 0; width: 38px; height: 4px; margin: -2px 0 0 -19px; border-radius: 2px; background: rgba(10, 16, 14, 0.55); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); opacity: 0; transition: opacity 0.25s; will-change: transform; }
-#foes i b { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #ff5a3c, #ffb25a); }
+#foes i b { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #ff5a3c, #ffb25a); transform-origin: 0 50%; will-change: transform; }
 #foes i.shown { opacity: 1; }
 `;
 
@@ -189,7 +189,7 @@ export function createCombatHud(habitat, { weapons }) {
         const width = Math.max(0, Math.round((e.hp / e.maxHp) * 100));
         if (width !== b.width) {
           b.width = width;
-          b.fill.style.width = `${width}%`;
+          b.fill.style.transform = `scaleX(${width / 100})`;
         }
         if (!b.shown) {
           b.shown = true;

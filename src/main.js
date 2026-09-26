@@ -6,7 +6,7 @@ import { createCaustics, driftSurface } from "./render/caustics.js";
 import { createRipples } from "./render/ripples.js";
 import { createPost } from "./render/post.js";
 import { softShadowFilter, shadowFrame } from "./render/shadows.js";
-import { foliageSky, plantEye } from "./render/foliage.js";
+import { foliageSky, plantEye, plantSeason } from "./render/foliage.js";
 import { renderSettings } from "./render/policy.js";
 import { createDaylight } from "./daylight.js";
 import { framebufferSize, qualityName } from "../../shared/render-policy.js";
@@ -24,7 +24,7 @@ import { createHud } from "./hud.js";
 import { createSave, savedStage } from "./save.js";
 import { createSound } from "./sound.js";
 import { createPebbles } from "./pebbles.js";
-import { COATS, MODEL_LENGTH, createFishMesh } from "./anatomy.js";
+import { COATS, MODEL_LENGTH, createFishMesh, refreshFishView, setFishQuality, setFishView } from "./anatomy.js";
 import { createQualityChoice, isDesktop, qualityName as qualityLabel, showIntro, showPhoneNotice } from "./intro.js";
 import { MONTHS, conditions, forceYear, thermal, updateConditions, waterTemperature } from "./seasons.js";
 import { createNets } from "./nets.js";
@@ -222,6 +222,10 @@ async function start() {
   // ------------------------------------------------------------------------------------
   // The fish, and where it is in its life.
   const pace = Number(query.get("pace")) || 1;
+  // (Before any fish is built: its shaders are made for the graphics chosen.)
+  setFishQuality({ fine: settings.detail, taa: settings.taa });
+  // (And the crowds of fish know where they are seen from, for their detail by distance.)
+  setFishView(camera, canvas, scene, key.shadow.camera);
   const salmon = createSalmon(scene, { pace });
   const fish = salmon.fish;
   mark("salmon");
@@ -2543,6 +2547,9 @@ async function start() {
     treeUniforms.treeAutumn.value = Math.max(conditions.autumn, conditions.leafFall);
     treeUniforms.treeBare.value = clamp(conditions.leafFall * 0.7 + conditions.winter * 1.2 - conditions.spring * 1.2, 0, 1);
     treeUniforms.treeSnow.value = clamp(conditions.winter * 1.4 - 0.3, 0, 1) * (0.4 + 0.6 * conditions.ice);
+    // The weed flowers in summer and dies back in autumn.
+    plantSeason.bloom.value = clamp(1 - conditions.spring - conditions.autumn - conditions.winter, 0, 1);
+    plantSeason.fade.value = Math.max(conditions.autumn * 0.6, conditions.winter);
     skyUniforms.sun.value = sunUp * cloud + 0.25 * day.moon;
     skyUniforms.sunDirection.value.copy(sun.disk);
     skyUniforms.sunColor.value.copy(keyColor);
@@ -2713,6 +2720,9 @@ async function start() {
     camera.far = above ? 900 : clamp(4.5 / scene.fog.density, 120, 600);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    // (The crowds were moved before the camera was placed: split into near, far and unseen
+    // again for where it is now.)
+    refreshFishView();
     post.jitter();
     if (settings.taa) shadowFrame(key, shadowRadius, frames);
     // (Leaves' left-out pixels: a new share each frame for the resolve, a fixed cut without it.)

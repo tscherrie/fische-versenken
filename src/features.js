@@ -127,12 +127,12 @@ for (const q of ISLANDS) {
           const x = at.x,
             z = at.z;
           if (kind === "gravel") {
-            if (random() < 0.35) turfTuft(ctx.plants, x, z, y, flow0(s), random, range(0.7, 1.2), range(0.14, 0.2));
+            if (random() < 0.35) turfTuft(ctx.plants, x, z, y, flow0(s), random, range(0.7, 1.2), range(0.14, 0.2), false);
             if (random() < 0.3) ctx.stone(s + range(-2, 2), u, range(0.35, 0.9), range(0.25, 0.5));
             if (random() < 0.04) willow(ctx.trees, x, y, z, range(8, 14), random);
             continue;
           }
-          if (random() < 0.6) for (let t = 0; t < 4; t++) turfTuft(ctx.plants, x + range(-1.5, 1.5), z + range(-1.5, 1.5), y, flow0(s), random, range(1, 1.6), range(0.18, 0.26));
+          if (random() < 0.6) for (let t = 0; t < 4; t++) turfTuft(ctx.plants, x + range(-1.5, 1.5), z + range(-1.5, 1.5), y, flow0(s), random, range(1, 1.6), range(0.18, 0.26), false);
           if (random() < 0.3) shrub(ctx.trees, x + range(-1, 1), y, z + range(-1, 1), range(1.2, 2.2), random);
           if (kind === "alder" && random() < 0.2) fern(ctx.trees, x + range(-1, 1), y, z + range(-1, 1), range(1.4, 2.4), random);
           if (y > lv + 0.8 && random() < (kind === "alder" ? 0.13 : 0.07) * c.island) {
@@ -383,7 +383,7 @@ addFeature({
       const s = range(7, 15),
         u = range(-5, 5);
       place(s, u, at);
-      turfTuft(ctx.plants, at.x, at.z, lv + range(2.4, 3.2), flow0(s), ctx.random, range(0.8, 1.4), range(0.2, 0.27));
+      turfTuft(ctx.plants, at.x, at.z, lv + range(2.4, 3.2), flow0(s), ctx.random, range(0.8, 1.4), range(0.2, 0.27), false);
     }
     for (let k = 0; k < 8; k++) {
       place(range(7, 15), range(-4, 4), at);
@@ -516,7 +516,7 @@ for (const q of UNDERCUTS) {
         }
         const top = c.thalweg + q.side * 1.1 * c.half;
         place(s, top, at);
-        for (let k = 0; k < 3; k++) turfTuft(ctx.plants, at.x + range(-1, 1), at.z + range(-1, 1), lv + 0.75, flow0(s), random, range(0.9, 1.4), range(0.2, 0.26));
+        for (let k = 0; k < 3; k++) turfTuft(ctx.plants, at.x + range(-1, 1), at.z + range(-1, 1), lv + 0.75, flow0(s), random, range(0.9, 1.4), range(0.2, 0.26), false);
       }
       yield "lid";
       // Its edge: grass hanging over, roots down into the water; the lid as colliders; the
@@ -1618,7 +1618,7 @@ addFeature({
       yield "barge";
     }
     // The farmed fish, going round.
-    if (!farmFish) farmFish = createFishMesh(scene0, "salmon", "sea", 72, { name: "Farm salmon", cacheKey: "farm-salmon", detail: 0.5, castShadow: false });
+    if (!farmFish) farmFish = createFishMesh(scene0, "salmon", "sea", 72, { name: "Farm salmon", cacheKey: "farm-salmon", detail: 0.5, castShadow: false, lod: true });
     const fish = Array.from({ length: 72 }, (_, i) => ({ pen: i % pens.length, r: range(0.3, 0.85) * FARM.radius, y: range(2, FARM.depth - 4), a: range(0, TAU), speed: range(0.08, 0.16), size: range(5.5, 7.5), phase: range(0, TAU) }));
     const matrix = new THREE.Matrix4(),
       quaternion = new THREE.Quaternion(),
@@ -1632,7 +1632,7 @@ addFeature({
     let pelletClock = 3;
     // Wild cod drawn in by the feed that sinks through the nets, cruising round the pens
     // and under them.
-    if (!farmCod) farmCod = createFishMesh(scene0, "cod", "cod", 10, { name: "Farm cod", cacheKey: "farm-cod", detail: 0.5, castShadow: false });
+    if (!farmCod) farmCod = createFishMesh(scene0, "cod", "cod", 10, { name: "Farm cod", cacheKey: "farm-cod", detail: 0.5, castShadow: false, lod: true });
     const cods = Array.from({ length: 10 }, (_, i) => ({ pen: i % pens.length, r: R * range(1.12, 1.5), y: range(D - 6, D + 8), a: range(0, TAU), speed: range(0.025, 0.06) * (random() < 0.5 ? -1 : 1), size: range(4, 6.5), phase: range(0, TAU) }));
     // Feed sinking through each pen from the spreader at the surface.
     const FEED = 150;

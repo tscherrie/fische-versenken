@@ -24,13 +24,14 @@ export function createAim(camera) {
       return target;
     },
     direction,
-    // Work out the aim for this step. `reach`: how far the weapon carries.
-    update(enemies, reach) {
+    // Work out the aim for this step. `reach`: how far the weapon carries; `assist`: how far
+    // (as a tangent) from the middle of the view an enemy still draws the aim.
+    update(enemies, reach, assist = ASSIST) {
       camera.getWorldPosition(origin);
       camera.getWorldDirection(direction);
       target = null;
       let bestT = reach,
-        bestScore = ASSIST;
+        bestScore = assist;
       for (const e of enemies) {
         if (e.dead) continue;
         offset.subVectors(e.position, origin);

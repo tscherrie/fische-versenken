@@ -46,6 +46,7 @@ const WORDS = [
   ["Vom alten König durchsiebt", "Riddled by the old king", "被老国王打成筛子", "老いた王に蜂の巣にされた", "Надупчена от стария крал"],
   ["Der alte König ist versenkt!", "The old king is sunk!", "老国王被击沉了！", "老いた王を撃沈した！", "Старият крал е потопен!"],
   ["Das Katana, das er bewacht hat, gehört dir.", "The katana he guarded is yours.", "他守护的武士刀归你了。", "彼が守っていた刀はきみのものだ。", "Катаната, която пазеше, е твоя."],
+  ["Neue Waffe", "New weapon", "新武器", "新しい武器", "Ново оръжие"],
   ["Kampfmesser", "Combat knife", "战斗刀", "コンバットナイフ", "Боен нож"],
   ["Maschinenpistole", "Submachine gun", "冲锋枪", "サブマシンガン", "Автомат"],
 ];

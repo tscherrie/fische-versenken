@@ -84,7 +84,13 @@ export function createHostile({ capacity = 160 } = {}) {
       p.last.copy(p.position);
       p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
       if (p.spent) p.spentAge += dt;
-      if (!p.spent && p.velocity.length() < SPENT * p.speed0) p.spent = true;
+      if (!p.spent && p.velocity.length() < SPENT * p.speed0) {
+        p.spent = true;
+        // Where it will come down: worked out once, not asked of the river every step (it
+        // barely drifts from here on).
+        locate(p.position.x, p.position.z, p.river.s, p.river);
+        p.floor = bed(p.river.s, p.river.u);
+      }
       if (p.spent) p.velocity.y += (-SINK - p.velocity.y) * (1 - Math.exp(-dt * 2));
       p.position.addScaledVector(p.velocity, dt);
       let struck = null,
@@ -109,6 +115,15 @@ export function createHostile({ capacity = 160 } = {}) {
         // The slower it has become, the less it does.
         p.hitDamage = p.damage * Math.min(1, Math.max(0.4, p.velocity.length() / p.speed0));
         onPlayer?.(p, struck);
+        continue;
+      }
+      if (p.spent) {
+        if (p.position.y < p.floor) {
+          p.position.y = p.floor;
+          p.velocity.set(0, 0, 0);
+          p.rested = true;
+          p.restAt = p.spentAge;
+        }
         continue;
       }
       locate(p.position.x, p.position.z, p.river.s, p.river);

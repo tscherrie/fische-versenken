@@ -38,8 +38,9 @@ export function finMotion(p, { swim, finPhase, part, finProgress }) {
   return q;
 }
 
-// The point p and its normal n carried by the bent spine: { position, normal }.
-export function bendSpine(p, n, swim) {
+// The point p and its normal n carried by the bent spine: { position, normal }. The spine is
+// integrated in `steps` pieces (a fish far off needs fewer).
+export function bendSpine(p, n, swim, steps = 8) {
   const s = float(PIVOT).sub(p.x).toVar();
   const theta = spineAngle(s, swim);
   const kappa = spineAngle(s.add(0.001), swim).sub(spineAngle(s.sub(0.001), swim)).div(0.002);
@@ -48,8 +49,8 @@ export function bendSpine(p, n, swim) {
     const mid = spineAngle(s.mul(0.5), swim);
     spine.addAssign(vec2(cos(mid).negate(), sin(mid)).mul(s));
   }).Else(() => {
-    const ds = s.div(8);
-    for (let i = 0; i < 8; i++) {
+    const ds = s.div(steps);
+    for (let i = 0; i < steps; i++) {
       const mid = spineAngle(ds.mul(i + 0.5), swim);
       spine.addAssign(vec2(cos(mid).negate(), sin(mid)).mul(ds));
     }

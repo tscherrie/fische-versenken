@@ -226,7 +226,7 @@ export function createNets(scene) {
   group.add(gearMesh);
   scene.add(group);
 
-  const herring = createFishMesh(scene, "herring", "herring", caught.length, { name: "Netted herring", cacheKey: "netted-herring", detail: 0.5, castShadow: false });
+  const herring = createFishMesh(scene, "herring", "herring", caught.length, { name: "Netted herring", cacheKey: "netted-herring", detail: 0.5, castShadow: false, lod: true });
   const matrix = new THREE.Matrix4(),
     basis = new THREE.Matrix4(),
     axisY = new THREE.Vector3(),

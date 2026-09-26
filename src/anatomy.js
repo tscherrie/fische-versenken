@@ -4,6 +4,7 @@ import {
   If,
   PI,
   abs,
+  atan,
   attribute,
   cos,
   cross,
@@ -37,6 +38,7 @@ import {
   sin,
   smoothstep,
   step,
+  texture,
   uniform,
   uv,
   varying,
@@ -50,6 +52,7 @@ import { bendSpine, finMotion } from "./render/swim.js";
 import { waterLit } from "./render/water.js";
 import { fogNodes, underwaterInscatter } from "./render/fog.js";
 import { ownInstanceMatrix } from "./render/instancing.js";
+import { SCALE_CELLS, scaleTexture } from "./render/scales.js";
 
 // The fish of a northern river and its sea, from one body plan.
 //
@@ -558,20 +561,99 @@ function builder() {
   };
 }
 
-// detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
-// small hunters): fewer rings along the body and round it, simpler eyes and fins.
-export function makeFish(kind = "salmon", { detail = 1 } = {}) {
-  const rows = Math.max(24, Math.round(72 * detail)),
-    columns = Math.max(14, 2 * Math.round(20 * detail));
-  const eyeRings = Math.max(4, Math.round(10 * detail)),
-    eyeSegments = Math.max(10, Math.round(24 * detail));
-  const finColumns = Math.max(8, Math.round(16 * detail)),
-    finSteps = Math.max(4, Math.round(7 * detail));
-  const plan = BODIES[kind];
+// A body plan's shape: its top, bottom and half width along the fish, the point of the
+// shell at height v (-1 the belly, 1 the back) round the section, and the shell's half width
+// at a point (x, y) of the side view. Made once per plan.
+const shapes = new WeakMap();
+function shapeOf(plan) {
+  let shape = shapes.get(plan);
+  if (shape) return shape;
   const knots = plan.profile.slice().reverse();
   const top = spline(knots.map((k) => [k[0], k[1]]));
   const bottom = spline(knots.map((k) => [k[0], k[2]]));
   const width = spline(knots.map((k) => [k[0], k[3]]));
+  const surface = (x, v, side) => {
+    const t = top(x),
+      b = bottom(x),
+      c = (t + b) * 0.5;
+    const y = v >= 0 ? c + v * (t - c) : c + v * (c - b);
+    const fullness = v >= 0 ? 1.85 : 2.4;
+    const waist = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(v), 2.1)), 1 / fullness);
+    return [x, y, side * Math.max(width(x) * waist, 0.0003)];
+  };
+  const skinZ = (x, y) => {
+    const t = top(x),
+      b = bottom(x),
+      c = (t + b) * 0.5;
+    const v = Math.max(-0.999, Math.min(0.999, y >= c ? (y - c) / Math.max(t - c, 1e-5) : (y - c) / Math.max(c - b, 1e-5)));
+    return surface(x, v, 1)[2];
+  };
+  shape = { top, bottom, width, surface, skinZ };
+  shapes.set(plan, shape);
+  return shape;
+}
+
+// Where a plan's (right) eye sits and which way it looks: the point of the skin at its
+// centre, and the skin's normal there. A salmon's eye looks out sideways and a little up;
+// the pike's, the bullhead's and the seal's sit high and look partly upward -- laid along
+// the side view instead, their rim would ride up over the brow. `toSkin(a, b)` carries a
+// point of the eye's own plane (a toward the snout, b upward, in eye radii) along that
+// normal down onto the skin.
+const eyeFrames = new WeakMap();
+export function eyeFrameOf(plan) {
+  let frame = eyeFrames.get(plan);
+  if (frame) return frame;
+  const { top, bottom, skinZ } = shapeOf(plan);
+  const { eye } = plan;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const h = eye.r * 0.2;
+  const slopeX = (skinZ(eye.x + h, eye.y) - skinZ(eye.x - h, eye.y)) / (2 * h),
+    slopeY = (skinZ(eye.x, eye.y + h) - skinZ(eye.x, eye.y - h)) / (2 * h);
+  const centre = V(eye.x, eye.y, skinZ(eye.x, eye.y));
+  const normal = V(-slopeX, -slopeY, 1).normalize();
+  const along = V(1, 0, 0).addScaledVector(normal, -normal.x).normalize();
+  const up = normal.clone().cross(along);
+  const inside = (p) => p.y < top(p.x) && p.y > bottom(p.x) && p.z < skinZ(p.x, p.y);
+  const q = V(0, 0, 0),
+    p = V(0, 0, 0);
+  // How far below the eye's plane the skin lies, along the normal (bisected: the head is
+  // convex round the eye, so the ray goes in once).
+  const depth = (a, b) => {
+    q.copy(centre).addScaledVector(along, a * eye.r).addScaledVector(up, b * eye.r);
+    let lo = -eye.r,
+      hi = eye.r * 3;
+    for (let k = 0; k < 32; k++) {
+      const mid = (lo + hi) * 0.5;
+      if (inside(p.copy(q).addScaledVector(normal, -mid))) hi = mid;
+      else lo = mid;
+    }
+    return (lo + hi) * 0.5;
+  };
+  const toSkin = (a, b, lift = 0) => {
+    const d = depth(a, b);
+    return q.clone().addScaledVector(normal, lift - d);
+  };
+  frame = { centre, normal, along, up, toSkin };
+  eyeFrames.set(plan, frame);
+  return frame;
+}
+
+// detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
+// small hunters): fewer rings along the body and round it, simpler eyes and fins. `far`
+// builds the least a fish can be and still read as one at a few dozen pixels: a shell of
+// twelve rings by eight, and the tail and the dorsal fin as flat vanes in the same mesh
+// (the eye is painted on), 240 triangles.
+export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
+  const rows = far ? 12 : Math.max(24, Math.round(72 * detail)),
+    columns = far ? 8 : Math.max(14, 2 * Math.round(20 * detail));
+  // (The eye's full round of segments only where it is seen close: the player's fish and
+  // the big hunters; a crowd's fish is drawn near at a few dozen pixels.)
+  const eyeRings = Math.max(4, Math.round(10 * detail)),
+    eyeSegments = detail >= 0.9 ? 40 : Math.max(12, Math.round(24 * detail));
+  let finColumns = Math.max(8, Math.round(16 * detail)),
+    finSteps = Math.max(4, Math.round(7 * detail));
+  const plan = BODIES[kind];
+  const { top, bottom, surface } = shapeOf(plan);
   const hypural = plan.profile[plan.profile.length - 1][0];
   const SL = SNOUT - hypural;
 
@@ -584,15 +666,6 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
     const w = 0.5 - 0.5 * Math.cos(Math.PI * t);
     xs.push(SNOUT - (0.55 * t + 0.45 * w) * SL);
   }
-  const surface = (x, v, side) => {
-    const t = top(x),
-      b = bottom(x),
-      c = (t + b) * 0.5;
-    const y = v >= 0 ? c + v * (t - c) : c + v * (c - b);
-    const fullness = v >= 0 ? 1.85 : 2.4;
-    const waist = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(v), 2.1)), 1 / fullness);
-    return [x, y, side * Math.max(width(x) * waist, 0.0003)];
-  };
   const grid = [];
   for (let i = 0; i <= rows; i++) {
     const row = [];
@@ -735,24 +808,44 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
   }
   const bodyGeometry = body.finish(true);
 
-  // Eyes: domes set into the head.
+  // Eyes: set flush into the head, the cornea bulging only a little out of the skin, laid
+  // square to the skin at the eye's centre (eyeFrameOf). The rings lie at even steps of the
+  // radius on the eye's own plane, so uv.y is that radius (0 at the centre, 1 where the
+  // cornea meets the skin) and the iris is drawn round in it, not squeezed toward the rim;
+  // uv.x is the angle round, 0 toward the snout. A last ring beyond the rim is sunk under
+  // the skin, so no gap shows round it.
   const eyes = builder();
   const { eye } = plan;
-  for (const side of [-1, 1]) {
-    // Set into the head, not on it: a shallow lens whose edge sinks under the skin.
-    const z0 = surface(eye.x, 0.1, 1)[2] * 0.8;
+  const eyeFrame = eyeFrameOf(plan);
+  // (An eye that looks upward stands up out of the head more, as the bullhead's does, or
+  // seen from the side it would be all but flat.)
+  const bulge = eye.r * (0.16 + 0.3 * Math.max(0, 0.85 - eyeFrame.normal.z));
+  // (The rim stands a hair proud of the skin, so the eye's own round edge is what shows,
+  // not where it cuts the body's facets.)
+  const lift = (rho) => (rho <= 1 ? bulge * (1 - rho * rho) + 0.02 * eye.r : 0.02 * eye.r - 0.1 * eye.r * Math.min(1, (rho - 1) / 0.08));
+  const cornea = (a, b) => eyeFrame.toSkin(a, b, lift(Math.hypot(a, b)));
+  const du = new THREE.Vector3(),
+    dv = new THREE.Vector3(),
+    en = new THREE.Vector3();
+  for (const side of far ? [] : [-1, 1]) {
     const rings = eyeRings,
       segments = eyeSegments;
     const start = eyes.positions.length / 3;
-    for (let r = 0; r <= rings; r++) {
-      const phi = (r / rings) * Math.PI * 0.55;
+    for (let r = 0; r <= rings + 1; r++) {
+      const rho = r <= rings ? r / rings : 1.08;
       for (let k = 0; k <= segments; k++) {
         const theta = (k / segments) * TAU;
-        const nx = Math.sin(phi) * Math.cos(theta),
-          ny = Math.sin(phi) * Math.sin(theta),
-          nz = Math.cos(phi);
-        eyes.vertex([eye.x + nx * eye.r, eye.y + ny * eye.r, side * (z0 + nz * eye.r * 0.48 - eye.r * 0.1)], [nx * 0.8, ny * 0.8, side * nz], [k / segments, r / rings], 7);
-        if (r < rings && k < segments) {
+        const c = Math.cos(theta),
+          s = Math.sin(theta);
+        const p = cornea(rho * c, rho * s);
+        // The normal from the slope of the surface (worked out numerically, in steps of a
+        // fiftieth of the eye's radius).
+        const h = 0.02;
+        du.subVectors(cornea(rho * c + h, rho * s), cornea(rho * c - h, rho * s));
+        dv.subVectors(cornea(rho * c, rho * s + h), cornea(rho * c, rho * s - h));
+        en.crossVectors(du, dv).normalize();
+        eyes.vertex([p.x, p.y, side * p.z], [en.x, en.y, side * en.z], [k / segments, rho], 7);
+        if (r <= rings && k < segments) {
           const a = start + r * (segments + 1) + k;
           if (side > 0) {
             eyes.triangle(a, a + segments + 1, a + 1);
@@ -807,6 +900,10 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
     return line;
   };
   const tipLine = (points) => points.map(([x, y]) => [x, y, 0]);
+  if (far) {
+    finColumns = 4;
+    finSteps = 1;
+  }
   // Caudal: from the hypural plate out to two lobes and the fork between.
   if (plan.caudal) {
     const d = plan.caudal.depth;
@@ -834,6 +931,13 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
     fan(1, base, tip);
   }
   if (plan.dorsal) fan(2, median(plan.dorsal.base[0], plan.dorsal.base[1], true), tipLine(plan.dorsal.tip));
+  if (far) {
+    // The far fish's tail and dorsal fin go in with its body: one opaque draw. Each vane
+    // has a face either way (the material leaves out back faces, so the closed body's
+    // hidden half costs nothing).
+    const finGeometry = fins.finish(true);
+    return { body: mergeParts([bodyGeometry, finGeometry, turned(finGeometry)]), fins: null, plan };
+  }
   if (plan.anal) fan(3, median(plan.anal.base[0], plan.anal.base[1], false), tipLine(plan.anal.tip));
   if (plan.adipose) fan(12, median(plan.adipose.base[0], plan.adipose.base[1], true, 3), tipLine(plan.adipose.tip));
   for (const side of plan.pectoral ? [-1, 1] : []) {
@@ -850,7 +954,8 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
       [x - length * 0.9, y - spread * 0.7, side * (length * 0.5)],
       [x - length * 0.45, y - spread * 0.9, side * (length * 0.32)],
     ];
-    fan(side > 0 ? 4 : 5, base, tip, { sway: side * 0.002 });
+    // (Bowed and a little twisted, as a fan of rays is, not a flat board.)
+    fan(side > 0 ? 4 : 5, base, tip, { sway: side * 0.006, roll: side * 0.005 });
     if (plan.pelvic) {
       const p = plan.pelvic;
       const pb = [
@@ -871,6 +976,16 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
   // Eyes go with the opaque body.
   const merged = mergeParts([bodyGeometry, eyeGeometry]);
   return { body: merged, fins: finGeometry, plan };
+}
+
+// The same faces turned to look the other way.
+function turned(geometry) {
+  const copy = geometry.clone();
+  const normals = copy.attributes.normal.array;
+  for (let k = 0; k < normals.length; k++) normals[k] = -normals[k];
+  const index = copy.index.array;
+  for (let k = 0; k < index.length; k += 3) [index[k + 1], index[k + 2]] = [index[k + 2], index[k + 1]];
+  return copy;
 }
 
 function mergeParts(list) {
@@ -907,12 +1022,12 @@ export const COATS = {
   alevin: {
     back: [0.3, 0.22, 0.17], flank: [0.46, 0.34, 0.28], belly: [0.55, 0.42, 0.36],
     silver: 0.05, parr: 0, redSpots: 0, blackSpots: 0.25, spotSize: 0.45, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 1, fin: [0.3, 0.26, 0.22], finDark: 0, adipose: [0.3, 0.26, 0.22], iris: [0.3, 0.3, 0.26], yolk: 1,
+    spawn: 0, translucent: 1, fin: [0.3, 0.26, 0.22], finDark: 0, adipose: [0.3, 0.26, 0.22], iris: [0.3, 0.3, 0.26], yolk: 1, scales: 0,
   },
   fry: {
     back: [0.05, 0.05, 0.028], flank: [0.2, 0.17, 0.1], belly: [0.5, 0.46, 0.38],
     silver: 0.12, parr: 0.85, redSpots: 0.35, blackSpots: 0.25, spotSize: 0.6, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 0.5, fin: [0.2, 0.18, 0.13], finDark: 0, adipose: [0.45, 0.22, 0.1], iris: [0.5, 0.42, 0.22], yolk: 0,
+    spawn: 0, translucent: 0.5, fin: [0.2, 0.18, 0.13], finDark: 0, adipose: [0.45, 0.22, 0.1], iris: [0.5, 0.42, 0.22], yolk: 0, scales: 0.4,
   },
   parr: {
     back: [0.035, 0.038, 0.018], flank: [0.24, 0.19, 0.08], belly: [0.62, 0.58, 0.47],
@@ -962,7 +1077,7 @@ export const COATS = {
   bullhead: {
     back: [0.06, 0.05, 0.035], flank: [0.17, 0.14, 0.09], belly: [0.42, 0.4, 0.33],
     silver: 0, parr: 0, redSpots: 0, blackSpots: 0.9, spotSize: 1.8, halo: 0, bars: 0.6, pikeSpots: 0,
-    spawn: 0, translucent: 0, fin: [0.2, 0.17, 0.12], finDark: 0.2, adipose: [0.2, 0.17, 0.12], iris: [0.6, 0.5, 0.3], yolk: 0,
+    spawn: 0, translucent: 0, fin: [0.2, 0.17, 0.12], finDark: 0.2, adipose: [0.2, 0.17, 0.12], iris: [0.6, 0.5, 0.3], yolk: 0, scales: 0,
   },
   perch: {
     back: [0.04, 0.07, 0.03], flank: [0.32, 0.36, 0.11], belly: [0.68, 0.66, 0.52],
@@ -987,7 +1102,7 @@ export const COATS = {
   eel: {
     back: [0.035, 0.04, 0.018], flank: [0.16, 0.15, 0.07], belly: [0.55, 0.5, 0.3],
     silver: 0.12, parr: 0, redSpots: 0, blackSpots: 0, spotSize: 1, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 0, fin: [0.1, 0.1, 0.06], finDark: 0, adipose: [0.1, 0.1, 0.06], iris: [0.7, 0.62, 0.3], yolk: 0,
+    spawn: 0, translucent: 0, fin: [0.1, 0.1, 0.06], finDark: 0, adipose: [0.1, 0.1, 0.06], iris: [0.7, 0.62, 0.3], yolk: 0, scales: 0,
   },
   mackerel: {
     back: [0.02, 0.13, 0.11], flank: [0.62, 0.68, 0.7], belly: [0.93, 0.93, 0.9],
@@ -1001,9 +1116,13 @@ export const COATS = {
   },
 };
 
+// (Scales: how much of the scale pattern a coat shows. None on the alevin, whose scales
+// have not grown yet (they come at three to four centimetres, in the fry's first summer),
+// the bullhead, which has none, or the eel, whose are sunk in its skin; none on fur.)
 for (const coat of Object.values(COATS)) {
   coat.fish ??= 1;
   coat.waves ??= 0;
+  coat.scales ??= coat.fish;
 }
 const COAT_KEYS = Object.keys(COATS.parr);
 export function coatUniforms(coat) {
@@ -1060,16 +1179,45 @@ const spots = (p, density, size, seed) => {
     }
   return best;
 };
-const gauss = (x, width) => exp(pow(x.div(width), 2).negate());
+const gauss = (x, width) => {
+  const t = x.div(width);
+  return exp(t.mul(t).negate());
+};
+// How far a point of the skin (rest shape) lies from the eye's centre, in eye radii, on the
+// eye's own plane -- the socket round an eye that looks partly upward is round on the head
+// as the eye is. Points far off that plane (the belly under a high-set eye) count as far.
+const eyeDistance = (u, p) => {
+  const d = vec3(p.x, p.y, abs(p.z)).sub(u.uEyeC);
+  const off = dot(d, u.uEyeN);
+  return length(d.sub(u.uEyeN.mul(off)))
+    .add(max(abs(off).sub(u.uEye.z.mul(2.5)), 0).mul(4))
+    .div(u.uEye.z);
+};
+
+// What the fish shaders may spend, fixed when they are built (the game reloads on a change
+// of graphics): `fine` the eye's depth and the scales' finest touches (the colour of each,
+// the lateral line's pores), `taa` whether frames are blended -- without, the scales' detail
+// gives way sooner, before it can flicker.
+const fishQuality = { fine: true, taa: true };
+export function setFishQuality({ fine = true, taa = true } = {}) {
+  fishQuality.fine = fine;
+  fishQuality.taa = taa;
+}
 
 // Materials for a coat: the skin, the fins, with the swimming built in. `coat` may be shared
 // uniforms (for a fish whose coat changes); otherwise a fresh set is made. `mesh` is the
 // body mesh (whose instances the shader places itself, after bending them).
-export function createFishMaterials(coat, plan, { uniforms = null } = {}) {
+export function createFishMaterials(coat, plan, { uniforms = null, far = false } = {}) {
   const u = uniforms ?? coatUniforms(coat);
   u.uMouth = uniform(new THREE.Vector2(plan.mouth.x, plan.mouth.y));
   u.uGill = uniform(plan.gill ?? plan.eye.x - 0.085);
   u.uEye = uniform(new THREE.Vector3(plan.eye.x, plan.eye.y, plan.eye.r));
+  // The (right) eye's centre on the skin and the way it looks (eyeFrameOf).
+  const eyeFrame = eyeFrameOf(plan);
+  u.uEyeC = uniform(eyeFrame.centre.clone());
+  u.uEyeN = uniform(eyeFrame.normal.clone());
+  // (A far fish: one opaque plain material, the coat's uniforms shared with the near one.)
+  if (far) return { skin: new THREE.MeshStandardNodeMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.4 }), fins: null, uniforms: u, plan };
   const skin = new THREE.MeshPhysicalNodeMaterial({
     color: 0xffffff,
     metalness: 0.4,
@@ -1095,12 +1243,11 @@ export function createFishMaterials(coat, plan, { uniforms = null } = {}) {
   return { skin, fins, uniforms: u, plan };
 }
 
-// The shading of a fish, wired to its mesh once the mesh exists (the instances are placed
-// by the shader itself, after the fish is reshaped and bent).
-function shadeFish(materials, body, membranes) {
-  const u = materials.uniforms;
-  const instanceMatrix = ownInstanceMatrix(body);
-  ownInstanceMatrix(membranes);
+// A fish's vertex stage: the rest shape changed (the spawner's hump and hooked jaw, the
+// alevin's shrinking yolk, the mouth), bent by the swimming wave, placed by the instance's
+// own matrix; and what it hands the fragment stage.
+function swimmingFish(u, mesh, { steps = 8 } = {}) {
+  const instanceMatrix = ownInstanceMatrix(mesh);
   const swim = attribute("aSwim", "vec4");
   const finPhase = attribute("aFinMouth", "vec2").x;
   const partProgress = attribute("aPart", "vec2");
@@ -1120,6 +1267,11 @@ function shadeFish(materials, body, membranes) {
   const position = Fn(() => {
     const p = positionGeometry.toVar();
     const n = normalGeometry.toVar();
+    // (The coat is drawn on the rest shape, so its spots and bones stay put on the skin as
+    // the jaw opens, the hump rises and the spawner's jaw grows.)
+    const rest = vec3(0).toVar();
+    rest.assign(p);
+    vSkinPoint.assign(rest);
     vJaw.assign(vec2(0));
     vMouthOpen.assign(0);
     If(part.greaterThan(12.5), () => {
@@ -1128,6 +1280,8 @@ function shadeFish(materials, body, membranes) {
       p.assign(centre.add(p.sub(centre).mul(k)));
       p.y.addAssign(k.oneMinus().mul(0.05));
     }).Else(() => {
+      // Which of the skin is the lower jaw (the kype below needs it as well).
+      const below = float(0).toVar();
       If(part.lessThan(0.5), () => {
         // The lower jaw swings down about its hinge below the eye; the gill covers flare as
         // the mouth opens, drawing the water (and whatever is in it) in.
@@ -1135,7 +1289,7 @@ function shadeFish(materials, body, membranes) {
         const tipY = u.uMouth.y.mul(0.3);
         const lineY = mix(u.uMouth.y, tipY, p.x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
         const hinge = vec2(u.uMouth.x.sub(0.01), u.uMouth.y.add(0.002));
-        const below = smoothstep(lineY.add(0.003), lineY.sub(0.003), p.y);
+        below.assign(smoothstep(lineY.add(0.003), lineY.sub(0.003), p.y));
         const along = smoothstep(hinge.x.sub(0.004), hinge.x.add(0.012), p.x);
         const angle = open.mul(0.55).mul(below).mul(along);
         const d = p.xy.sub(hinge);
@@ -1153,95 +1307,210 @@ function shadeFish(materials, body, membranes) {
         p.y.mulAssign(u.coat_hump.mul(0.42).mul(gauss(p.x.sub(0.12), 0.14)).add(1));
       });
       If(u.coat_kype.greaterThan(0), () => {
-        const snout = smoothstep(0.24, 0.35, p.x);
-        p.x.addAssign(u.coat_kype.mul(0.035).mul(snout));
-        // The lower jaw's tip curls up into a hook.
-        const hook = smoothstep(0.3, 0.38, p.x);
-        p.y.addAssign(select(p.y.lessThan(0), u.coat_kype.mul(0.03).mul(hook), u.coat_kype.mul(-0.012).mul(hook)));
+        // The spawning male's hooked jaw (the kype): the snout ahead of the eye lengthens,
+        // the lower jaw more than the upper; its last few millimetres hook sharply up in
+        // front of the upper jaw's tip, which bends down a little over it. (Curled over a
+        // short length, and thickened only a little: a long, full curl reads as a pout.)
+        const k = u.coat_kype;
+        const snout = smoothstep(u.uEye.x.add(u.uEye.z), 0.35, rest.x);
+        const tip = smoothstep(0.31, 0.35, rest.x);
+        const hook = smoothstep(0.328, 0.35, rest.x);
+        const lip = mix(u.uMouth.y, u.uMouth.y.mul(0.3), rest.x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
+        p.x.addAssign(k.mul(below.mul(0.014).add(0.018)).mul(snout));
+        p.y.addAssign(p.y.sub(lip).min(0).mul(k).mul(tip).mul(below).mul(0.4));
+        p.y.addAssign(k.mul(hook.mul(hook).mul(below).mul(0.03).sub(smoothstep(0.33, 0.35, rest.x).mul(below.oneMinus()).mul(0.005))));
+        p.z.addAssign(sign(p.z).mul(k).mul(tip).mul(below).mul(0.002));
       });
     });
-    vSkinPoint.assign(p);
-    const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim);
+    const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim, steps);
     const placed = instanceMatrix.mul(vec4(bent.position, 1));
     const world = modelWorldMatrix.mul(instanceMatrix);
     vFishScale.assign(world.mul(vec4(1, 0, 0, 0)).xyz.length());
     vNormal.assign(cameraViewMatrix.mul(world.mul(vec4(bent.normal, 0))).xyz);
     return placed.xyz;
   })();
+  return { position, part, vSkinPoint, vJaw, vMouthOpen, vFishScale, vNormal };
+}
+
+// The shading of a fish, wired to its mesh once the mesh exists (the instances are placed
+// by the shader itself, after the fish is reshaped and bent).
+function shadeFish(materials, body, membranes) {
+  const u = materials.uniforms;
+  ownInstanceMatrix(membranes);
+  const { position, part, vSkinPoint, vJaw, vMouthOpen, vFishScale, vNormal } = swimmingFish(u, body);
 
   // What the colour pass works out and the lighting reads.
   const gThrough = property("vec3", "fishThrough");
   const gSilver = property("float", "fishSilver");
   const gRelief = property("float", "fishRelief");
-  const gScaleRough = property("float", "fishScaleRough");
   const gTilt = property("vec2", "fishTilt");
   const gAlpha = property("float", "fishAlpha");
   const gEnv = property("float", "fishEnv");
+  const gMetal = property("float", "fishMetal");
+  const gRough = property("float", "fishRough");
+  const gCoat = property("float", "fishCoat");
+  const gCoatRough = property("float", "fishCoatRough");
+  // How much of the water round it the clear coat mirrors.
+  const gCoatEnv = property("float", "fishCoatEnv");
+  const gFilm = property("float", "fishFilm");
+  // The scales' relief (x along the fish, y down the flank), already weighted.
+  const gScale = property("vec2", "fishScaleNormal");
+  // The smooth normal and the frames the derivatives give, worked out once at the top of the
+  // colour pass: a derivative taken inside a branch is undefined where the branch is not
+  // taken by all four pixels of a quad, and TSL would share it from wherever it was first
+  // used (see the spots above).
+  const gN0 = property("vec3", "fishN0");
+  const gDp1 = property("vec3", "fishDp1");
+  const gDp2 = property("vec3", "fishDp2");
+  const gDs1 = property("vec2", "fishDs1");
+  const gDs2 = property("vec2", "fishDs2");
+  const gDRelief = property("vec2", "fishDRelief");
   const fishUV = uv();
+  const scaleTile = scaleTexture();
+  // Without the temporal blend nothing averages a flicker away: the scales' fine detail
+  // gives way at a larger size.
+  const fadeAt = fishQuality.taa ? 1 : 1.6;
 
   const color = Fn(() => {
     gThrough.assign(vec3(0));
     gSilver.assign(0);
     gRelief.assign(0);
-    gScaleRough.assign(0);
     gTilt.assign(vec2(0));
     gAlpha.assign(1);
     gEnv.assign(1);
+    gMetal.assign(0.03);
+    gRough.assign(0.4);
+    gCoat.assign(0);
+    gCoatRough.assign(0.16);
+    gCoatEnv.assign(1);
+    gFilm.assign(360);
+    gScale.assign(vec2(0));
+    gN0.assign(normalize(vNormal).mul(faceDirection));
+    gDp1.assign(dFdx(positionView));
+    gDp2.assign(dFdy(positionView));
+    // (The lighting reads the view direction too: taken here first, so it is not worked out
+    // inside the eye's branch alone and left empty for the rest.)
+    const toEye = vec3(0).toVar();
+    toEye.assign(positionViewDirection);
     const x = vSkinPoint.x,
       y = vSkinPoint.y;
-    const band = fishUV.y.clamp(0, 1);
+    const band = float(0).toVar();
+    band.assign(fishUV.y.clamp(0, 1));
     const along = fishUV.x;
-    const head = smoothstep(0.17, 0.21, x);
+    // How big a pixel is on the fish, in the model's units: lines narrower than that are
+    // widened (and paled to keep their ink), or they would crawl.
+    const ds1 = vec2(0).toVar(),
+      ds2 = vec2(0).toVar();
+    ds1.assign(dFdx(vSkinPoint.xy));
+    ds2.assign(dFdy(vSkinPoint.xy));
+    const px = float(0).toVar();
+    px.assign(max(max(abs(ds1.x).add(abs(ds2.x)), abs(ds1.y).add(abs(ds2.y))), 1e-7));
+    // The scales' lattice: about 120 along the fish and 36 rows from the back to the belly,
+    // the rows slanting a little, in cells of one scale.
+    const lattice = vec2(0).toVar();
+    lattice.assign(vec2(along.mul(120).add(band.mul(36 * 0.18)), band.mul(36)));
+    gDs1.assign(dFdx(lattice));
+    gDs2.assign(dFdy(lattice));
+    const sc = vec4(0).toVar();
+    // (With the frames blended the tile is read a little sharper than its size on screen
+    // asks: what flickers from frame to frame the blend averages, and the scales stay
+    // visible on a fish farther off.)
+    const tile = texture(scaleTile, lattice.div(SCALE_CELLS));
+    sc.assign(fishQuality.taa ? tile.bias(-0.8) : tile);
+    // Scales across a pixel: at ten pixels a scale or more each shows itself, at four or
+    // fewer they have blended into the skin.
+    const detail = float(0).toVar();
+    detail.assign(smoothstep(0.1 / fadeAt, 0.25 / fadeAt, max(length(gDs1), length(gDs2))).oneMinus());
+    const rayWidth = float(0).toVar();
+    rayWidth.assign(fwidth(fishUV.x.mul(16)));
     const skin = vec3(0).toVar();
     If(part.lessThan(0.5), () => {
+      // The gill cover's free edge: bowed back toward the tail at mid-height, running up to
+      // the nape and curving forward under the throat. The head is everything ahead of it.
+      const xo = float(0).toVar();
+      const bow = max(band, 0.2).sub(0.52).div(0.36);
+      xo.assign(u.uGill.sub(0.006).add(bow.mul(bow).mul(0.03)));
+      const head = float(0).toVar();
+      head.assign(smoothstep(xo.sub(0.003), xo.add(0.003), x));
+      const headSoft = float(0).toVar();
+      headSoft.assign(smoothstep(xo.sub(0.02), xo.add(0.012), x));
       // Countershading. The arc runs round the section, so the back's share of it looks
       // small from the side: the dark reaches a third of the way down the flank.
-      const backLine = sin(x.mul(40)).mul(0.03).mul(head.oneMinus()).add(0.36);
+      const backLine = sin(x.mul(40)).mul(0.03).mul(headSoft.oneMinus()).add(0.36);
       skin.assign(mix(u.coat_back, u.coat_flank, smoothstep(backLine.sub(0.1), backLine.add(0.08), band)));
       skin.assign(mix(skin, u.coat_belly, smoothstep(0.62, 0.8, band)));
-      // Nothing alive is one flat colour: a faint mottling, darker freckles over the back.
+      // Nothing alive is one flat colour: a faint mottling.
       const mottle = skinNoise(vec2(along.mul(26), band.mul(8))).mul(0.6).add(skinNoise(vec2(along.mul(70), band.mul(20))).mul(0.4));
       skin.mulAssign(mix(1, mottle.mul(0.28).add(0.86), u.coat_fish));
-      // The lateral line: a dotted row of pores down the flank.
-      const lateral = gauss(band.sub(mix(0.47, 0.42, smoothstep(-0.25, 0.2, x))), 0.012)
-        .mul(head.oneMinus())
-        .mul(smoothstep(0.2, 0.5, abs(fract(along.mul(120)).sub(0.5))).mul(0.45).add(0.55));
-      skin.mulAssign(lateral.mul(0.2).mul(u.coat_fish).oneMinus());
-      // Scales: small, overlapping, each a slightly different mirror. Their rounded free
-      // edges catch the light one by one, which is most of what makes a fish look wet.
-      const gy = band.mul(36).add(sin(along.mul(120 * 0.4)).mul(0.15));
-      const gx = along.mul(120).add(mod(floor(gy), 2).mul(0.5)).add(gy.mul(0.18));
-      const grid = vec2(gx, gy);
-      const fade = smoothstep(0.35, 1, max(fwidth(grid.x), fwidth(grid.y))).oneMinus();
-      const cell = fract(grid).sub(0.5);
-      const scaleMask = fade.mul(head.oneMinus()).mul(u.coat_fish).mul(smoothstep(-0.29, -0.25, x));
-      // Each scale shows only its rounded free edge, overlapping the one behind it: arcs
-      // convex toward the tail, a dark line under each edge, the exposed field paler.
-      const arc = vec2(cell.x.add(0.3), cell.y.mul(1.3)).length();
-      const edgeLine = gauss(arc.sub(0.72), 0.05);
-      const exposed = step(arc, 0.72);
-      const scaleId = floor(grid).add(vec2(exposed.oneMinus(), 0));
-      skin.mulAssign(edgeLine.mul(0.2).mul(scaleMask).oneMinus());
-      skin.mulAssign(scaleMask.mul(smoothstep(0.2, 0.7, arc)).mul(exposed).mul(0.07).add(1));
-      gRelief.assign(smoothstep(0, 0.7, arc).mul(exposed).mul(scaleMask));
-      gScaleRough.assign(skinHash(scaleId).mul(scaleMask));
-      gTilt.assign(vec2(skinHash(scaleId.add(11)), skinHash(scaleId.add(23))).sub(0.5).mul(vec2(0.3, 0.2)).mul(scaleMask));
-      // Fine dark freckles over the back, fading out down the flank.
-      const fg = vec2(along.mul(150), band.mul(44));
-      const freckle = step(0.9, skinHash(floor(fg)))
-        .mul(smoothstep(0.2, 0.42, band).oneMinus())
-        .mul(smoothstep(0.35, 1, max(fwidth(fg.x), fwidth(fg.y))).oneMinus());
-      skin.mulAssign(freckle.mul(0.45).mul(u.coat_fish).oneMinus());
-      // Parr marks: a row of dusky thumbprints along the flank.
+      // Scales from the gill cover's edge to the tail: each lies over the front of the one
+      // behind, a dark groove behind each free edge (the tile, render/scales.js). Not on
+      // a fish without them (coat_scales: the alevin, the bullhead, the eel).
+      const scaleMask = float(0).toVar();
+      scaleMask.assign(head.oneMinus().mul(u.coat_scales).mul(smoothstep(-0.29, -0.25, x)));
+      // A fresh silver flank is one mirror, its scales only a faint net over it that shows
+      // in a raking light: the more silver, the quieter the scales' shade and relief.
+      const mirrorFlank = smoothstep(0.2, 0.9, u.coat_silver);
+      // (The shade's contrast is raised where the scales are small: the tile's coarser
+      // mipmaps keep the pattern but flatten it.)
+      skin.mulAssign(sc.b.mul(1.06).sub(1).mul(scaleMask).mul(mix(1, 0.4, detail)).mul(mix(1, 0.6, mirrorFlank)).add(1));
+      // Farther off, where single scales blur, groups of a few catching the light together:
+      // a patchiness three scales across, faded before it gets fine enough to crawl.
+      const groups = smoothstep(0.35 / fadeAt, 0.7 / fadeAt, max(length(gDs1), length(gDs2))).oneMinus();
+      skin.mulAssign(skinNoise(lattice.mul(0.34)).sub(0.5).mul(mix(0.22, 0.1, mirrorFlank)).mul(groups).mul(scaleMask).add(1));
+      gScale.assign(sc.xy.mul(2).sub(1).mul(scaleMask).mul(mix(0.45, 1, detail)).mul(mix(1, 0.7, mirrorFlank)));
+      // Each scale a slightly different mirror: its own small tilt (on a silver flank a
+      // little goes a long way), turned by a slow noise over the body so the tile's pattern
+      // does not repeat. Where the scales are small on screen this goes, before it can
+      // flicker.
+      const turn = skinNoise(lattice.mul(0.07)).mul(TAU * 2);
+      const aim = sc.w.mul(TAU * 2).add(turn);
+      const tiltAmount = mix(0.09, 0.08, mirrorFlank).mul(sin(sc.w.mul(37)).mul(0.4).add(0.6));
+      gTilt.assign(vec2(cos(aim), sin(aim)).mul(tiltAmount).mul(detail).mul(scaleMask));
+      // (The thin film's colour differs a little from scale to scale: violet to green, not
+      // a patchwork of blue sequins.)
+      if (fishQuality.fine && fishQuality.taa) gFilm.assign(sc.w.sub(0.5).mul(40).mul(detail).mul(scaleMask).add(360));
+      // Where each scale's row and column is, and the point within it (no derivatives).
+      const row = floor(lattice.y);
+      const shifted = lattice.x.sub(mod(row, 2).mul(0.5));
+      const cellId = vec2(floor(shifted), row);
+      const local = vec2(fract(shifted), fract(lattice.y)).sub(0.5);
+      // The lateral line: from the gill cover's upper corner it falls to mid-flank and runs
+      // straight back along one row of scales to the tail; each of its scales carries the
+      // dark dash of a pore. Close by the pores, farther off only a faint paler line.
+      const lineBand = mix(16.5 / 36, 0.32, smoothstep(0.06, u.uGill.add(0.02), x));
+      const onLine = step(abs(row.add(0.5).div(36).sub(lineBand)), 0.5 / 36);
+      const lineMask = head.oneMinus().mul(u.coat_fish).mul(smoothstep(-0.29, -0.26, x));
+      skin.mulAssign(gauss(band.sub(lineBand), max(0.006, px.mul(6))).mul(0.05).mul(mix(0.4, 1, u.coat_silver)).mul(lineMask).add(1));
+      if (fishQuality.fine) {
+        const pore = smoothstep(1, 0.6, length(vec2(local.x.sub(0.16).div(0.2), local.y.div(0.07))));
+        skin.mulAssign(pore.mul(onLine).mul(detail).mul(lineMask).mul(u.coat_scales).mul(0.5).oneMinus());
+      }
+      // Fine dark freckles over the back: the odd scale with a melanophore at its centre.
+      const freckled = step(0.9, skinHash(cellId.add(17.3))).mul(smoothstep(0.42, 0.2, band));
+      const freckle = mix(0.012, smoothstep(0.22, 0.12, length(local.sub(vec2(0.08, 0)))).mul(freckled), detail);
+      skin.mulAssign(freckle.mul(0.5).mul(u.coat_fish).mul(head.oneMinus()).oneMinus());
+      // Parr marks: a row of dark, slate-blue ovals down the flank, their edges ragged, and
+      // one red spot in each gap between them. As the smolt silvers they fade to ghosts.
       If(u.coat_parr.greaterThan(0.01), () => {
-        const k = float(0.2).sub(x).div(0.052);
-        const index = floor(k.add(0.5));
-        const dx = k.sub(index).mul(0.052);
-        const mark = exp(pow(dx.div(0.014), 2).negate().sub(pow(band.sub(0.46).div(0.13), 2)))
-          .mul(step(0, index))
-          .mul(step(index, 9))
-          .mul(head.oneMinus());
-        skin.assign(mix(skin, vec3(0.1, 0.11, 0.13), mark.mul(u.coat_parr).mul(0.75)));
+        const i = floor(float(0.19).sub(x).div(0.05).add(0.5)).clamp(0, 9);
+        const cx = float(0.19).sub(i.mul(0.05)).add(skinHash(vec2(i, 3.1)).mul(0.012).sub(0.006));
+        const halfW = skinHash(vec2(i, 5.3)).mul(0.3).add(0.85).mul(0.013);
+        const halfH = skinHash(vec2(i, 1.9)).mul(0.24).add(0.88).mul(0.15);
+        const dy = band.sub(0.46);
+        const d = length(vec2(x.sub(cx).add(dy.mul(0.012)).div(halfW), dy.div(halfH))).add(skinNoise(vec2(x.mul(260), band.mul(30))).sub(0.5).mul(0.12));
+        const strength = u.coat_parr.mul(0.8).mul(smoothstep(0.3, 0.9, u.coat_silver).mul(0.85).oneMinus());
+        const mark = smoothstep(0.62, 1.05, d).oneMinus().mul(head.oneMinus()).mul(strength);
+        skin.assign(mix(skin, skin.mul(0.38).add(vec3(0.035, 0.042, 0.06)), mark));
+        // The red spots: one in each gap on the lateral line, a few smaller ones above.
+        const j = floor(float(0.165).sub(x).div(0.05).add(0.5)).clamp(0, 8);
+        const gx = float(0.165).sub(j.mul(0.05));
+        const low = length(vec2(x.sub(gx.add(skinHash(vec2(j, 2.3)).sub(0.5).mul(0.012))), band.sub(skinHash(vec2(j, 4.1)).sub(0.5).mul(0.08).add(0.46)).mul(0.16))).div(0.0058);
+        const high = length(vec2(x.sub(gx.add(0.01)), band.sub(skinHash(vec2(j, 6.7)).sub(0.5).mul(0.06).add(0.34)).mul(0.16))).div(0.0045);
+        const red = max(smoothstep(0.7, 1, low).oneMinus(), smoothstep(0.7, 1, high).oneMinus().mul(step(0.5, skinHash(vec2(j, 8.9)))));
+        const halo = max(smoothstep(1.2, 1.9, low).oneMinus(), smoothstep(1.2, 1.9, high).oneMinus().mul(step(0.5, skinHash(vec2(j, 8.9)))));
+        const placed = u.coat_redSpots.mul(smoothstep(0.3, 0.8, u.coat_parr)).mul(head.oneMinus()).mul(smoothstep(-0.28, -0.24, x));
+        skin.assign(mix(skin, mix(skin, vec3(0.72, 0.66, 0.56), 0.35), halo.mul(u.coat_halo).mul(placed)));
+        skin.assign(mix(skin, vec3(0.7, 0.12, 0.045), red.mul(placed)));
       });
       // Vertical bars (minnows, pike).
       If(u.coat_bars.greaterThan(0.01), () => {
@@ -1260,18 +1529,20 @@ function shadeFish(materials, body, membranes) {
         const sp = spots(vec2(along.mul(55), band.mul(14)), 0.85, 0.42, 7);
         skin.assign(mix(skin, vec3(0.62, 0.6, 0.32), sp.x.mul(u.coat_pikeSpots).mul(smoothstep(0.1, 0.3, band)).mul(smoothstep(0.7, 0.8, band).oneMinus())));
       });
-      // Black spots above the lateral line and on the gill cover; red spots along it.
+      // Black spots above the lateral line and on the gill cover.
       If(u.coat_blackSpots.greaterThan(0.01), () => {
         const sp = spots(vec2(along.mul(46), band.mul(13)), u.coat_blackSpots.mul(0.42).add(0.1), u.coat_spotSize.mul(0.22), 1);
         const where = mix(smoothstep(0.6, 0.9, band).mul(-0.6).add(1), smoothstep(0.38, 0.55, band).oneMinus().mul(smoothstep(-0.26, -0.12, x)), u.coat_fish);
         skin.assign(mix(skin, mix(skin, vec3(0.7, 0.66, 0.55), 0.3), sp.y.mul(u.coat_halo).mul(where)));
         skin.assign(mix(skin, vec3(0.03, 0.028, 0.03), sp.x.mul(where).mul(min(1, u.coat_blackSpots.mul(1.3)))));
       });
-      If(u.coat_redSpots.greaterThan(0.01), () => {
+      // Red spots scattered along the flank (a trout); a parr's sit between its marks above.
+      const scattered = u.coat_redSpots.mul(smoothstep(0.3, 0.8, u.coat_parr).oneMinus());
+      If(scattered.greaterThan(0.01), () => {
         const sp = spots(vec2(along.mul(40), band.mul(11)), 0.5, u.coat_spotSize.mul(0.2), 5);
         const where = gauss(band.sub(0.5), 0.12).mul(head.oneMinus()).mul(smoothstep(-0.27, -0.15, x));
         skin.assign(mix(skin, mix(skin, vec3(0.7, 0.64, 0.55), 0.3), sp.y.mul(u.coat_halo).mul(where)));
-        skin.assign(mix(skin, vec3(0.62, 0.08, 0.04), sp.x.mul(where).mul(u.coat_redSpots)));
+        skin.assign(mix(skin, vec3(0.62, 0.08, 0.04), sp.x.mul(where).mul(scattered)));
       });
       // The spawning dress: a crimson body, the head turned olive-green, the jaw pale.
       If(u.coat_spawn.greaterThan(0.01), () => {
@@ -1282,61 +1553,121 @@ function shadeFish(materials, body, membranes) {
         red.assign(mix(red, vec3(0.3, 0.26, 0.22), smoothstep(0.7, 0.92, band)));
         const green = mix(vec3(0.02, 0.032, 0.014), vec3(0.075, 0.1, 0.045), smoothstep(0.2, 0.7, band)).mul(blotch.mul(0.3).add(0.85));
         const ragged = skinNoise(vec2(band.mul(14), 3)).sub(0.5).mul(0.03);
-        const dress = mix(red, green, smoothstep(u.uGill.sub(0.03).add(ragged), u.uGill.add(0.03).add(ragged), x)).toVar();
+        const dress = mix(red, green, smoothstep(xo.sub(0.03).add(ragged), xo.add(0.012).add(ragged), x)).toVar();
         dress.assign(mix(dress, vec3(0.5, 0.48, 0.4), smoothstep(0.3, 0.34, x).mul(smoothstep(0.55, 0.75, band))));
         skin.assign(mix(skin, dress, u.coat_spawn));
         // Its dark spots and freckles show through the dress.
         const sp = spots(vec2(along.mul(46), band.mul(13)), 0.35, 0.2, 9);
         skin.assign(mix(skin, skin.mul(0.25), sp.x.mul(u.coat_spawn).mul(smoothstep(0.45, 0.6, band).oneMinus())));
       });
-      // Head: the gill cover's edge and the mouth. The gill cover: a bony plate whose free
-      // edge bows back at mid-height, a shade darker in the groove behind it.
-      const bow = pow(band.mul(2).sub(1), 2).oneMinus();
-      const opercle = u.uGill.add(bow.mul(0.028)).sub(0.01);
-      const gillEdge = gauss(x.sub(opercle), 0.0035).mul(smoothstep(0.18, 0.3, band)).mul(smoothstep(0.86, 0.96, band).oneMinus());
-      const plate = smoothstep(opercle.sub(0.004), opercle.add(0.004), x)
-        .mul(smoothstep(opercle.add(0.05), opercle.add(0.07), x).oneMinus())
-        .mul(smoothstep(0.25, 0.4, band))
-        .mul(smoothstep(0.8, 0.9, band).oneMinus());
-      skin.mulAssign(gillEdge.mul(0.28).mul(u.coat_fish).oneMinus());
-      skin.assign(mix(skin, skin.mul(1.12).add(0.02), plate.mul(0.4).mul(u.coat_fish)));
-      const mouthLine = gauss(y.sub(u.uMouth.y).add(u.uMouth.x.sub(x).mul(0.05)), 0.003).mul(smoothstep(u.uMouth.x.sub(0.01), u.uMouth.x.add(0.01), x));
-      skin.assign(mix(skin, vec3(0.04, 0.03, 0.03), mouthLine.mul(0.8)));
-      // The eye sits in a socket: a ring of darker skin round it, so it reads as set in.
-      const socket = vec2(x.sub(u.uEye.x), y.sub(u.uEye.y).mul(1.1)).length().div(u.uEye.z);
-      skin.mulAssign(mix(1, 0.6, gauss(socket.sub(1.2), 0.3).mul(u.coat_fish).mul(step(0.12, band)).mul(step(band, 0.88))));
-      // The upper jawbone, the maxilla, running back from the snout to below the eye; and the
-      // curved groove of the preopercle in front of the gill cover.
-      const jawEnd = u.uEye.x.sub(u.uEye.z.mul(0.4));
-      const jawT = float(0.35).sub(x).div(max(float(0.35).sub(jawEnd), 0.01)).clamp(0, 1);
-      const jawY = mix(u.uMouth.y.add(0.003), u.uEye.y.sub(u.uEye.z.mul(1.65)), jawT);
-      const sides = smoothstep(0.18, 0.3, band).mul(smoothstep(0.78, 0.9, band).oneMinus());
-      const maxilla = gauss(y.sub(jawY), 0.0024).mul(step(jawEnd, x)).mul(sides);
-      const maxillaPlate = smoothstep(jawY.sub(0.012), jawY.sub(0.002), y)
-        .mul(smoothstep(jawY.sub(0.001), jawY.add(0.001), y).oneMinus())
-        .mul(step(jawEnd, x))
-        .mul(sides);
-      skin.mulAssign(maxilla.mul(0.4).mul(u.coat_fish).oneMinus());
-      skin.assign(mix(skin, skin.mul(1.1).add(0.01), maxillaPlate.mul(0.35).mul(u.coat_fish)));
-      const preopercle = gauss(x.sub(u.uGill.add(0.045).add(bow.mul(0.018))), 0.0028).mul(smoothstep(0.35, 0.5, band)).mul(smoothstep(0.82, 0.92, band).oneMinus());
-      skin.mulAssign(preopercle.mul(0.18).mul(u.coat_fish).oneMinus());
+      // The head's bones, as a relief (model units, read by the bump below) and a shade --
+      // worked out only on the head (nothing here takes a derivative).
+      If(x.greaterThan(u.uGill.sub(0.04)), () => {
+        const headRelief = float(0).toVar();
+        const bone = u.coat_fish.mul(head.mul(0.7).add(0.3));
+        // Lines are drawn at least a pixel and a bit wide; wider than their own width, they
+        // pale by as much.
+        const line = (width) => max(width, px.mul(1.2));
+        const ink = (width) => min(1, float(width).div(line(width)));
+        // The gill cover (operculum): a bony flap lying over the gills, so a small step down
+        // at its free edge, a pale rim of membrane along it, and just behind that the dark of
+        // the gill slit -- red where the covers flare to breathe or swallow.
+        const coverSpan = smoothstep(0.17, 0.23, band).mul(smoothstep(0.93, 0.99, band).oneMinus());
+        headRelief.addAssign(smoothstep(xo.sub(0.0025), xo.add(0.0006), x).mul(0.0006).mul(coverSpan));
+        const rim = gauss(x.sub(xo).sub(0.0009), line(0.0012)).mul(coverSpan).mul(ink(0.0012));
+        skin.addAssign(vec3(0.05, 0.045, 0.04).mul(rim).mul(u.coat_fish));
+        const slit = gauss(x.sub(xo).add(0.0028), line(0.0018)).mul(coverSpan).mul(ink(0.0018));
+        skin.assign(mix(skin, mix(skin.mul(0.35), vec3(0.25, 0.02, 0.02), smoothstep(0.1, 0.5, vMouthOpen)), slit.mul(0.65).mul(u.coat_fish)));
+        // The preopercle: the L-shaped bone in front of the cover, its rear margin a groove
+        // running down the cheek and turning forward along its lower edge toward the jaw.
+        const corner = vec2(u.uGill.add(0.064), 0.5);
+        const pre = vec2(corner.x.sub(x).div(0.04), band.sub(corner.y).div(0.3));
+        const preD = select(
+          pre.x.greaterThan(0).and(pre.y.greaterThan(0)),
+          length(pre).sub(1),
+          select(pre.y.lessThanEqual(0), pre.x.sub(1), pre.y.sub(1)),
+        ).mul(0.04);
+        const preSpan = smoothstep(0.26, 0.34, band).mul(smoothstep(0.9, 0.84, band)).mul(smoothstep(corner.x.add(0.02), corner.x, x));
+        const groove = gauss(preD, line(0.0016)).mul(preSpan).mul(ink(0.0016));
+        headRelief.subAssign(groove.mul(0.0003));
+        skin.mulAssign(groove.mul(0.16).mul(u.coat_fish).oneMinus());
+        // The gape: the jaw's line, from the snout's tip back to the end of the upper jawbone.
+        const gapeY = mix(u.uMouth.y, u.uMouth.y.mul(0.3), x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
+        // The upper jawbone (maxilla): a blade from the snout above the gape, broadening to a
+        // rounded end below the eye in a parr, past the eye's rear edge in a grown salmon.
+        const adult = max(smoothstep(0.5, 1, u.coat_silver), u.coat_spawn);
+        const jawEnd = u.uEye.x.sub(u.uEye.z.mul(adult));
+        const jawT = x.sub(jawEnd).div(max(float(0.345).sub(jawEnd), 0.01)).clamp(0, 1);
+        const jawHalf = mix(0.0028, 0.0009, jawT).mul(u.uEye.z.div(0.0135).mul(0.5).add(0.5));
+        const jawMid = gapeY.add(jawHalf).add(0.0003);
+        const endHalf = u.uEye.z.div(0.0135).mul(0.5).add(0.5).mul(0.0028);
+        const maxD = select(
+          x.lessThan(jawEnd),
+          length(vec2(x.sub(jawEnd), y.sub(gapeY.add(endHalf).add(0.0003)))).sub(endHalf),
+          abs(y.sub(jawMid)).sub(jawHalf),
+        );
+        // (Drawn as bone under skin is: a faintly darker plate, its upper margin a fine
+        // groove that fades out toward the rear end -- no raised rim, which lit from above
+        // reads as a lip or a glass rod lying on the jaw.)
+        const jawSpan = smoothstep(0.349, 0.34, x).mul(bone);
+        const plate = smoothstep(0.0006, -0.0006, maxD).mul(jawSpan);
+        const upperEdge = smoothstep(jawMid.sub(jawHalf.mul(0.5)), jawMid.add(jawHalf.mul(0.5)), y);
+        const fadeEnd = smoothstep(jawEnd.sub(0.001), jawEnd.add(u.uEye.z.mul(0.8)), x);
+        const outline = gauss(maxD, line(0.0009)).mul(jawSpan).mul(ink(0.0009)).mul(upperEdge).mul(fadeEnd);
+        headRelief.subAssign(outline.mul(0.00005));
+        skin.mulAssign(plate.mul(0.07).add(outline.mul(0.1)).oneMinus());
+        // The gape: a thin dark line, fading out before the corner of the mouth.
+        const gape = gauss(y.sub(gapeY), line(0.0007)).mul(smoothstep(jawEnd.add(0.001), jawEnd.add(0.008), x)).mul(ink(0.0007));
+        skin.assign(mix(skin, vec3(0.03, 0.022, 0.02), gape.mul(0.45).mul(u.coat_fish.mul(0.7).add(0.3))));
+        // A spawner's teeth show pale along its gape, only with the mouth open.
+        const teeth = gauss(y.sub(gapeY).add(0.0013), line(0.0007)).mul(smoothstep(jawEnd, jawEnd.add(0.01), x)).mul(ink(0.0007));
+        skin.assign(mix(skin, vec3(0.55, 0.5, 0.42), teeth.mul(u.coat_spawn).mul(smoothstep(0.15, 0.5, vMouthOpen)).mul(0.5)));
+        // The eye sits in a socket: a groove round it and, faintly, the bony rim of the orbit
+        // beyond, the skin shaded where it meets the cornea. Two small nostrils ahead of it:
+        // dark pits, shaded only (a relief this small lights up as a ring, a bubble).
+        const eyeD = eyeDistance(u, vSkinPoint);
+        headRelief.addAssign(gauss(eyeD.sub(1.1), 0.12).mul(-0.35).add(gauss(eyeD.sub(1.45), 0.2).mul(0.06)).mul(u.uEye.z).mul(0.05));
+        skin.mulAssign(gauss(eyeD.sub(1.05), 0.12).mul(0.3).mul(u.coat_fish).oneMinus());
+        const nostril = max(
+          smoothstep(0.15, 0.07, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(1.6))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.35))))).div(u.uEye.z)),
+          smoothstep(0.13, 0.06, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(2.1))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.3))))).div(u.uEye.z)),
+        ).mul(u.coat_fish);
+        skin.mulAssign(nostril.mul(0.55).oneMinus());
+        gRelief.assign(headRelief.mul(u.coat_fish).mul(smoothstep(0.35, 0.8, px.div(0.0015)).oneMinus().mul(0.7).add(0.3)));
+      });
       // Inside the open mouth: the seam of the lips pulled apart shows the dark red throat.
+      // (The kype pulls the seam open at the front as well, the lower jaw reaching past
+      // the upper: dark there too, not a pale stretched edge.)
       const inside = smoothstep(0.02, 0.09, vJaw.x)
         .mul(smoothstep(0.91, 0.98, vJaw.x).oneMinus())
         .mul(smoothstep(0.1, 0.6, vJaw.y))
-        .mul(smoothstep(0.06, 0.25, vMouthOpen));
+        .mul(max(smoothstep(0.06, 0.25, vMouthOpen), min(1, u.coat_kype.mul(2)).mul(smoothstep(0.3, 0.34, x))));
       const throat = smoothstep(0.1, 0.45, vJaw.x).mul(smoothstep(0.55, 0.9, vJaw.x).oneMinus());
       skin.assign(mix(skin, mix(vec3(0.075, 0.022, 0.022), vec3(0.012, 0.005, 0.006), throat), inside));
-      // How silver: the guanine flank, patchy where the scales lie at different angles, with
-      // a faint violet-pink sheen along the lateral line.
+      // How silver: the guanine flank, patchy where the scales lie at different angles; a
+      // faint violet-pink sheen along the lateral line of the silver ones.
       const silverPatch = skinNoise(vec2(along.mul(18), band.mul(5))).mul(0.4).add(0.8);
       gSilver.assign(u.coat_silver.mul(smoothstep(0.3, 0.46, band)).mul(smoothstep(0.88, 1, band).oneMinus()).mul(min(1, silverPatch)).mul(inside.oneMinus()));
       // Fur (an otter, a seal) mirrors little of the water round it.
       gEnv.assign(inside.mul(-0.9).add(1).mul(mix(0.2, 1, u.coat_fish)));
       skin.assign(mix(skin, skin.mul(0.55).add(vec3(0.32, 0.34, 0.36).mul(silverPatch)), gSilver.mul(0.4)));
-      skin.addAssign(vec3(0.05, 0.01, 0.06).mul(gauss(band.sub(0.46), 0.06)).mul(u.coat_silver).mul(head.oneMinus()).mul(u.coat_fish));
+      skin.addAssign(vec3(0.05, 0.01, 0.06).mul(gauss(band.sub(0.46), 0.06)).mul(smoothstep(0.5, 0.9, u.coat_silver)).mul(head.oneMinus()).mul(u.coat_fish));
       // The top of the head dark, like the back.
-      skin.assign(mix(skin, u.coat_back.mul(1.2), head.mul(smoothstep(0.12, 0.3, band).oneMinus()).mul(u.coat_fish).mul(u.coat_spawn.oneMinus())));
+      skin.assign(mix(skin, u.coat_back.mul(1.2), headSoft.mul(smoothstep(0.12, 0.3, band).oneMinus()).mul(u.coat_fish).mul(u.coat_spawn.oneMinus())));
+      // Silver scales are mirrors, each a little tilted its own way; far off their tilts blur
+      // into a broader, softer sheen. Over it all the mucus: a thin wet coat, smooth over the
+      // scales (its own normal is the body's), from the snout to the tail.
+      gMetal.assign(gSilver.mul(0.7).add(0.04).clamp(0, 0.75));
+      gRough.assign(
+        mix(
+          0.6,
+          mix(0.36, 0.17, gSilver)
+            .add(sc.w.sub(0.5).mul(mix(0.07, 0.03, mirrorFlank)).mul(detail).mul(scaleMask))
+            .add(detail.oneMinus().mul(scaleMask).mul(gSilver).mul(0.1)),
+          u.coat_fish,
+        ),
+      );
+      gCoat.assign(u.coat_fish.mul(mix(0.35, 0.25, gSilver)).mul(inside.oneMinus()));
       // Young fish pass light: warm through the thin tail and fins, pink round the gills. The
       // path through the body in millimetres: a small fish passes light, a big one hardly.
       const thin = max(abs(vSkinPoint.z).mul(2), 0.006).mul(vFishScale).mul(100);
@@ -1357,22 +1688,73 @@ function shadeFish(materials, body, membranes) {
         const drop = step(0.8, skinNoise(fishUV.mul(vec2(12, 8))));
         skin.assign(mix(vec3(0.85, 0.32, 0.08), vec3(1, 0.62, 0.2), drop));
         gThrough.assign(vec3(0.9, 0.35, 0.08).mul(0.9));
+        gRough.assign(0.3);
+        gCoat.assign(0.3);
       })
       .ElseIf(part.greaterThan(6.5).and(part.lessThan(7.5)), () => {
-        // The eye: a big black pupil, a narrow iris of gold or silver threads that darkens
-        // outward, a dark rim where it meets the skin; the cornea over it wet and glinting.
-        const r = fishUV.y;
-        const fibre = sin(fishUV.x.mul(96).add(skinNoise(fishUV.mul(vec2(40, 7))).mul(3))).mul(0.28).add(0.72);
-        const iris = u.coat_iris.mul(0.32).mul(fibre).mul(mix(1.2, 0.45, smoothstep(0.52, 0.86, r))).add(vec3(0.06, 0.045, 0.012).mul(gauss(r.sub(0.55), 0.03)));
-        const rim = mix(vec3(0.02, 0.02, 0.018), u.coat_back.mul(0.6), smoothstep(0.86, 1, r));
-        skin.assign(select(r.lessThan(0.52), vec3(0.002, 0.003, 0.004), select(r.lessThan(0.86), iris, rim)));
-        gEnv.assign(0.9);
+        // The eye. uv: the radius (0 at the centre, 1 at the rim) and the angle round.
+        const rho = fishUV.y;
+        const angle = fishUV.x.mul(TAU);
+        const q = vec2(cos(angle), sin(angle)).mul(rho).toVar();
+        // The iris lies a quarter of the eye's radius under the clear cornea: looked at from
+        // the side, one sees it shifted, as through a window.
+        if (fishQuality.fine) {
+          const N = gN0;
+          const perp2 = cross(gDp2, N),
+            perp1 = cross(N, gDp1);
+          const det = dot(gDp1, perp2);
+          const toX = perp2.mul(ds1.x).add(perp1.mul(ds2.x)),
+            toY = perp2.mul(ds1.y).add(perp1.mul(ds2.y));
+          const V = toEye;
+          const lean = max(dot(V, N), 0.35);
+          const depth = u.uEye.z.mul(vFishScale).mul(0.25);
+          const shift = vec2(dot(toX, V), dot(toY, V)).div(sign(det).mul(max(abs(det), 1e-30))).mul(depth.div(lean)).div(u.uEye.z).negate();
+          const reach = length(shift);
+          q.addAssign(shift.mul(min(1, float(0.3).div(max(reach, 1e-6)))).mul(smoothstep(1, 0.85, rho)));
+        }
+        const r = length(q);
+        const toward = q.x.div(max(r, 1e-4));
+        // The pupil, black, with the notch toward the snout that salmon have (the lens can
+        // swing forward there). The alevin's eye is mostly pupil, a narrow ring round it.
+        const pupilR = float(0.52).add(smoothstep(0.7, 1, toward).mul(0.07)).add(u.coat_yolk.mul(0.13));
+        const soft = px.div(u.uEye.z).max(0.01);
+        const pupil = smoothstep(pupilR.add(soft), pupilR.sub(soft), r);
+        const lens = vec3(0.004, 0.006, 0.008).add(vec3(0.02, 0.032, 0.036).mul(gauss(length(q.sub(vec2(0.14, 0.16))), 0.16)));
+        // The iris: fine radial fibres, a golden ring round the pupil, dark flecks, darker
+        // toward its edge; then the dark ring where it meets the white of the eye. (Kept
+        // well below white: a pale iris ring on a dark head stares.)
+        const theta = atan(q.y, q.x);
+        const fibre = sin(theta.mul(70).add(skinNoise(q.mul(9)).mul(3))).mul(u.coat_yolk.mul(-0.15).add(0.25)).add(0.75);
+        const fleck = smoothstep(0.74, 0.84, skinNoise(q.mul(vec2(14, 10))));
+        const collar = gauss(r.sub(pupilR).sub(0.045), 0.035);
+        // (Darker above, where the iris carries more pigment.)
+        const iris = u.coat_iris
+          .mul(u.coat_yolk.mul(-0.3).add(0.62))
+          .mul(fibre)
+          .mul(mix(1, 0.45, smoothstep(0.62, 0.9, r)))
+          .mul(smoothstep(0.25, 0.8, q.y).mul(0.35).oneMinus())
+          .mul(fleck.mul(0.55).oneMinus())
+          .add(vec3(0.08, 0.056, 0.012).mul(collar));
+        const limbus = mix(u.coat_iris.mul(0.15), u.coat_back.mul(0.6), smoothstep(0.95, 1.02, r));
+        const ring = smoothstep(0.9, 0.96, r);
+        // An otter's or a seal's eye (no fish coat) is dark all over, its wet gleam all
+        // there is to it: no iris ring to speak of, nothing metallic.
+        const mammal = vec3(0.01, 0.008, 0.007).add(vec3(0.025, 0.015, 0.008).mul(smoothstep(0.55, 0.9, r)));
+        skin.assign(mix(mammal, mix(mix(iris, limbus, ring), lens, pupil), u.coat_fish));
+        gMetal.assign(mix(mix(0.3, 0.15, ring), 0, pupil).mul(u.coat_fish));
+        gRough.assign(mix(0.3, mix(0.35, 0.2, pupil), u.coat_fish));
+        // The cornea over it: clear and wet, catching the sun and, faintly, the bright water
+        // overhead. (Under water the cornea mirrors little -- it bends light hardly more than
+        // the water does; mirroring all of the water's light, it veils the eye milky.)
+        gCoat.assign(mix(0.2, 0.4, u.coat_fish));
+        gCoatRough.assign(0.03);
+        gCoatEnv.assign(0.5);
+        gEnv.assign(mix(0.12, 0.4, u.coat_fish));
       })
       .Else(() => {
         // Fins: a clear membrane stretched on darker rays, clearer toward the edge.
         const span = fishUV.y.clamp(0, 1);
         const rays = 16;
-        const rayWidth = max(fwidth(fishUV.x.mul(rays)), 0);
         const ray = max(
           pow(cos(fishUV.x.mul(Math.PI * 2 * rays)).mul(0.5).add(0.5), 10).mul(smoothstep(0.3, 1, rayWidth).oneMinus()),
           // The rays branch toward the tips, so there are twice as many out there.
@@ -1381,11 +1763,15 @@ function shadeFish(materials, body, membranes) {
             .mul(smoothstep(0.3, 1, rayWidth.mul(2)).oneMinus())
             .mul(0.8),
         );
-        const membrane = u.coat_fin.mul(1.15).add(0.02);
+        // (The membrane a little warm near the body, where it is thicker; thin and clearer
+        // toward the rim, about half seen through there.)
+        const membrane = u.coat_fin.mul(1.15).add(0.02).add(vec3(0.025, 0.012, 0).mul(span.oneMinus()).mul(u.coat_fish));
         const rayColor = u.coat_fin.mul(0.55);
         skin.assign(mix(membrane, rayColor, ray).mul(span.mul(0.3).add(0.85)));
-        gAlpha.assign(mix(0.68, 0.97, ray).mul(mix(1, 0.86, span)));
+        gAlpha.assign(mix(0.68, 0.97, ray).mul(mix(1, 0.72, smoothstep(0.45, 1, span))));
         gEnv.assign(0.35);
+        gMetal.assign(0.05);
+        gRough.assign(0.4);
         If(part.greaterThan(11.5), () => {
           skin.assign(u.coat_adipose);
           gAlpha.assign(1);
@@ -1405,46 +1791,40 @@ function shadeFish(materials, body, membranes) {
         );
         gAlpha.assign(mix(gAlpha, 0.95, margin));
       });
+    // The relief's change across the pixel, for the bump below (here, outside the branches).
+    gDRelief.assign(vec2(dFdx(gRelief), dFdy(gRelief)));
     return vec4(skin, gAlpha);
   })();
 
-  // The shading normal: the bent normal, then (on the body) the scales' relief from the
-  // change of their height across the pixel, and each scale tilted a little its own way.
+  // The shading normal: the bent normal; on the body the head's relief from the change of
+  // its height across the pixel, the scales' relief from the tile, and each scale tilted a
+  // little its own way.
   const normal = Fn(() => {
-    const N = normalize(vNormal).mul(faceDirection).toVar();
+    const N = vec3(0).toVar();
+    N.assign(gN0);
     If(part.lessThan(0.5), () => {
-      const relief = gRelief.mul(0.0005).mul(vFishScale).mul(gSilver.add(0.6));
-      const dx = dFdx(positionView),
-        dy = dFdy(positionView);
-      const rx = cross(dy, N),
-        ry = cross(N, dx);
-      const determinant = dot(dx, rx);
-      const gradient = sign(determinant).mul(dFdx(relief)).mul(rx).add(sign(determinant).mul(dFdy(relief)).mul(ry));
-      const perturbed = abs(determinant).mul(N).sub(gradient);
-      If(dot(perturbed, perturbed).greaterThan(1e-20), () => {
-      N.assign(normalize(perturbed));
-    });
-      const duv1 = dFdx(fishUV),
-        duv2 = dFdy(fishUV);
-      const dp2perp = cross(dy, N),
-        dp1perp = cross(N, dx);
-      const skinT = dp2perp.mul(duv1.x).add(dp1perp.mul(duv2.x));
-      const skinB = dp2perp.mul(duv1.y).add(dp1perp.mul(duv2.y));
-      const frameScale = inverseSqrt(max(max(dot(skinT, skinT), dot(skinB, skinB)), 1e-30));
-      N.assign(normalize(N.add(skinT.mul(gTilt.x).add(skinB.mul(gTilt.y)).mul(frameScale))));
+      const perp2 = cross(gDp2, N),
+        perp1 = cross(N, gDp1);
+      const det = dot(gDp1, perp2);
+      const gradient = perp2.mul(gDRelief.x).add(perp1.mul(gDRelief.y)).mul(sign(det)).mul(vFishScale);
+      const perturbed = abs(det).mul(N).sub(gradient);
+      If(dot(perturbed, perturbed).greaterThan(1e-24), () => {
+        N.assign(normalize(perturbed));
+      });
+      // Which way along the fish and down its flank the scales' lattice runs, here.
+      const flip = sign(det);
+      const toAlong = perp2.mul(gDs1.x).add(perp1.mul(gDs2.x)).mul(flip);
+      const toDown = perp2.mul(gDs1.y).add(perp1.mul(gDs2.y)).mul(flip);
+      const T = toAlong.mul(inverseSqrt(max(dot(toAlong, toAlong), 1e-30)));
+      const B = toDown.mul(inverseSqrt(max(dot(toDown, toDown), 1e-30)));
+      N.assign(normalize(N.add(T.mul(gScale.x.add(gTilt.x))).add(B.mul(gScale.y.add(gTilt.y)))));
     });
     return N;
   })();
 
-  const metalness = select(part.lessThan(0.5), gSilver.mul(gScaleRough.mul(0.3).add(0.85)).mul(0.62).add(0.04).clamp(0, 0.75), select(part.greaterThan(6.5).and(part.lessThan(7.5)), float(0.3), float(0.03)));
-  const roughness = select(
-    part.lessThan(0.5),
-    mix(0.6, mix(0.36, 0.16, gSilver).add(gScaleRough.sub(0.5).mul(0.14)), u.coat_fish),
-    select(part.greaterThan(6.5).and(part.lessThan(7.5)), float(0.05), float(0.4)),
-  );
-
   // Light through the skin: a young fish and a fin pass the light that falls on their far
   // side, and the sky's light from all round shows through them.
+  const surroundings = (direction) => underwaterInscatter(direction).mul(1.25).add(fogNodes().color.mul(3.5).mul(smoothstep(0.6, 0.97, direction.y)));
   const lighting = {
     // (The fish mirror the water in their own way, below.)
     mirror: 0,
@@ -1456,12 +1836,17 @@ function shadeFish(materials, body, membranes) {
     },
     // Under water a fish mirrors the water round it: bright toward the lit surface and the
     // window of sky straight up, dim and blue-green toward the bed. This is what makes a
-    // silver flank look silver rather than grey.
-    beforeIndirect: ({ radiance }) => {
+    // silver flank look silver rather than grey. The wet coat over it (the cornea over the
+    // eye) mirrors it too, off the smooth body.
+    beforeIndirect: ({ radiance, lightingModel }) => {
       const reflectView = reflect(positionViewDirection.negate(), normalView);
       const reflectWorld = normalize(cameraViewMatrix.transpose().mul(vec4(reflectView, 0)).xyz);
-      const surroundings = underwaterInscatter(reflectWorld).mul(1.25).add(fogNodes().color.mul(3.5).mul(smoothstep(0.6, 0.97, reflectWorld.y)));
-      radiance.addAssign(surroundings.mul(gEnv));
+      radiance.addAssign(surroundings(reflectWorld).mul(gEnv));
+      if (lightingModel?.clearcoatRadiance) {
+        const coatView = reflect(positionViewDirection.negate(), gN0);
+        const coatWorld = normalize(cameraViewMatrix.transpose().mul(vec4(coatView, 0)).xyz);
+        lightingModel.clearcoatRadiance.addAssign(surroundings(coatWorld).mul(gCoatEnv));
+      }
     },
     afterIndirect: ({ irradiance, iblIrradiance, reflectedLight }) => {
       reflectedLight.indirectDiffuse.addAssign(irradiance.add(iblIrradiance).mul(gThrough).mul(0.55 / Math.PI));
@@ -1473,13 +1858,99 @@ function shadeFish(materials, body, membranes) {
     material.colorNode = color.rgb;
     material.opacityNode = color.a;
     material.normalNode = normal;
-    material.metalnessNode = metalness;
-    material.roughnessNode = roughness;
+    material.metalnessNode = gMetal;
+    material.roughnessNode = gRough;
     waterLit(material, lighting);
   }
-  // Thin-film colour and the slime's gloss only on the silvered flank.
-  materials.skin.iridescenceNode = gSilver.mul(0.45);
-  materials.skin.clearcoatNode = gSilver.mul(0.7).add(0.3).mul(u.coat_fish).mul(0.08);
+  // Thin-film colour on the silvered flank, from scale to scale; the wet coat and the
+  // cornea as the clear coat.
+  materials.skin.iridescenceNode = gSilver.mul(0.3);
+  materials.skin.iridescenceThicknessNode = gFilm;
+  materials.skin.clearcoatNode = gCoat;
+  materials.skin.clearcoatRoughnessNode = gCoatRough;
+  materials.skin.clearcoatNormalNode = gN0;
+}
+
+// A far fish (a few dozen pixels at most): its coat's broad colours only -- the dark back,
+// the silver, the pale belly, its bars and marks as a shade, a dot for an eye -- lit as a
+// plain surface that mirrors the water round it. No scales, spots, relief or clear coat,
+// and no derivatives: little work for a small fish, and nothing to flicker.
+function shadeFarFish(materials, mesh) {
+  const u = materials.uniforms;
+  const { position, part, vSkinPoint, vNormal } = swimmingFish(u, mesh, { steps: 3 });
+  const fishUV = uv();
+  const gSilver = property("float", "fishSilver");
+  const color = Fn(() => {
+    gSilver.assign(0);
+    const x = vSkinPoint.x,
+      y = vSkinPoint.y;
+    const band = float(0).toVar();
+    band.assign(fishUV.y.clamp(0, 1));
+    const skin = vec3(0).toVar();
+    If(part.lessThan(0.5), () => {
+      const head = smoothstep(u.uGill.sub(0.01), u.uGill.add(0.01), x);
+      const flank = smoothstep(0.1, 0.75, band).mul(smoothstep(0.85, 0.6, band)).mul(head.oneMinus());
+      skin.assign(mix(u.coat_back, u.coat_flank, smoothstep(0.26, 0.44, band)));
+      skin.assign(mix(skin, u.coat_belly, smoothstep(0.62, 0.8, band)));
+      // Marks, bars and waves, and the spots, as the shade they average to from afar.
+      skin.mulAssign(u.coat_parr.mul(0.3).add(u.coat_bars.mul(0.3)).mul(flank).oneMinus());
+      skin.mulAssign(u.coat_waves.mul(0.45).mul(smoothstep(0.4, 0.26, band)).mul(head.oneMinus()).oneMinus());
+      skin.mulAssign(u.coat_blackSpots.mul(0.12).mul(smoothstep(0.55, 0.3, band)).mul(u.coat_fish).oneMinus());
+      skin.assign(mix(skin, mix(skin, vec3(0.3, 0.05, 0.03), 0.5), u.coat_redSpots.mul(0.15).mul(flank)));
+      If(u.coat_spawn.greaterThan(0.01), () => {
+        const dress = mix(mix(vec3(0.07, 0.03, 0.018), vec3(0.4, 0.06, 0.035), smoothstep(0.2, 0.5, band)), vec3(0.05, 0.07, 0.03), head);
+        skin.assign(mix(skin, dress, u.coat_spawn));
+      });
+      gSilver.assign(u.coat_silver.mul(smoothstep(0.3, 0.46, band)).mul(smoothstep(1, 0.88, band)));
+      skin.assign(mix(skin, skin.mul(0.55).add(vec3(0.33, 0.35, 0.37)), gSilver.mul(0.4)));
+      skin.assign(mix(skin, u.coat_back.mul(1.2), head.mul(smoothstep(0.3, 0.12, band)).mul(u.coat_fish)));
+      // The eye, a dark dot with a pale ring.
+      const eye = eyeDistance(u, vSkinPoint);
+      skin.assign(mix(skin, u.coat_iris.mul(0.5), smoothstep(1.1, 0.9, eye)));
+      skin.assign(mix(skin, vec3(0.01), smoothstep(0.65, 0.45, eye)));
+      skin.assign(mix(skin, skin.mul(0.6).add(vec3(0.2, 0.14, 0.11)), u.coat_translucent.mul(0.4)));
+    }).Else(() => {
+      // (A clear fin shows the water through it, darker than the flank beside it: from
+      // afar the fin's own colour over a shade between the back and the flank.)
+      skin.assign(mix(mix(mix(u.coat_back, u.coat_flank, 0.35), u.coat_fin.mul(1.15).add(0.02), 0.5), vec3(0.03, 0.03, 0.035), smoothstep(0.7, 0.95, fishUV.y).mul(u.coat_finDark).mul(0.7)));
+    });
+    return skin;
+  })();
+  const material = materials.skin;
+  material.positionNode = position;
+  material.colorNode = color;
+  material.normalNode = normalize(vNormal).mul(faceDirection);
+  material.metalnessNode = gSilver.mul(0.7).add(0.04);
+  material.roughnessNode = mix(0.45, mix(0.36, 0.2, gSilver), u.coat_fish);
+  waterLit(material, {
+    mirror: 0,
+    beforeIndirect: ({ radiance }) => {
+      const reflectView = reflect(positionViewDirection.negate(), normalView);
+      const reflectWorld = normalize(cameraViewMatrix.transpose().mul(vec4(reflectView, 0)).xyz);
+      radiance.addAssign(underwaterInscatter(reflectWorld).mul(1.25).add(fogNodes().color.mul(3.5).mul(smoothstep(0.6, 0.97, reflectWorld.y))).mul(mix(0.2, 1, u.coat_fish)));
+    },
+  });
+}
+
+// Where the crowds of fish are looked at from, for their distance detail and to leave out
+// the ones out of sight: the game's camera, the canvas it draws on (for its height in
+// pixels), the scene (for how far one sees through its water) and the sun's shadow camera
+// (a fish out of view may still cast a shadow into it). Set once by the game.
+const fishView = { camera: null, canvas: null, scene: null, shadow: null };
+export function setFishView(camera, canvas, scene, shadow = null) {
+  Object.assign(fishView, { camera, canvas, scene, shadow });
+}
+const lodFrustum = new THREE.Frustum(),
+  shadowFrustum = new THREE.Frustum(),
+  lodMatrix = new THREE.Matrix4(),
+  lodSphere = new THREE.Sphere();
+// The crowds with a distance detail, each with its split into near, far and unseen.
+const lodCrowds = new Set();
+// The crowds are moved (finish()) before the camera is placed for the frame: once it is,
+// just before drawing, the game has them split again, so a turn or a cut of the camera
+// never leaves out fish that are in view.
+export function refreshFishView() {
+  for (const split of lodCrowds) split();
 }
 
 // A fish mesh (instanced) of a kind in a coat, with the swimming attributes wired up.
@@ -1488,7 +1959,14 @@ function shadeFish(materials, body, membranes) {
 // animals about are drawn: begin() blanks every slot, each animal writes its own, and
 // finish() packs the written ones to the front and draws just those -- a sea shoal far off
 // in the brook costs nothing.
-export function createFishMesh(scene, kind, coat, count, { name = kind, castShadow = true, uniforms = null, cacheKey = kind, detail = 1 } = {}) {
+//
+// With `lod` (the big crowds: shoals, the farm's pens, the nets) finish() also leaves out
+// the animals out of sight -- outside the view, or farther off than one sees through the
+// water -- and draws those small on screen (under about 48 pixels long, 64 on the lighter
+// graphics) as far fish: the lightest body and plain shading, in a second mesh with buffers
+// of its own, without shadows. At sea that is most of the fish there are. (The split is
+// made again once the camera is placed for the frame: refreshFishView.)
+export function createFishMesh(scene, kind, coat, count, { name = kind, castShadow = true, uniforms = null, cacheKey = kind, detail = 1, lod = false } = {}) {
   const geometry = makeFish(kind, { detail });
   const swim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
   swim.setUsage(THREE.DynamicDrawUsage);
@@ -1511,15 +1989,43 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
   membranes.name = `${name} fins`;
   body.castShadow = castShadow;
   body.receiveShadow = true;
-  for (const mesh of [body, membranes]) {
+  // The far fish: the same animals, their own slots packed the same way.
+  let far = null;
+  if (lod) {
+    const farBody = makeFish(kind, { far: true }).body;
+    const farSwim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
+    const farFinMouth = new THREE.InstancedInterleavedBuffer(new Float32Array(count * 2), 2, 1);
+    for (const buffer of [farSwim, farFinMouth]) buffer.setUsage(THREE.DynamicDrawUsage);
+    farBody.setAttribute("aSwim", farSwim);
+    farBody.setAttribute("aFinMouth", new THREE.InterleavedBufferAttribute(farFinMouth, 2, 0));
+    const farMaterials = createFishMaterials(COATS[coat] ?? coat, geometry.plan, { uniforms: materials.uniforms, far: true });
+    const mesh = new THREE.InstancedMesh(farBody, farMaterials.skin, count);
+    shadeFarFish(farMaterials, mesh);
+    mesh.name = `${name} far`;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    far = { mesh, swim: farSwim, finMouth: farFinMouth, near: new Uint8Array(count) };
+  }
+  // (With the distance detail, finish() gathers the frame's fish here, so the split can be
+  // made again from them when the camera has moved.)
+  const staging = far ? { matrices: new Float32Array(count * 16), swim: new Float32Array(count * 4), finMouth: new Float32Array(count * 2), slots: new Uint16Array(count), n: 0, drawn: -1 } : null;
+  for (const mesh of far ? [body, membranes, far.mesh] : [body, membranes]) {
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(mesh);
   }
   const matrices = body.instanceMatrix.array;
-  return {
+  const upload = (list, n) => {
+    for (const [attribute, size] of list) {
+      attribute.clearUpdateRanges();
+      if (n > 0) attribute.addUpdateRange(0, n * size);
+      attribute.needsUpdate = true;
+    }
+  };
+  const crowd = {
     body,
     membranes,
+    far: far?.mesh ?? null,
     swim,
     fin,
     mouth,
@@ -1531,27 +2037,122 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
     },
     finish() {
       let w = 0;
+      if (!far) {
+        for (let i = 0; i < count; i++) {
+          const o = i * 16;
+          if (matrices[o] === 0 && matrices[o + 1] === 0 && matrices[o + 2] === 0) continue;
+          if (w !== i) {
+            matrices.copyWithin(w * 16, o, o + 16);
+            swim.array.copyWithin(w * 4, i * 4, i * 4 + 4);
+            finMouth.array.copyWithin(w * 2, i * 2, i * 2 + 2);
+          }
+          w++;
+        }
+        body.count = membranes.count = w;
+        body.visible = membranes.visible = w > 0;
+        upload(
+          [
+            [body.instanceMatrix, 16],
+            [swim, 4],
+            [finMouth, 2],
+          ],
+          w,
+        );
+        return;
+      }
       for (let i = 0; i < count; i++) {
         const o = i * 16;
         if (matrices[o] === 0 && matrices[o + 1] === 0 && matrices[o + 2] === 0) continue;
-        if (w !== i) {
-          matrices.copyWithin(w * 16, o, o + 16);
-          swim.array.copyWithin(w * 4, i * 4, i * 4 + 4);
-          finMouth.array.copyWithin(w * 2, i * 2, i * 2 + 2);
-        }
-        w++;
+        staging.matrices.set(matrices.subarray(o, o + 16), w * 16);
+        staging.swim.set(swim.array.subarray(i * 4, i * 4 + 4), w * 4);
+        staging.finMouth.set(finMouth.array.subarray(i * 2, i * 2 + 2), w * 2);
+        staging.slots[w++] = i;
       }
-      body.count = membranes.count = w;
-      body.visible = membranes.visible = w > 0;
-      for (const [attribute, size] of [
+      staging.n = w;
+      staging.drawn = -1;
+      // (Shown while any of the crowd is about; which of them are drawn, and by which mesh,
+      // is only the counts -- a mesh with none to draw costs nothing -- so the split made
+      // again before drawing never undoes a mesh hidden on purpose.)
+      body.visible = membranes.visible = far.mesh.visible = w > 0;
+      split();
+    },
+  };
+
+  // The frame's fish into the near mesh, the far one, or neither (out of view, or farther
+  // off than one sees through the water; a shadow caster out of view is kept while it is
+  // inside the sun's shadow box).
+  function split() {
+    if (staging.n === 0 && staging.drawn === 0) return;
+    const camera = fishView.camera;
+    let reach = Infinity,
+      perUnit = 0,
+      small = 0,
+      shadowed = false;
+    if (camera) {
+      camera.updateMatrixWorld();
+      lodFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      // (Through the water: at this distance next to nothing of a fish gets through.)
+      const density = fishView.scene?.fog?.density ?? 0;
+      if (density > 0) reach = 3.5 / density;
+      perUnit = (fishView.canvas?.clientHeight || 900) / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      small = fishQuality.fine ? 48 : 64;
+      const shadow = fishView.shadow;
+      shadowed = body.castShadow && !!shadow;
+      if (shadowed) shadowFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(shadow.projectionMatrix, shadow.matrixWorldInverse));
+    }
+    const farMatrices = far.mesh.instanceMatrix.array;
+    let w = 0,
+      f = 0;
+    for (let k = 0; k < staging.n; k++) {
+      const o = k * 16;
+      const i = staging.slots[k];
+      let near = true;
+      if (camera) {
+        const length = Math.hypot(staging.matrices[o], staging.matrices[o + 1], staging.matrices[o + 2]) * MODEL_LENGTH;
+        lodSphere.center.set(staging.matrices[o + 12], staging.matrices[o + 13], staging.matrices[o + 14]);
+        lodSphere.radius = length * 0.66;
+        const distance = lodSphere.center.distanceTo(camera.position);
+        if (distance - lodSphere.radius > reach) continue;
+        const seen = lodFrustum.intersectsSphere(lodSphere);
+        if (!seen && !(shadowed && shadowFrustum.intersectsSphere(lodSphere))) continue;
+        // Its length on screen, in pixels; a little either way of the line it stays as it
+        // was, so a fish hovering there does not flip back and forth.
+        const pixels = (length / Math.max(distance, 1e-3)) * perUnit;
+        near = far.near[i] ? pixels > small * 0.9 : pixels > small * 1.1;
+        far.near[i] = near ? 1 : 0;
+      }
+      if (near) {
+        matrices.set(staging.matrices.subarray(o, o + 16), w * 16);
+        swim.array.set(staging.swim.subarray(k * 4, k * 4 + 4), w * 4);
+        finMouth.array.set(staging.finMouth.subarray(k * 2, k * 2 + 2), w * 2);
+        w++;
+      } else {
+        farMatrices.set(staging.matrices.subarray(o, o + 16), f * 16);
+        far.swim.array.set(staging.swim.subarray(k * 4, k * 4 + 4), f * 4);
+        far.finMouth.array.set(staging.finMouth.subarray(k * 2, k * 2 + 2), f * 2);
+        f++;
+      }
+    }
+    staging.drawn = staging.n;
+    body.count = membranes.count = w;
+    far.mesh.count = f;
+    upload(
+      [
         [body.instanceMatrix, 16],
         [swim, 4],
         [finMouth, 2],
-      ]) {
-        attribute.clearUpdateRanges();
-        if (w > 0) attribute.addUpdateRange(0, w * size);
-        attribute.needsUpdate = true;
-      }
-    },
-  };
+      ],
+      w,
+    );
+    upload(
+      [
+        [far.mesh.instanceMatrix, 16],
+        [far.swim, 4],
+        [far.finMouth, 2],
+      ],
+      f,
+    );
+  }
+  if (far) lodCrowds.add(split);
+  return crowd;
 }

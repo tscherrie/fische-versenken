@@ -52,6 +52,9 @@ export const SHOTS = [
   { name: "unterlauf", stage: "grilse", at: 13950, season: "autumn", hour: 15 },
   // The open sea.
   { name: "meer", stage: "sea", at: 17500, season: "summer", hour: 12 },
+  // Weed on the rocks off the coast: kelp, bladderwrack and dulse (the open sea shows none).
+  { name: "tang", stage: "sea", at: 16040, u: 20, season: "summer", hour: 12, view: { eye: [-16, 0, -9], target: [8, 0, -17] } },
+  { name: "tang2", stage: "sea", at: 15990, u: -170, season: "summer", hour: 12, view: { eye: [-14, 0, -6], target: [8, 0, -14] } },
   // The wreck in the fjord.
   { name: "wrack", stage: "sea", at: 16860, u: 380, season: "summer", hour: 12, view: { eye: [-30, -14, -8], target: [40, 0, -18] } },
   // Evening light over the still water, seen from just above it.
@@ -93,6 +96,7 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 export function shotURL(set, shot, extra = "") {
   const here = new URLSearchParams(location.search);
   for (const flag of ["stages", "webgl", "smoke", "fixsun", "nomirror", "noamb", "costs", "dumpwindow"]) if (here.has(flag)) extra += `&${flag}`;
+  if (here.has("plantab")) extra += `&plantab=${here.get("plantab")}`;
   // (And any ?x... switch being tried out.)
   for (const [k, v] of here) if (k.startsWith("x")) extra += `&${k}=${v}`;
   if (here.get("probe")) extra += `&probe=${here.get("probe")}`;
@@ -268,6 +272,68 @@ async function costs(salmon) {
   return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1]));
 }
 
+// What the water plants cost (?plantab, or ?plantab=rounds): the frame timed with them as
+// they are, hidden, drawn without their shadows, and with half their triangles, the four in
+// turn, seven rounds of twenty frames in the same page -- so whatever else the card is doing
+// meanwhile falls on every variant alike. The plants' cost is base less noPlants: of the
+// medians (cost), and the median of each round's difference (paired, steadier when the
+// load drifts). Compare two versions by running each a few times, alternating.
+async function plantCost(salmon, rounds = 7) {
+  const plants = [];
+  salmon.scene.traverse((o) => {
+    if (o.isMesh && o.name === "Plants" && o.visible) plants.push(o);
+  });
+  const saved = new Map();
+  const variants = {
+    base: () => {},
+    noPlants: (on) => plants.forEach((p) => (p.visible = !on)),
+    noPlantShadow: (on) => plants.forEach((p) => (p.castShadow = !on)),
+    halfTris: (on) =>
+      plants.forEach((p) => {
+        const g = p.geometry;
+        if (on) {
+          saved.set(g, g.drawRange.count);
+          const n = Math.min(g.index.count, g.drawRange.count);
+          g.setDrawRange(0, Math.floor(n / 6) * 3);
+        } else g.setDrawRange(0, saved.get(g));
+      }),
+  };
+  // (Each variant drawn a few times first, so none of them pays for building a pipeline.)
+  for (const f of Object.values(variants)) {
+    f(true);
+    for (let i = 0; i < 4; i++) {
+      salmon.draw(0);
+      await nextFrame();
+    }
+    f(false);
+    for (let i = 0; i < 2; i++) {
+      salmon.draw(0);
+      await nextFrame();
+    }
+  }
+  const times = {};
+  for (const k in variants) times[k] = [];
+  for (let round = 0; round < rounds; round++)
+    for (const [k, f] of Object.entries(variants)) {
+      f(true);
+      for (let i = 0; i < 3; i++) {
+        salmon.draw(0);
+        await nextFrame();
+      }
+      times[k].push(await throughput(salmon, 20));
+      f(false);
+    }
+  const out = { plantTriangles: plants.reduce((a, p) => a + Math.min(p.geometry.index.count, p.geometry.drawRange.count) / 3, 0), meshes: plants.length };
+  for (const [k, list] of Object.entries(times)) {
+    list.sort((a, b) => a - b);
+    out[k] = { min: list[0], median: list[Math.floor(list.length / 2)], all: list };
+  }
+  out.cost = +(out.base.median - out.noPlants.median).toFixed(2);
+  const paired = times.base.map((t, i) => t - times.noPlants[i]).sort((a, b) => a - b);
+  out.paired = +paired[Math.floor(paired.length / 2)].toFixed(2);
+  return out;
+}
+
 // The window's cube laid out as a cross (?dumpwindow), to see what the surface shows from
 // below: +y on top, then -x +z +x -z round the middle, -y at the bottom.
 async function dumpWindow(salmon, name) {
@@ -418,8 +484,21 @@ export async function runShots(salmon, query) {
   numbers.frame = await throughput(salmon);
   if (query.has("stages")) numbers.stages = await stages(salmon);
   if (query.has("costs")) numbers.costs = await costs(salmon);
+  if (query.has("plantab")) numbers.plantab = await plantCost(salmon, Number(query.get("plantab")) || 7);
   if (query.has("dumpwindow")) await dumpWindow(salmon, `${set}/${shot.name}`);
   await salmon.capture(`${set}/${shot.name}`, 1600, 900, { render: Number(query.get("render")) || 1 });
+  // (?xmask: the same picture again without the water plants, in the same page and the same
+  // held moment, so the two differ only by the plants and their shadows: what share of the
+  // picture they fill, and how they stand out from what is behind them.)
+  if (query.has("xmask")) {
+    const hidden = [];
+    salmon.scene.traverse((o) => {
+      if (o.isMesh && o.name === "Plants" && o.visible) hidden.push(o);
+    });
+    for (const o of hidden) o.visible = false;
+    await salmon.capture(`${set}/${shot.name}-np`, 1600, 900, { render: Number(query.get("render")) || 1 });
+    for (const o of hidden) o.visible = true;
+  }
   const report = {
     name: shot.name,
     set,
