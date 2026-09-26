@@ -45,6 +45,8 @@ const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/M
 const profile = await mkdtemp(join(tmpdir(), "extreme-test-"));
 const query = new URLSearchParams({ capture: "1", fvtest: set });
 if (only) query.set("only", only);
+// (--xname=value: passed on as ?xname=value, for the scenes: --xback=<weapon> --xbelly=<weapon>.)
+for (const a of args) if (a.startsWith("--x")) query.set(a.slice(2).split("=")[0], a.split("=")[1] ?? "");
 const chrome = spawn(
   CHROME,
   [

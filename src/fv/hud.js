@@ -91,7 +91,7 @@ export function createCombatHud(habitat, { weapons }) {
           if (id !== c.shown) {
             c.shown = id;
             c.card.hidden = !id;
-            if (id) c.name.textContent = t(weapons[id].title);
+            if (id) c.name.textContent = t(weapons[id]?.title ?? id);
           }
           if (!id) continue;
           const width = Math.round(Math.min(1, a.heat[id] ?? 0) * 100);

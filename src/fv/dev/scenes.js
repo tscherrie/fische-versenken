@@ -18,9 +18,20 @@ export const SCENES = [
   // shooting at whatever comes: kills, bites, deaths.
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
   { name: "lauf-parr", stage: "parr", at: 1800, season: "summer", hour: 14, pilot: 60 },
+  // Close looks at the weapons strapped on: [aside, above, ahead] in fish lengths from the
+  // fish (aside to its left), looking at it. Which weapons: ?xback=<id>&xbelly=<id>.
+  { name: "nah-brut", stage: "fry", at: 240, season: "summer", hour: 13, closeup: [0.9, 0.35, 0.25] },
+  { name: "nah-parr", stage: "parr", at: 2500, season: "summer", hour: 15, closeup: [0.9, 0.35, 0.25] },
+  { name: "nah-parr-oben", stage: "parr", at: 2500, season: "summer", hour: 15, closeup: [0.35, 0.9, -0.2] },
+  { name: "nah-smolt", stage: "smolt", at: 11790, season: "spring", hour: 12, closeup: [0.9, 0.3, 0.2] },
+  { name: "nah-smolt-unten", stage: "smolt", at: 11790, season: "spring", hour: 12, closeup: [0.8, -0.35, 0.3] },
+  { name: "nah-lachs", stage: "sea", at: 17500, season: "summer", hour: 12, closeup: [0.9, 0.3, 0.2] },
+  // Kills close to the eye: what a hit and a sinking leave in the water.
+  { name: "splatter", stage: "parr", at: 2500, season: "summer", hour: 15, splatter: true, spawn: [["troutParr", 3.5, -0.4], ["troutParr", 4, 0.3], ["bullhead", 3, 0.1], ["trout", 7, 0]] },
 ];
 
 export function sceneURL(set, scene, extra = "") {
+  for (const [k, v] of new URLSearchParams(location.search)) if (k.startsWith("x")) extra += `&${k}=${v}`;
   const q = new URLSearchParams({ capture: "1", seed: "7", day: "still", rain: "0", quality: "detail", fvtest: set, scene: scene.name, stage: scene.stage, at: String(scene.at), season: scene.season, hour: String(scene.hour) });
   q.set("new", "");
   return `${location.pathname}?${q.toString().replace("new=", "new")}${extra}`;
@@ -83,6 +94,8 @@ async function runScene(salmon, extreme, query) {
     look.pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(d.y, Math.hypot(d.x, d.z))));
   };
   if (scene.pilot) return pilot(salmon, extreme, set, scene, list, index, extra, errors);
+  if (scene.closeup) return closeup(salmon, extreme, set, scene, list, index, extra, errors, query);
+  if (scene.splatter) return splatter(salmon, extreme, set, scene, list, index, extra, errors);
   aimAt();
   await salmon.run(0.4, aimAt);
   const record = [];
@@ -165,6 +178,78 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   await salmon.capture(`${set}/${scene.name}-2`, 1280, 720);
   const record = [{ label: "end", energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, deaths, bites, minEnergy: +minEnergy.toFixed(3) }];
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, samples, errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
+// A close look at the weapons on the fish, held still (the fish stops, the camera sits at
+// `closeup` from it), with the weapons named in the address.
+async function closeup(salmon, extreme, set, scene, list, index, extra, errors, query) {
+  const { fish, THREE } = salmon;
+  const a = extreme.combat.players[0].arsenal;
+  if (query.get("xback") !== null) a.back = query.get("xback") || null;
+  if (query.get("xbelly") !== null) a.belly = query.get("xbelly") || null;
+  await salmon.run(0.3);
+  const L = fish.length;
+  const heading = fish.heading.clone().setY(0).normalize();
+  const left = new THREE.Vector3(0, 1, 0).cross(heading).normalize();
+  const [aside, above, ahead] = scene.closeup;
+  const eye = fish.position.clone().addScaledVector(left, aside * L).addScaledVector(heading, ahead * L);
+  eye.y += above * L;
+  const target = fish.position.clone().addScaledVector(heading, 0.05 * L);
+  salmon.view(eye.toArray(), target.toArray(), L * 0.02);
+  await salmon.run(0.05);
+  extreme.frame(1 / 60);
+  await salmon.capture(`${set}/${scene.name}`, 1280, 720);
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "closeup", back: a.back, belly: a.belly, stage: fish.stage, length: L }], errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
+// Kills close to the eye: the enemies are sunk one by one while the camera watches from the
+// side, and pictures are taken of the hit, the kill and what is left after a while.
+async function splatter(salmon, extreme, set, scene, list, index, extra, errors) {
+  const { fish, THREE, course } = salmon;
+  const combat = extreme.combat;
+  const L = fish.length;
+  const heading = fish.heading.clone().setY(0).normalize();
+  const left = new THREE.Vector3(0, 1, 0).cross(heading).normalize();
+  const spot = {};
+  for (const [kind, ahead, across] of scene.spawn) {
+    const p = fish.position.clone().addScaledVector(heading, ahead * Math.max(1, L)).addScaledVector(left, across * Math.max(1, L));
+    course.locate(p.x, p.z, fish.river.s, spot);
+    const e = combat.enemies.spawn(kind, spot.s, spot.u, fish.position.y + 0.2, { heading: left.clone() });
+    if (e) e.mode = "lurk";
+  }
+  // Watch from the side, between the fish and the enemies.
+  const middle = fish.position.clone().addScaledVector(heading, 3.5 * Math.max(1, L));
+  const eye = middle.clone().addScaledVector(left, 4 * Math.max(1, L));
+  eye.y += 0.6;
+  salmon.view(eye.toArray(), middle.toArray());
+  await salmon.run(0.1);
+  const picture = async (name) => {
+    extreme.frame(1 / 60);
+    await salmon.capture(`${set}/${name}`, 1280, 720);
+  };
+  const live = () => combat.enemies.list.filter((e) => !e.dead);
+  // Shots straight into each enemy from the fish's side, until it sinks.
+  let n = 0;
+  for (const e of live()) {
+    const dir = e.position.clone().sub(fish.position).normalize();
+    for (let i = 0; i < 40 && !e.dead; i++) {
+      combat.projectiles.fire({ owner: 0, weapon: "piu", position: e.position.clone().addScaledVector(dir, -1.2), velocity: dir.clone().multiplyScalar(30), damage: 4, radius: 0.05, life: 0.2, size: 0.1, tint: [10, 1.1, 0.6] });
+      await salmon.run(1 / 30);
+      if (i === 0 && n === 0) await picture(`${scene.name}-treffer`);
+    }
+    n++;
+    await salmon.run(0.15);
+    if (n === 1) await picture(`${scene.name}-kill`);
+  }
+  await salmon.run(1.2);
+  await picture(`${scene.name}-danach`);
+  await salmon.run(4);
+  await picture(`${scene.name}-spaeter`);
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "end", sunk: combat.enemies.list.filter((e) => e.dead).length }], errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
 }

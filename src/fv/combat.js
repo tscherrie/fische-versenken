@@ -12,6 +12,8 @@ import { createAim } from "./aim.js";
 import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
+import { createGore } from "./gore.js";
+import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { createProjectiles } from "./projectiles.js";
 import { createSfx } from "./sfx.js";
@@ -27,6 +29,8 @@ export function createCombat(game) {
   const projectiles = createProjectiles({ capacity: light ? 150 : 300 });
   const fx = createFx(scene, camera, { capacity: light ? 400 : 768, bubbleCapacity: light ? 240 : 480 });
   const sfx = createSfx(sound);
+  const gore = createGore(scene, camera, { random, light });
+  const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const director = createDirector({ random });
   const aim = createAim(camera);
@@ -79,7 +83,8 @@ export function createCombat(game) {
   function shoot(player, place, w, id) {
     const f = player.fish;
     const L = f.length;
-    player.arsenal.mount(player.salmon, place, muzzle);
+    if (!models.muzzle(player, place, muzzle)) player.arsenal.mount(player.salmon, place, muzzle);
+    models.recoil(player, place);
     const speed = w.speed(L);
     const reach = w.reach(L);
     aimDir.subVectors(aim.point, muzzle);
@@ -144,7 +149,7 @@ export function createCombat(game) {
     else if (!stage.yolk) f.progress = Math.min(1, f.progress + clamp(0.004 + 0.008 * Math.min(1, e.size / (2 * f.length)), 0.004, 0.012));
   }
 
-  function onKill(e, by) {
+  function onKill(e, by, dir, weapon) {
     const player = players.find((p) => p.id === by);
     if (player) {
       player.kills++;
@@ -155,6 +160,7 @@ export function createCombat(game) {
       hud.say("Versenkt!", e.spec.title);
     }
     sfx.sunk(e.size);
+    gore.kill(e, dir, weapon);
     fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(10 + 5 * e.size), size: 0.02 + 0.015 * e.size, spread: e.size * 0.4, random });
     fx.burst(e.position.x, e.position.y, e.position.z, { count: 10, speed: 1.2 + e.size, size: 0.05 + 0.03 * e.size, life: 0.4, r: 7, g: 2.4, b: 0.8, random });
   }
@@ -202,12 +208,13 @@ export function createCombat(game) {
       onEnemy(shot, e) {
         flight.copy(shot.velocity).normalize();
         const sunk = enemies.hit(e, shot.damage, flight, shot.owner);
+        gore.hit(e, shot.position, flight, shot.weapon);
         fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 5, speed: 0.6 + fish.length, size: shot.size * 0.9, life: 0.16, r: shot.tint[0] * 0.7, g: shot.tint[1] * 0.9, b: shot.tint[2], random });
         if (shot.owner === local.id) {
           sfx.hit();
           if (!sunk) hud.hit(false);
         }
-        if (sunk) onKill(e, shot.owner);
+        if (sunk) onKill(e, shot.owner, flight, shot.weapon);
       },
       onGround(shot) {
         fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 3, size: shot.size * 0.5, spread: shot.size, rise: 0.6, random });
@@ -221,6 +228,7 @@ export function createCombat(game) {
     });
     eatCorpses(local);
     fx.update(dt);
+    gore.update(dt, enemies.list);
   }
 
   // The picture of this frame: the shots in flight, the weapon's own light, the sparks.
@@ -229,15 +237,17 @@ export function createCombat(game) {
     hud.update(dt, shown ? local.arsenal : null);
     fx.begin();
     for (const p of projectiles.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
+    models.update(players);
+    // A weapon that is hot glows at the muzzle.
     const a = local.arsenal;
-    if (!local.down && !fish.captive && a.back) {
-      const w = WEAPONS[a.back];
-      a.mount(salmon, "back", muzzle);
-      const hot = Math.min(1, a.heat[a.back] ?? 0);
-      const size = w.size(fish.length) * 1.3;
-      fx.add(muzzle.x, muzzle.y, muzzle.z, size, w.glow[0] * (1 + hot), w.glow[1] * (1 + hot * 2), w.glow[2], 1);
+    const w = WEAPONS[a.back];
+    const hot = Math.min(1, a.heat[a.back] ?? 0);
+    if (w?.glow && hot > 0.05 && !local.down && !fish.captive) {
+      if (!models.muzzle(local, "back", muzzle)) a.mount(salmon, "back", muzzle);
+      fx.add(muzzle.x, muzzle.y, muzzle.z, w.size(fish.length) * (0.6 + hot), w.glow[0] * hot * 2, w.glow[1] * hot * 2, w.glow[2] * hot, 1);
     }
     fx.end();
+    gore.frame();
   }
 
   return {

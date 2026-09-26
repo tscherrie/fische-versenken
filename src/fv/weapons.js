@@ -80,6 +80,7 @@ export function createArsenal() {
     cool(dt) {
       for (const id of Object.keys(this.heat)) {
         const w = WEAPONS[id];
+        if (!w) continue;
         this.fired[id] = (this.fired[id] ?? 1) + dt;
         if (this.fired[id] > 0.25 || this.locked[id]) this.heat[id] = Math.max(0, this.heat[id] - w.cool * dt);
         if (this.locked[id] && this.heat[id] < w.unlock) this.locked[id] = false;
