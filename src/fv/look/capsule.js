@@ -53,12 +53,19 @@ const smooth01 = (x) => {
   return t * t * (3 - 2 * t);
 };
 
+// A stage's index by its id or its phase's name (the first stage of that phase).
+const STAGE_INDEX = {};
+STAGES.forEach((st, i) => {
+  STAGE_INDEX[st.phase] ??= i;
+  STAGE_INDEX[st.id] = i;
+});
+
 // A capsule's stage: its own `stage` (an index or an id) if the item carries one, else its
 // weapon's.
 function stageOf(item) {
   const own = item.stage ?? WEAPONS[item.weapon]?.stage ?? WEAPON_STAGES[item.weapon] ?? "fry";
-  const index = typeof own === "number" ? own : STAGES.findIndex((st) => st.id === own || st.phase === own);
-  return STAGES[Math.max(0, Math.min(STAGES.length - 1, index < 0 ? 1 : index))];
+  const index = typeof own === "number" ? own : (STAGE_INDEX[own] ?? 1);
+  return STAGES[Math.max(0, Math.min(STAGES.length - 1, index))];
 }
 
 export function createCapsules(scene, { capacity = 24, light = false } = {}) {
