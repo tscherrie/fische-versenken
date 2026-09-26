@@ -62,39 +62,45 @@ function ranger(random) {
   return (a, b) => a + (b - a) * random();
 }
 
-// The colours of what grows under the water, by species, as a photograph of it would show
-// them (sRGB, which THREE.Color turns into the linear values the renderer works in): young
-// growth, the body of a leaf, and old tissue (the foot of a stem, the lower leaves), fouled
-// and darkened. Weed in a clear northern river is olive to yellow-green, browner with age
-// and with the film of diatoms and silt it gathers -- never the lime of a lawn -- and dark:
-// a leaf body reflects a tenth to a sixth of the light, moss on a stone less. (The bodies
-// sit a third above what a photograph gives: the light that comes through a thin leaf is
-// added by its material, but a plant seen against the bright water would read black.)
+// The colours of what grows under the water, by species: the hue and saturation as a
+// photograph of it shows them (sRGB), for young growth, the body of a leaf, and old tissue
+// (the foot of a stem, the lower leaves), fouled and darkened. Weed in a clear northern river
+// is olive to yellow-green, browner with age and with the film of diatoms and silt it
+// gathers -- never the lime of a lawn. How light each is, is set apart from its hue, as the
+// luminance it reflects (linear, 0 to 1): under the water a leaf has to hold its own against
+// the bright water, the pale gravel and the stones round it, where a photograph's darker
+// leaf is lifted by the light it lets through; moss on a stone darkest, green threads and
+// starwort lightest.
 const PALETTE = {};
-function palette(name, young, body, old, gain = 1.35) {
-  PALETTE[name] = { young: new THREE.Color(young).multiplyScalar(Math.min(gain, 1.15)), body: new THREE.Color(body).multiplyScalar(gain), old: new THREE.Color(old).multiplyScalar(gain) };
+const luminance = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+function palette(name, young, body, old, [ly, lb, lo]) {
+  const at = (hex, target) => {
+    const c = new THREE.Color(hex);
+    return c.multiplyScalar(target / luminance(c));
+  };
+  PALETTE[name] = { young: at(young, ly), body: at(body, lb), old: at(old, lo) };
 }
-palette("crowfoot", "#83a03a", "#55702c", "#434a24");
-palette("milfoil", "#6d7f35", "#4a5d2a", "#3a3a22");
-palette("starwort", "#72863a", "#556c2e", "#46522a");
-palette("starwortStem", "#6a8030", "#4e6428", "#3e4424");
-palette("pondweed", "#76823a", "#5f6a2a", "#4a4026");
-palette("pondweedRed", "#80603a", "#6a4a2a", "#4a3624");
-palette("pondweedStem", "#627030", "#4e5626", "#3e3a22");
-palette("fontinalis", "#3c4a1e", "#2b3318", "#232812", 1.5);
-palette("cladophora", "#6f8f2a", "#5b6a2c", "#54492a");
-palette("sedge", "#66743a", "#4e5a2e", "#4a4428");
-palette("burReed", "#6a7c34", "#55652c", "#464626");
-palette("eelgrass", "#55702e", "#3f5a24", "#3a3a20");
-palette("kelp", "#6a5424", "#4a3a1a", "#3a2e16");
-palette("sugarKelp", "#7a6428", "#5c4a20", "#463818");
-palette("bladderwrack", "#6a6428", "#4e4a1e", "#3e3a1a");
-palette("dulse", "#74302e", "#5a2426", "#4a1e20");
-palette("lily", "#4f6a2c", "#3f5424", "#3a3a20");
-palette("lilyStalk", "#6a6e34", "#56582c", "#464226");
-palette("horsetail", "#6a7a32", "#56662a", "#3e4422");
-palette("rush", "#76703a", "#5e5230", "#483c24");
-palette("turfMoss", "#5e6e2c", "#48562a", "#3a3e22");
+palette("crowfoot", "#7c9a38", "#55702c", "#48502a", [0.3, 0.22, 0.12]);
+palette("milfoil", "#6d7f35", "#4f622a", "#434426", [0.3, 0.21, 0.12]);
+palette("starwort", "#72863a", "#556c2e", "#4a562c", [0.32, 0.24, 0.14]);
+palette("starwortStem", "#6a8030", "#4e6428", "#424826", [0.26, 0.19, 0.11]);
+palette("pondweed", "#76823a", "#5f6a2a", "#4e4628", [0.32, 0.25, 0.13]);
+palette("pondweedRed", "#80603a", "#6a4a2a", "#4a3624", [0.22, 0.16, 0.1]);
+palette("pondweedStem", "#627030", "#4e5626", "#403e24", [0.22, 0.16, 0.09]);
+palette("fontinalis", "#44541e", "#34401a", "#2e3216", [0.13, 0.09, 0.06]);
+palette("cladophora", "#6f8f2a", "#5f722c", "#56502a", [0.34, 0.25, 0.14]);
+palette("sedge", "#66743a", "#4e5a2e", "#4a4428", [0.24, 0.18, 0.11]);
+palette("burReed", "#6a7c34", "#55652c", "#484a28", [0.27, 0.21, 0.12]);
+palette("eelgrass", "#55702e", "#435c26", "#3c3e22", [0.21, 0.15, 0.08]);
+palette("kelp", "#6a5424", "#4a3a1a", "#3a2e16", [0.11, 0.065, 0.04]);
+palette("sugarKelp", "#7a6428", "#5c4a20", "#463818", [0.16, 0.11, 0.06]);
+palette("bladderwrack", "#6a6428", "#4e4a1e", "#3e3a1a", [0.15, 0.1, 0.06]);
+palette("dulse", "#74302e", "#5a2426", "#4a1e20", [0.08, 0.055, 0.04]);
+palette("lily", "#4f6a2c", "#3f5424", "#3a3a20", [0.19, 0.14, 0.08]);
+palette("lilyStalk", "#6a6e34", "#56582c", "#464226", [0.2, 0.15, 0.09]);
+palette("horsetail", "#6a7a32", "#56662a", "#3e4422", [0.24, 0.19, 0.09]);
+palette("rush", "#76703a", "#5e5230", "#483c24", [0.21, 0.14, 0.08]);
+palette("turfMoss", "#5e6e2c", "#48562a", "#3a3e22", [0.2, 0.14, 0.08]);
 
 // A plant's own shade of its species' colours. The three numbers each plant has always drawn
 // for its colour are still drawn, in the same order, so the river's stream runs on as it
@@ -439,10 +445,12 @@ export function kelp(batch, x, z, ground, surface, flow, random, scale = 1) {
       top.clone().addScaledVector(dir, length * 0.7).add(vec(0, length * 0.2 * k, 0)),
       top.clone().addScaledVector(dir, length).add(vec(0, Math.min(lift, length * 0.25) * k, 0)),
     ];
-    // (A kelp blade grows from its foot: the tip is the oldest part, worn and paler.)
+    // (A kelp blade grows from its foot: the tip is the oldest part, worn and paler. Its
+    // tissue is thick and leathery, and lets little light through: thin 0.3, where a river
+    // leaf has 1.)
     const color = tones(PALETTE.kelp, random(), random(), random());
     range(0.35, 0.7);
-    blade(batch, p, own(1.2, 2) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.55, twist: a + Math.PI / 2, age: [0.6, 0], cut: CUT.FINGERS, emit: i < laminae });
+    blade(batch, p, own(1.2, 2) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.3, twist: a + Math.PI / 2, age: [0.6, 0], cut: CUT.FINGERS, emit: i < laminae });
   }
 }
 
@@ -461,7 +469,7 @@ export function sugarKelp(batch, x, z, ground, surface, flow, random, scale = 1)
     root.clone().addScaledVector(dir, length).add(vec(0, h * 0.7, 0)),
   ];
   const color = tones(PALETTE.sugarKelp, random(), random(), random());
-  blade(batch, p, range(0.8, 1.3) * scale, color, root, 1.0, { rows: 22, cols: 4, ribbon: true, thin: 1, twist: a + Math.PI / 2, age: [0.3, 0.8], cut: CUT.FRILL, crinkle: 0.12 });
+  blade(batch, p, range(0.8, 1.3) * scale, color, root, 1.0, { rows: 22, cols: 4, ribbon: true, thin: 0.5, twist: a + Math.PI / 2, age: [0.3, 0.8], cut: CUT.FRILL, crinkle: 0.12 });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -555,7 +563,7 @@ export function bladderwrack(batch, x, z, ground, surface, flow, random, scale =
     const shade = range(0.85, 1.15);
     const c = {};
     for (const k in olive) c[k] = olive[k].clone().multiplyScalar(shade);
-    blade(batch, [from, mid, to], length * 0.12 * scale, c, root, 0.7, { rows: 4, cols: 2, thin: 0.8, twist: Math.atan2(dir.z, dir.x) + Math.PI / 2, age: [0.35 + 0.2 * depth, 0.2 + 0.2 * depth], envelope: depth > 0 ? "strap" : "strapEnd" });
+    blade(batch, [from, mid, to], length * 0.12 * scale, c, root, 0.7, { rows: 4, cols: 2, thin: 0.45, twist: Math.atan2(dir.z, dir.x) + Math.PI / 2, age: [0.35 + 0.2 * depth, 0.2 + 0.2 * depth], envelope: depth > 0 ? "strap" : "strapEnd" });
     if (depth > 0) {
       // The bladders, a pair of small swellings just below the fork. (The blade each once
       // was is still drawn for.)
