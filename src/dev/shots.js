@@ -95,7 +95,8 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 // The address of one point: the game with its settings, the run's name, the point's name.
 export function shotURL(set, shot, extra = "") {
   const here = new URLSearchParams(location.search);
-  for (const flag of ["stages", "webgl", "smoke", "fixsun", "nomirror", "noamb", "costs", "plantab", "dumpwindow"]) if (here.has(flag)) extra += `&${flag}`;
+  for (const flag of ["stages", "webgl", "smoke", "fixsun", "nomirror", "noamb", "costs", "dumpwindow"]) if (here.has(flag)) extra += `&${flag}`;
+  if (here.has("plantab")) extra += `&plantab=${here.get("plantab")}`;
   // (And any ?x... switch being tried out.)
   for (const [k, v] of here) if (k.startsWith("x")) extra += `&${k}=${v}`;
   if (here.get("probe")) extra += `&probe=${here.get("probe")}`;
@@ -271,12 +272,13 @@ async function costs(salmon) {
   return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1]));
 }
 
-// What the water plants cost (?plantab): the frame timed with them as they are, hidden, drawn
-// without their shadows, and with half their triangles, the four in turn, seven rounds of
-// twenty frames in the same page -- so whatever else the card is doing meanwhile falls on
-// every variant alike. The plants' cost is base less noPlants (medians); compare two
-// versions by running each a few times, alternating.
-async function plantCost(salmon) {
+// What the water plants cost (?plantab, or ?plantab=rounds): the frame timed with them as
+// they are, hidden, drawn without their shadows, and with half their triangles, the four in
+// turn, seven rounds of twenty frames in the same page -- so whatever else the card is doing
+// meanwhile falls on every variant alike. The plants' cost is base less noPlants: of the
+// medians (cost), and the median of each round's difference (paired, steadier when the
+// load drifts). Compare two versions by running each a few times, alternating.
+async function plantCost(salmon, rounds = 7) {
   const plants = [];
   salmon.scene.traverse((o) => {
     if (o.isMesh && o.name === "Plants" && o.visible) plants.push(o);
@@ -311,7 +313,7 @@ async function plantCost(salmon) {
   }
   const times = {};
   for (const k in variants) times[k] = [];
-  for (let round = 0; round < 7; round++)
+  for (let round = 0; round < rounds; round++)
     for (const [k, f] of Object.entries(variants)) {
       f(true);
       for (let i = 0; i < 3; i++) {
@@ -327,6 +329,8 @@ async function plantCost(salmon) {
     out[k] = { min: list[0], median: list[Math.floor(list.length / 2)], all: list };
   }
   out.cost = +(out.base.median - out.noPlants.median).toFixed(2);
+  const paired = times.base.map((t, i) => t - times.noPlants[i]).sort((a, b) => a - b);
+  out.paired = +paired[Math.floor(paired.length / 2)].toFixed(2);
   return out;
 }
 
@@ -480,7 +484,7 @@ export async function runShots(salmon, query) {
   numbers.frame = await throughput(salmon);
   if (query.has("stages")) numbers.stages = await stages(salmon);
   if (query.has("costs")) numbers.costs = await costs(salmon);
-  if (query.has("plantab")) numbers.plantab = await plantCost(salmon);
+  if (query.has("plantab")) numbers.plantab = await plantCost(salmon, Number(query.get("plantab")) || 7);
   if (query.has("dumpwindow")) await dumpWindow(salmon, `${set}/${shot.name}`);
   await salmon.capture(`${set}/${shot.name}`, 1600, 900, { render: Number(query.get("render")) || 1 });
   const report = {

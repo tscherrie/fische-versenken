@@ -6,7 +6,8 @@
 // The pictures and numbers land in shots/<set>/. The development server
 // (tools/capture-server.mjs) is started if it is not running yet. --headed shows the window;
 // --webgl passes ?webgl to the game (for a renderer that can fall back to WebGL 2);
-// --costs times each part of the scene, --plantab the water plants (src/dev/shots.js).
+// --costs times each part of the scene, --plantab the water plants (src/dev/shots.js; with
+// --rounds n for more than seven rounds).
 
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -20,7 +21,7 @@ const option = (name) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : null;
 };
-const set = args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.match(/^--(only|port|quality|probe|render)$/));
+const set = args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.match(/^--(only|port|quality|probe|render|rounds)$/));
 if (!set) {
   console.error("usage: node tools/shots.mjs <set> [--only a,b] [--port 8123] [--headed] [--webgl]");
   process.exit(1);
@@ -58,6 +59,7 @@ if (args.includes("--webgl")) query.set("webgl", "");
 if (args.includes("--stages")) query.set("stages", "");
 if (args.includes("--smoke")) query.set("smoke", "");
 for (const flag of ["fixsun", "nomirror", "noamb", "costs", "plantab", "dumpwindow"]) if (args.includes(`--${flag}`)) query.set(flag, "");
+if (option("rounds")) query.set("plantab", option("rounds"));
 if (option("quality")) query.set("q", option("quality"));
 // (--xname[=value]: passed on as ?xname=value, for a switch tried out in the game's code.)
 for (const a of args) if (a.startsWith("--x")) query.set(a.slice(2).split("=")[0], a.split("=")[1] ?? "");
