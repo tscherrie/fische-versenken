@@ -391,7 +391,7 @@ export function createEnemies(scene, { random }) {
         }
         const low = floor + e.size * 0.12;
         const high = Math.max(low, top - e.size * 0.1);
-        e.position.y = e.spec.bottom && e.mode === "lurk" ? low : clamp(e.position.y, low, high);
+        e.position.y = e.spec.crawls || (e.spec.bottom && e.mode === "lurk") ? low : clamp(e.position.y, low, high);
         const beat = 0.6 + (e.speed / e.size) * 1.4;
         e.phase = (e.phase + dt * TAU * beat) % TAU;
         const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;
@@ -424,9 +424,13 @@ export function createEnemies(scene, { random }) {
     }
   }
 
+  // Kinds with models of their own (`render`) are drawn by those, once they are in; the
+  // stand-in body shows them meanwhile.
+  const drawnElsewhere = new Set();
   function draw() {
     const slots = {};
     for (const e of list) {
+      if (drawnElsewhere.has(e.kind)) continue;
       const crowd = crowds[e.kind];
       const slot = (slots[e.kind] = (slots[e.kind] ?? -1) + 1);
       axisZ.crossVectors(e.heading, UP);
@@ -476,5 +480,20 @@ export function createEnemies(scene, { random }) {
     draw();
   }
 
-  return { list, crowds, whiffs, spawn, update, hit, count, reset, snout };
+  return {
+    list,
+    crowds,
+    whiffs,
+    spawn,
+    update,
+    hit,
+    count,
+    reset,
+    snout,
+    // A kind now drawn by its own models: its stand-in body is no longer drawn.
+    drawnBy(kind) {
+      drawnElsewhere.add(kind);
+      crowds[kind].body.visible = crowds[kind].membranes.visible = false;
+    },
+  };
 }

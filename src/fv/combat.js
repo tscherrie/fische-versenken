@@ -14,6 +14,7 @@ import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
+import { createGravel } from "./gravel.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { createProjectiles } from "./projectiles.js";
@@ -35,6 +36,7 @@ export function createCombat(game) {
   const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const director = createDirector({ random });
+  const gravel = createGravel({ random, hud: game.hud });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
@@ -171,7 +173,8 @@ export function createCombat(game) {
     const f = player.fish;
     const stage = STAGES[f.stage];
     if (stage.fasting) f.energy = Math.min(1, f.energy + (e.size > 2 * f.length ? 0.05 : 0.005));
-    else if (!stage.yolk) f.progress = Math.min(1, f.progress + clamp(0.004 + 0.008 * Math.min(1, e.size / (2 * f.length)), 0.004, 0.012));
+    else if (stage.yolk) f.progress = Math.min(1, f.progress + 0.02);
+    else f.progress = Math.min(1, f.progress + clamp(0.004 + 0.008 * Math.min(1, e.size / (2 * f.length)), 0.004, 0.012));
   }
 
   function onKill(e, by, dir, weapon) {
@@ -224,6 +227,7 @@ export function createCombat(game) {
     if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
     fireWeapons(local, dt);
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length });
+    gravel.update(dt, { fish, enemies, players: players.length });
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
     hostile.update(dt, players, {
       onPlayer(shot, player) {
@@ -283,7 +287,7 @@ export function createCombat(game) {
     const hot = Math.min(1, a.heat[a.back] ?? 0);
     if (w?.glow && hot > 0.05 && !local.down && !fish.captive) {
       if (!models.muzzle(local, "back", muzzle)) a.mount(salmon, "back", muzzle);
-      fx.add(muzzle.x, muzzle.y, muzzle.z, w.size(fish.length) * (0.6 + hot), w.glow[0] * hot * 2, w.glow[1] * hot * 2, w.glow[2] * hot, 1);
+      fx.add(muzzle.x, muzzle.y, muzzle.z, w.size(fish.length) * (0.35 + 0.4 * hot), w.glow[0] * hot * 2, w.glow[1] * hot * 2, w.glow[2] * hot, 1);
     }
     fx.end();
     gore.frame();

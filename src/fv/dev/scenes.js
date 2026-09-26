@@ -19,6 +19,8 @@ export const SCENES = [
   // Nobody fires back: a brown trout with its submachine gun and a bullhead with its
   // shotgun open up on a parr (the tells, the bursts, the hits).
   { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
+  // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
+  { name: "kiesbett", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 100, still: true },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
   // shooting at whatever comes: kills, bites, deaths.
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
@@ -157,7 +159,8 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
     minEnergy = 1;
   const samples = [];
   const steer = (t) => {
-    held.add("KeyW");
+    // (An alevin holds on in the gravel with S, as a player would.)
+    held.add(scene.still ? "KeyS" : "KeyW");
     const reach = 12 + 10 * fish.length;
     const live = combat.enemies.list.filter((e) => !e.dead && e.position.distanceTo(fish.position) < reach);
     const near = live.length ? live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a)) : null;
@@ -187,6 +190,7 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
     }
   }
   held.delete("KeyW");
+  held.delete("KeyS");
   combat.fire(false);
   extreme.frame(1 / 60);
   await salmon.capture(`${set}/${scene.name}-2`, 1280, 720);

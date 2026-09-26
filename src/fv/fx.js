@@ -8,7 +8,7 @@
 // enough (HDR) for the bloom to pick up.
 
 import * as THREE from "three";
-import { atan, cameraPosition, cameraViewMatrix, exp, length, positionWorld, uv, vec2, vec4 } from "three/tsl";
+import { atan, cameraPosition, cameraViewMatrix, exp, length, positionWorld, smoothstep, uv, vec2, vec4 } from "three/tsl";
 import { PointCloud, createBubbleMaterial, perPoint } from "../materials.js";
 import { extinction, fogNodes } from "../render/fog.js";
 import { level, locate } from "../course.js";
@@ -34,8 +34,10 @@ export function createFx(scene, camera, { capacity = 768, bubbleCapacity = 480 }
   const q = uv().sub(0.5).mul(2);
   const r2 = q.dot(q);
   // A hot core and a faint wide halo (the halo also keeps small, fast things from being
-  // averaged away by the temporal resolve).
-  const shape = exp(r2.mul(-16)).add(exp(r2.mul(-2.5)).mul(0.3));
+  // averaged away by the temporal resolve), both gone before the edge of the quad, so a very
+  // bright point never shows its square.
+  const edge = smoothstep(0.55, 1, length(q)).oneMinus();
+  const shape = exp(r2.mul(-16)).add(exp(r2.mul(-2.5)).mul(0.3)).mul(edge);
   const fog = fogNodes();
   const transmit = exp(fog.density.mul(length(positionWorld.sub(cameraPosition))).mul(extinction).negate());
   material.colorNode = T.rgb.mul(shape).mul(transmit);
