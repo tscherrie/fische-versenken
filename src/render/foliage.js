@@ -23,6 +23,7 @@ import {
   max,
   min,
   mix,
+  mod,
   modelNormalMatrix,
   modelWorldMatrix,
   normalGeometry,
@@ -106,6 +107,19 @@ const vLeafNormal = varyingProperty("vec3", "vLeafNormal");
 export const PLANT_FADE = 0.1;
 export const plantShare = (d) => Math.min(1, Math.max(0.3, 1 - (d - 40) * 0.0125));
 const vPlantFade = varyingProperty("float", "vPlantFade");
+// What sort of leaf a blade is, packed beside its thinness (all eight vertex buffers are in
+// use): the vertex's first `thin` number is thinness + 2 x code, where the code is the cut
+// its material gives it (CUT) plus LOW for a plant low on the bed that casts no shadow worth
+// the drawing. (Read back as floor(x / 2 + 1 / 4), which the interpolation between a
+// blade's vertices cannot tip into the next code.)
+export const CUT = { NONE: 0, BEDLEAF: 1 };
+export const LOW = 16;
+const packThin = (thin, cut, low) => thin + 2 * (cut + (low ? LOW : 0));
+const thinCode = attribute("thin", "vec2").x;
+const plantCode = floor(thinCode.mul(0.5).add(0.25));
+const leafThin = thinCode.sub(plantCode.mul(2)).clamp(0, 1);
+const cutMode = mod(plantCode, 16);
+const lowPlant = plantCode.greaterThanEqual(LOW);
 // Each plant's own shade (vPlantTint: brighter or darker, greener or yellower, from a hash of
 // where it stands), and per vertex (vPlantShade) how much of the water's light reaches in to
 // the foot of a clump (x) and how much of a brown film of diatoms and silt lies on the leaf
@@ -176,8 +190,9 @@ function strandPosition({ shadow = false } = {}) {
     If(rest.y.lessThan(ceiling), () => {
       moved.y.assign(min(moved.y, ceiling.sub(rest.y).add(position.y)));
     });
-    // A plant faded out altogether is folded into its root: no pixels at all.
-    return select(fade.greaterThan(0), moved, anchor);
+    // A plant faded out altogether is folded into its root: no pixels at all. (And in the
+    // sun's shadow map, so is a plant low on the bed: turf and fallen leaves.)
+    return select(shadow ? fade.greaterThan(0).and(lowPlant.not()) : fade.greaterThan(0), moved, anchor);
   })();
 }
 
@@ -197,7 +212,7 @@ export function foliageMaterial() {
   material.alphaTestNode = ditherThreshold();
   material.positionNode = strandPosition();
   material.castShadowPositionNode = strandPosition({ shadow: true });
-  const thin = attribute("thin", "vec2").x;
+  const thin = leafThin;
   const leafUv = uv();
   material.colorNode = Fn(() => {
     // The plant's own shade, and the film of diatoms and silt, brown, over the old growth.
@@ -217,9 +232,9 @@ export function foliageMaterial() {
     // whole: left-out pixels would read as a grain wherever the view moves.)
     const alpha = float(1).toVar();
     // A leaf right in front of the lens thins away rather than filling the picture -- but not
-    // a leaf lying flat on the bed (marked by a thinness of exactly 0.12), which would only
-    // show as a pale, see-through patch on the ground.
-    If(abs(thin.sub(0.12)).greaterThan(0.005), () => {
+    // a leaf lying flat on the bed, which would only show as a pale, see-through patch on the
+    // ground.
+    If(cutMode.notEqual(CUT.BEDLEAF), () => {
       alpha.mulAssign(smoothstep(0.25, 0.8, length(positionWorld.sub(cameraPosition))));
     });
     alpha.mulAssign(vPlantFade);
@@ -328,6 +343,8 @@ export function blade(
     emit = true,
     random = null,
     age = [0.7, 0.3],
+    cut = CUT.NONE,
+    low = false,
   } = {},
 ) {
   // Even an omitted background blade consumes its original two random values. This
@@ -346,6 +363,7 @@ export function blade(
   const length = curve.getLength();
   const start = batch.positions.length / 3;
   const brown = new THREE.Color("#6b5a2a");
+  const code = packThin(thin, cut, low);
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const center = curve.getPoint(t);
@@ -375,7 +393,7 @@ export function blade(
         halfWidth *
           (0.19 * u * u + 0.045 * Math.sin(t * 15 + phase) * Math.abs(u)),
       );
-      batch.vertex(p, [j / cols, t], tint, root, strand, thin);
+      batch.vertex(p, [j / cols, t], tint, root, strand, code);
       if (i < rows && j < cols) {
         const a = start + i * (cols + 1) + j;
         batch.quad(a, a + 1, a + cols + 1, a + cols + 2);

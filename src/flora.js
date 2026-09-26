@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { blade, paletteAt, stem, stemStrand } from "./render/foliage.js";
+import { CUT, blade, paletteAt, stem, stemStrand } from "./render/foliage.js";
 import { randomGenerator } from "./render/geometry.js";
 
 // What grows in a northern river and the sea beyond it, built from the aquarium's blade
@@ -515,7 +515,8 @@ export function horsetail(batch, x, z, ground, surface, random, scale = 1) {
       const t = j / joints;
       const to = base.clone().add(vec(lean.x * t, (top - base.y) * t, lean.z * t));
       const c = paletteAt(PALETTE.horsetail, 1 - t, new THREE.Color()).offsetHSL(j % 2 ? (random() - 0.5) * 0.04 : 0, 0, 0).multiplyScalar(j % 2 ? 1 : 0.85);
-      stem(batch, [from, from.clone().lerp(to, 0.9), to], 0.045 * scale, c, root, 0.12);
+      // (A joint is straight: two rings of it are as good as nine.)
+      stem(batch, [from, from.clone().lerp(to, 0.9), to], 0.045 * scale, c, root, 0.12, null, { rows: 2 });
       from = to;
     }
   }
@@ -654,11 +655,14 @@ export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1) {
 }
 
 // A tuft of the low turf over the gravel: bulbous rush, reddish-green in soft water, or a
-// cushion of moss, a handful of short blades.
+// cushion of moss, a handful of short blades. (Fewer and broader than they once were: of the
+// blades it has always drawn for, the first half or so is grown, the rest kept only as the
+// numbers they drew. It casts no shadow worth its cost.)
 export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.22) {
   const range = ranger(random);
   const root = vec(x, ground - 0.02, z);
   const count = Math.floor(range(5, 9));
+  const grown = Math.ceil(count * 0.45);
   for (let i = 0; i < count; i++) {
     const a = flow + range(-1.6, 1.6);
     const dir = vec(Math.cos(a), 0, Math.sin(a));
@@ -667,7 +671,7 @@ export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.2
     const points = [root.clone(), root.clone().addScaledVector(dir, out * 0.3).add(vec(0, h * 0.7, 0)), root.clone().addScaledVector(dir, out).add(vec(0, h, 0))];
     // (The hue it was given picks the kind: reddish rush below 0.2, olive moss above.)
     const color = tones(hue < 0.2 ? PALETTE.rush : PALETTE.turfMoss, random(), random(), random());
-    blade(batch, points, range(0.05, 0.1) * scale, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3] });
+    blade(batch, points, range(0.05, 0.1) * scale * 1.6, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true });
   }
 }
 
@@ -716,7 +720,7 @@ export function fallenLeaf(batch, x, z, ground, random, scale = 1) {
   const [h, sat, l] = LEAF_COLORS[Math.floor(random() * LEAF_COLORS.length)];
   const color = new THREE.Color().setHSL(h + range(-0.01, 0.01), sat, l * range(0.6, 0.85));
   // Laid flat: its width across the direction it points, never along it.
-  blade(batch, [base, mid, tip], length * range(0.28, 0.4), color, base, 0.02, { rows: 6, cols: 2, thin: 0.12, twist: a + Math.PI / 2 });
+  blade(batch, [base, mid, tip], length * range(0.28, 0.4), color, base, 0.02, { rows: 6, cols: 2, thin: 0.12, twist: a + Math.PI / 2, cut: CUT.BEDLEAF, low: true });
 }
 
 // A spray of living leaves on the end of a branch that hangs over the water: alder and
