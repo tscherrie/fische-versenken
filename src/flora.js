@@ -33,6 +33,23 @@ function plantRandom(x, z, salt) {
   for (const v of [x, z, salt]) h = Math.imul(h ^ Math.round(v * 1000), 16777619) >>> 0;
   return randomGenerator(h % 2147483647 || 7);
 }
+// Where a stem of a clump stands. The two numbers each stem has always drawn for its foot
+// (once a square's worth of scatter) now place it in an ellipse drawn out along the current,
+// the stems crowding toward the middle; r is how far out it stands, 0 to 1.
+function spread(u, w, radius, d) {
+  const r = Math.pow(u, 0.75);
+  const a = TAU * w;
+  const along = Math.cos(a) * r * radius * 1.6,
+    across = Math.sin(a) * r * radius * 0.7;
+  return { offset: vec(d.x * along - d.z * across, 0, d.z * along + d.x * across), r };
+}
+// A stem's own bearing: the way it leans turned a little off the current's, and a sideways S
+// (s, -1 to 1), so the stems of a clump are not all combed the one way.
+function bearing(d, own, turn = 0.35) {
+  const a = own(-turn, turn);
+  const way = vec(d.x * Math.cos(a) - d.z * Math.sin(a), 0, d.z * Math.cos(a) + d.x * Math.sin(a));
+  return { way, side: vec(-way.z, 0, way.x), s: own(-1, 1) };
+}
 // A number in [0, 1) from a place, for what a plant is without drawing on the river's stream.
 const hash2 = (x, z) => {
   const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -147,7 +164,7 @@ const PETAL = new THREE.Color(0.78, 0.78, 0.72);
 // (Grown from the numbers it has always drawn from the river's stream -- a stem's length,
 // rise, drift, foot and colour, and its blade's own two -- and, for all that is new, from a
 // stream of its own. Half the stems are no longer grown, only drawn for.)
-export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1) {
+export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
   const stream = plantRandom(x, z, 1);
   const own = ranger(stream);
@@ -159,22 +176,24 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1) 
   const up = vec(0, 1, 0);
   const tips = [];
   for (let i = 0; i < count; i++) {
-    const length = range(0.45, 1) * Math.min(28, depth * 2.6 + 6) * scale;
-    const rise = Math.min(depth * range(0.55, 0.95), length * 0.45);
+    const drawn = range(0.45, 1) * Math.min(28, depth * 2.6 + 6) * scale;
+    const rise = Math.min(depth * range(0.55, 0.95), drawn * 0.45);
+    const length = drawn * grow;
     const drift = range(-1, 1) * length * 0.08;
-    const base = root.clone().addScaledVector(side, range(-0.4, 0.4)).addScaledVector(d, range(-0.3, 0.3));
+    const base = root.clone().add(spread(random(), random(), 0.45, d).offset);
+    const { way } = bearing(d, own, 0.12);
     const color = tones(PALETTE.crowfoot, random(), random(), random());
     const grown = own(0, 1) < 0.5;
     // Streaming low: it rises to a height of its own and runs out along the current, the
     // whole of it lowered together if it would reach the surface (never point by point,
     // which put corners in it).
-    const lift = Math.min(depth * 0.7, length * 0.3) * (0.6 + (0.4 * rise) / Math.max(1e-3, Math.min(depth * 0.95, length * 0.45)));
+    const lift = Math.min(depth * 0.7, length * 0.3) * (0.6 + (0.4 * rise) / Math.max(1e-3, Math.min(depth * 0.95, drawn * 0.45)));
     const k = Math.min(1, (surface - 0.3 - base.y) / Math.max(1e-3, lift));
     const points = [
       base,
-      base.clone().addScaledVector(d, length * 0.12).addScaledVector(up, lift * 0.5 * k),
-      base.clone().addScaledVector(d, length * 0.5).addScaledVector(up, lift * 0.9 * k).addScaledVector(side, drift),
-      base.clone().addScaledVector(d, length).addScaledVector(up, lift * k).addScaledVector(side, drift * 1.4),
+      base.clone().addScaledVector(way, length * 0.12).addScaledVector(up, lift * 0.5 * k),
+      base.clone().addScaledVector(way, length * 0.5).addScaledVector(up, lift * 0.9 * k).addScaledVector(side, drift),
+      base.clone().addScaledVector(way, length).addScaledVector(up, lift * k).addScaledVector(side, drift * 1.4),
     ];
     const rows = Math.min(20, Math.max(6, Math.round(length / 0.9)));
     // (The width once drawn for a ribbon is still drawn; a stem is narrower.)
@@ -228,8 +247,9 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1) 
 }
 
 // Pondweed: a stem up through the water column with broad, translucent, wavy leaves.
-export function pondweed(batch, x, z, ground, surface, flow, random, scale = 1) {
+export function pondweed(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
+  const own = ranger(plantRandom(x, z, 3));
   const stems = Math.floor(range(3, 7));
   const root = vec(x, ground - 0.05, z);
   const d = vec(Math.cos(flow), 0, Math.sin(flow));
@@ -240,17 +260,25 @@ export function pondweed(batch, x, z, ground, surface, flow, random, scale = 1) 
     const height = Math.min(surface - ground - 0.3, range(6, 16) * scale);
     if (height < 1.5) continue;
     const lean = range(0.2, 0.5) * height;
-    const base = root.clone().add(vec(range(-0.6, 0.6), 0, range(-0.6, 0.6)));
+    const foot = spread(random(), random(), 0.6, d);
+    const base = root.clone().add(foot.offset);
+    // (How many leaves a stem bears goes by the length of the stem as it was drawn; its S,
+    // the dome of the clump and the patchiness of the bed come after.)
+    const drawn = [base, base.clone().addScaledVector(d, lean * 0.2).add(vec(0, height * 0.4, 0)), base.clone().addScaledVector(d, lean * 0.6).add(vec(0, height * 0.78, 0)), base.clone().addScaledVector(d, lean).add(vec(0, height, 0))];
+    const nodes = Math.floor(new THREE.CatmullRomCurve3(drawn).getLength() / (0.9 * scale));
+    const tall = Math.min(surface - ground - 0.3, height * grow * (1 - 0.3 * foot.r * foot.r));
+    const bent = (lean * tall) / height;
+    const { way, side, s: sway } = bearing(d, own);
     const points = [
       base,
-      base.clone().addScaledVector(d, lean * 0.2).add(vec(0, height * 0.4, 0)),
-      base.clone().addScaledVector(d, lean * 0.6).add(vec(0, height * 0.78, 0)),
-      base.clone().addScaledVector(d, lean).add(vec(0, height, 0)),
+      base.clone().addScaledVector(way, bent * 0.2).addScaledVector(side, 0.12 * tall * sway).add(vec(0, tall * 0.4, 0)),
+      base.clone().addScaledVector(way, bent * 0.6).addScaledVector(side, -0.12 * tall * sway).add(vec(0, tall * 0.78, 0)),
+      base.clone().addScaledVector(way, bent).add(vec(0, tall, 0)),
     ];
-    const { curve, length } = stem(batch, points, 0.035 * scale, PALETTE.pondweedStem, root, 0.9);
-    const nodes = Math.floor(length / (0.9 * scale));
+    const { curve } = stem(batch, points, 0.035 * scale, PALETTE.pondweedStem, root, 0.9);
     for (let n = 1; n <= nodes; n++) {
-      const t = n / (nodes + 0.3);
+      // (Spaced a little unevenly, and closer toward the tip.)
+      const t = 1 - Math.pow(1 - Math.min(0.98, (n + own(-0.15, 0.15)) / (nodes + 0.3)), 1.15);
       const node = curve.getPoint(t);
       const a = flow + (n % 2 ? 1 : -1) * range(0.5, 1.1);
       const out = vec(Math.cos(a), range(0.1, 0.35), Math.sin(a)).normalize();
@@ -623,8 +651,9 @@ export function algae(batch, at, flow, random, size = 1) {
 
 // Water starwort (Callitriche): slender stems rising and leaning with the current, pairs of
 // small pale leaves at each node, and where a stem reaches the surface a floating rosette.
-export function starwort(batch, x, z, ground, surface, flow, random, scale = 1) {
+export function starwort(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
+  const own = ranger(plantRandom(x, z, 4));
   const root = vec(x, ground - 0.03, z);
   const d = vec(Math.cos(flow), 0, Math.sin(flow));
   const stems = Math.floor(range(8, 16));
@@ -632,13 +661,18 @@ export function starwort(batch, x, z, ground, surface, flow, random, scale = 1) 
   for (let k = 0; k < stems; k++) {
     const height = Math.min(depth - 0.08, range(1.2, 4.5) * scale);
     if (height < 0.4) continue;
-    const base = root.clone().add(vec(range(-0.5, 0.5) * scale, 0, range(-0.5, 0.5) * scale));
+    const foot = spread(random(), random(), 0.5 * scale, d);
+    const base = root.clone().add(foot.offset);
     const lean = range(0.2, 0.7) * height;
+    // (The stems that reach the surface still reach it; the rest are domed and patchy.)
+    const tall = height > depth - 0.4 ? height : Math.min(depth - 0.5, height * grow * (1 - 0.3 * foot.r * foot.r));
+    const bent = (lean * tall) / height;
+    const { way, side, s: sway } = bearing(d, own);
     const points = [
       base,
-      base.clone().addScaledVector(d, lean * 0.25).add(vec(0, height * 0.5, 0)),
-      base.clone().addScaledVector(d, lean * 0.7).add(vec(0, height * 0.88, 0)),
-      base.clone().addScaledVector(d, lean).add(vec(0, height, 0)),
+      base.clone().addScaledVector(way, bent * 0.25).addScaledVector(side, 0.12 * tall * sway).add(vec(0, tall * 0.5, 0)),
+      base.clone().addScaledVector(way, bent * 0.7).addScaledVector(side, -0.12 * tall * sway).add(vec(0, tall * 0.88, 0)),
+      base.clone().addScaledVector(way, bent).add(vec(0, tall, 0)),
     ];
     const stemColor = tones(PALETTE.starwortStem, random(), 0.5, 0.5);
     blade(batch, points, 0.04 * scale, stemColor, root, 1, { rows: 6, cols: 1, ribbon: true, thin: 1, age: [0.9, 0.1] });
@@ -675,8 +709,9 @@ export function starwort(batch, x, z, ground, surface, flow, random, scale = 1) 
 
 // Alternate water-milfoil (Myriophyllum alterniflorum), the milfoil of clear, soft northern
 // water: stems with whorls of fine, feathery leaves, like green bottle brushes.
-export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1) {
+export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
+  const own = ranger(plantRandom(x, z, 2));
   const root = vec(x, ground - 0.03, z);
   const d = vec(Math.cos(flow), 0, Math.sin(flow));
   const stems = Math.floor(range(5, 10));
@@ -684,28 +719,37 @@ export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1) {
   for (let k = 0; k < stems; k++) {
     const height = Math.min(depth - 0.2, range(2, 7) * scale);
     if (height < 0.8) continue;
-    const base = root.clone().add(vec(range(-0.6, 0.6) * scale, 0, range(-0.6, 0.6) * scale));
+    const foot = spread(random(), random(), 0.6 * scale, d);
+    const base = root.clone().add(foot.offset);
     const lean = range(0.3, 0.8) * height;
+    // (How many whorls a stem bears goes by the height drawn for it; the dome of the clump,
+    // taller in the middle, and the patchiness of the bed come after.)
+    const whorls = Math.max(3, Math.floor(height / (0.28 * scale)));
+    const tall = Math.min(depth - 0.2, height * grow * (1 - 0.3 * foot.r * foot.r));
+    const bent = (lean * tall) / height;
+    const { way, side, s: sway } = bearing(d, own);
     const points = [
       base,
-      base.clone().addScaledVector(d, lean * 0.2).add(vec(0, height * 0.45, 0)),
-      base.clone().addScaledVector(d, lean * 0.65).add(vec(0, height * 0.85, 0)),
-      base.clone().addScaledVector(d, lean).add(vec(0, height, 0)),
+      base.clone().addScaledVector(way, bent * 0.2).addScaledVector(side, 0.12 * tall * sway).add(vec(0, tall * 0.45, 0)),
+      base.clone().addScaledVector(way, bent * 0.65).addScaledVector(side, -0.12 * tall * sway).add(vec(0, tall * 0.85, 0)),
+      base.clone().addScaledVector(way, bent).add(vec(0, tall, 0)),
     ];
     const green = tones(PALETTE.milfoil, random(), random(), random());
     blade(batch, points, 0.045 * scale, green, root, 1.1, { rows: 7, cols: 1, ribbon: true, thin: 1, age: [1, 0.3] });
     const curve = new THREE.CubicBezierCurve3(...points);
-    const whorls = Math.max(3, Math.floor(height / (0.28 * scale)));
     for (let n = 1; n <= whorls; n++) {
-      const t = n / (whorls + 0.3);
+      // (Spaced a little unevenly and closer toward the tip; low on the stem the whorls are
+      // thinned out, two leaves of four, shorter and older.)
+      const t = 1 - Math.pow(1 - Math.min(0.98, (n + own(-0.15, 0.15)) / (whorls + 0.3)), 1.15);
       const node = curve.getPoint(t);
       const a0 = range(0, TAU);
-      const leaf = range(0.35, 0.6) * scale * (1 - 0.35 * t);
-      const old = ageUp(t);
+      const low = t < 0.25;
+      const leaf = range(0.35, 0.6) * scale * (1 - 0.35 * t) * (low ? 0.75 : 1);
+      const old = Math.min(1, ageUp(t) + (low ? 0.15 : 0));
       for (let i = 0; i < 4; i++) {
         const a = a0 + (i / 4) * TAU;
         const tip = node.clone().add(vec(Math.cos(a) * leaf, leaf * 0.45, Math.sin(a) * leaf)).addScaledVector(d, leaf * 0.4);
-        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.17 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1], cut: CUT.FEATHER });
+        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.17 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1], cut: CUT.FEATHER, emit: !low || i % 2 === 0 });
       }
     }
   }
