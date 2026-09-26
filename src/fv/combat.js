@@ -20,6 +20,7 @@ import { createGravel } from "./gravel.js";
 import { createGround } from "./ground.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
+import { ARSENAL, createPickups } from "./pickups.js";
 import { createProjectiles } from "./projectiles.js";
 import { createRules } from "./rules.js";
 import { createSfx } from "./sfx.js";
@@ -45,6 +46,7 @@ export function createCombat(game) {
   const ground = createGround({ terrain, pebbles: game.pebbles });
   const rules = createRules();
   const bosses = createBosses({ enemies, hud, random });
+  const pickups = createPickups({ weapons: WEAPONS });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
@@ -226,6 +228,11 @@ export function createCombat(game) {
     // A death: the enemies fall back and no new ones come for a while, so the sibling that
     // takes over has a moment to find its feet.
     if (local.down && !wasDown) {
+      // The weapons it carried wait where it died (a minute); the sibling starts with the laser.
+      const a = local.arsenal;
+      for (const id of [a.back, a.belly]) if (id && id !== "piu") pickups.revenge(local, id, fish.position);
+      a.back = "piu";
+      a.belly = null;
       for (const e of enemies.list) if (!e.dead) {
         e.mode = "recover";
         e.t = -4;
@@ -241,7 +248,27 @@ export function createCombat(game) {
     enemies.hpScale = difficulty.level.hp;
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
     gravel.update(dt, { fish, enemies, players: players.length });
-    bosses.update(dt, { fish, onBeaten: (boss) => game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6) });
+    bosses.update(dt, {
+      fish,
+      onBeaten: (boss, e) => {
+        game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6);
+        pickups.deliver(local, "katana", e.position);
+      },
+    });
+    // A new stage of life: the new stage's weapon sinks down in a capsule.
+    if (!local.down && fish.stage > (local.stageSeen ?? fish.stage)) {
+      for (const [id, w] of Object.entries(ARSENAL)) if (w.stage === fish.stage && !w.boss && !w.secret) pickups.deliver(local, id);
+    }
+    local.stageSeen = fish.stage;
+    pickups.update(dt, {
+      players,
+      terrain,
+      onTake: (player, id) => {
+        if (!player.local) return;
+        hud.say(WEAPONS[id]?.title ?? id, "Neue Waffe", 1.6);
+        sfx.pickup?.(id);
+      },
+    });
     // (The stones for the crawlers, gathered once, only while there are crawlers about.)
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12);
@@ -303,6 +330,7 @@ export function createCombat(game) {
       fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     }
     models.update(players);
+    for (const item of pickups.items) if (item.state === "idle") fx.add(item.x, item.y + Math.sin(item.age * 2) * 0.05, item.z, item.size * 0.5, 2.2, 2.4, 2.8, 1);
     // (The enemies' own weapons, strapped on the same way, once the models draw them.)
     models.enemies?.(enemies.list);
     // A weapon that is hot glows at the muzzle.
@@ -324,6 +352,7 @@ export function createCombat(game) {
     hostile,
     director,
     bosses,
+    pickups,
     aim,
     step,
     frame,
