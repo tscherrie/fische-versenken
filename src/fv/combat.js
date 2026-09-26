@@ -60,7 +60,8 @@ export function createCombat(game) {
     keys.insertBefore(item, keys.children[3] ?? null);
   }
   const local = players[0];
-  const trigger = { back: false, belly: false, test: false };
+  // What holds the triggers: the mouse buttons, the tests, and on a phone the auto-fire.
+  const trigger = { back: false, belly: false, test: false, auto: false };
   const stones = [];
   const muzzle = new THREE.Vector3();
   const aimDir = new THREE.Vector3();
@@ -70,7 +71,8 @@ export function createCombat(game) {
 
   // The mouse buttons, while the pointer is caught and the fish can fight. (mousedown and
   // mouseup come for each button, pointer events only for the first one pressed.)
-  const canFire = () => game.now.locked && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
+  // (On a phone there is no caught pointer: the view is swiped, and the weapons fire themselves.)
+  const canFire = () => (game.now.locked || touchMode) && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
   canvas.addEventListener("mousedown", (event) => {
     if (!canFire()) return;
     if (event.button === 0) trigger.back = true;
@@ -91,7 +93,7 @@ export function createCombat(game) {
   function held(player, place) {
     const a = player.arsenal;
     const single = !(a.back && a.belly);
-    if (trigger.test) return true;
+    if (trigger.test || trigger.auto) return true;
     if (single) return trigger.back;
     return place === "back" ? trigger.back : trigger.belly;
   }
@@ -243,7 +245,13 @@ export function createCombat(game) {
     rules.step(dt, local, enemies);
     wild.step();
     const L = fish.length;
-    if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
+    const reach = (WEAPONS[local.arsenal.back] ?? WEAPONS.piu).reach(L);
+    if (touchMode) {
+      // Auto-fire: whenever an enemy is in reach near the middle of the view (a wider cone
+      // than with a mouse), every weapon fires at it.
+      aim.update(enemies.list, reach, Math.tan((9 * Math.PI) / 180));
+      trigger.auto = !!aim.target && !local.down;
+    } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, reach);
     fireWeapons(local, dt);
     enemies.hpScale = difficulty.level.hp;
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
