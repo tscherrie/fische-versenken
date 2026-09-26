@@ -1172,6 +1172,11 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
   const position = Fn(() => {
     const p = positionGeometry.toVar();
     const n = normalGeometry.toVar();
+    // (The coat is drawn on the rest shape, so its spots and bones stay put on the skin as
+    // the jaw opens, the hump rises and the spawner's jaw grows.)
+    const rest = vec3(0).toVar();
+    rest.assign(p);
+    vSkinPoint.assign(rest);
     vJaw.assign(vec2(0));
     vMouthOpen.assign(0);
     If(part.greaterThan(12.5), () => {
@@ -1180,6 +1185,8 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
       p.assign(centre.add(p.sub(centre).mul(k)));
       p.y.addAssign(k.oneMinus().mul(0.05));
     }).Else(() => {
+      // Which of the skin is the lower jaw (the kype below needs it as well).
+      const below = float(0).toVar();
       If(part.lessThan(0.5), () => {
         // The lower jaw swings down about its hinge below the eye; the gill covers flare as
         // the mouth opens, drawing the water (and whatever is in it) in.
@@ -1187,7 +1194,7 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
         const tipY = u.uMouth.y.mul(0.3);
         const lineY = mix(u.uMouth.y, tipY, p.x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
         const hinge = vec2(u.uMouth.x.sub(0.01), u.uMouth.y.add(0.002));
-        const below = smoothstep(lineY.add(0.003), lineY.sub(0.003), p.y);
+        below.assign(smoothstep(lineY.add(0.003), lineY.sub(0.003), p.y));
         const along = smoothstep(hinge.x.sub(0.004), hinge.x.add(0.012), p.x);
         const angle = open.mul(0.55).mul(below).mul(along);
         const d = p.xy.sub(hinge);
@@ -1205,14 +1212,19 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
         p.y.mulAssign(u.coat_hump.mul(0.42).mul(gauss(p.x.sub(0.12), 0.14)).add(1));
       });
       If(u.coat_kype.greaterThan(0), () => {
-        const snout = smoothstep(0.24, 0.35, p.x);
-        p.x.addAssign(u.coat_kype.mul(0.035).mul(snout));
-        // The lower jaw's tip curls up into a hook.
-        const hook = smoothstep(0.3, 0.38, p.x);
-        p.y.addAssign(select(p.y.lessThan(0), u.coat_kype.mul(0.03).mul(hook), u.coat_kype.mul(-0.012).mul(hook)));
+        // The spawning male's hooked jaw (the kype): the snout ahead of the eye lengthens,
+        // the lower jaw more than the upper; its tip curls up in front of the upper jaw and
+        // thickens into a knob, and the upper jaw's tip bends down over it.
+        const k = u.coat_kype;
+        const snout = smoothstep(u.uEye.x.add(u.uEye.z), 0.35, rest.x);
+        const tip = smoothstep(0.31, 0.35, rest.x);
+        const lip = mix(u.uMouth.y, u.uMouth.y.mul(0.3), rest.x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
+        p.x.addAssign(k.mul(below.mul(0.012).add(0.018)).mul(snout));
+        p.y.addAssign(p.y.sub(lip).min(0).mul(k).mul(tip).mul(below).mul(1.2));
+        p.y.addAssign(k.mul(tip.mul(tip).mul(below).mul(0.02).sub(smoothstep(0.33, 0.35, rest.x).mul(below.oneMinus()).mul(0.006))));
+        p.z.addAssign(sign(p.z).mul(k).mul(tip).mul(below).mul(0.003));
       });
     });
-    vSkinPoint.assign(p);
     const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim, steps);
     const placed = instanceMatrix.mul(vec4(bent.position, 1));
     const world = modelWorldMatrix.mul(instanceMatrix);
@@ -1483,6 +1495,9 @@ function shadeFish(materials, body, membranes) {
       skin.mulAssign(outline.mul(0.12).oneMinus());
       const gape = gauss(y.sub(gapeY), line(0.0009)).mul(smoothstep(jawEnd.sub(0.002), jawEnd.add(0.003), x)).mul(ink(0.0009));
       skin.assign(mix(skin, vec3(0.03, 0.022, 0.02), gape.mul(0.6).mul(u.coat_fish.mul(0.7).add(0.3))));
+      // A spawner's gums and teeth show pale along its gape.
+      const teeth = gauss(y.sub(gapeY).add(0.0013), line(0.0007)).mul(smoothstep(jawEnd, jawEnd.add(0.01), x)).mul(ink(0.0007));
+      skin.assign(mix(skin, vec3(0.55, 0.5, 0.42), teeth.mul(u.coat_spawn).mul(0.5)));
       // The eye sits in a socket: a groove round it and the bony rim of the orbit beyond,
       // the skin shaded where it meets the cornea. Two small nostrils ahead of it.
       const eyeD = length(vec2(x.sub(u.uEye.x), y.sub(u.uEye.y).mul(1.05))).div(u.uEye.z);
