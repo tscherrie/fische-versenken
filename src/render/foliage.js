@@ -82,17 +82,27 @@ function strandMotion(root, direction, s, compliance, stir) {
   const bendAmount = drag.mul(0.16).mul(s).mul(s).div(saturation);
   const bendSlope = drag.mul(0.32).mul(s).div(saturation.mul(saturation));
   // Flutter grows with the flow, and more where something has just stirred the water. Only
-  // its size answers the stir, never its rate: the phase runs on the clock itself.
+  // its size answers the stir, never its rate: the phase runs on the clock itself. It grows
+  // toward the free end, but not without end: a strand streaming out twenty metres down the
+  // current waves over some tens of centimetres, not metres, and in long, slow bends (its
+  // waves metres long at the foot, longer out along it) -- one that fluttered to its end
+  // with a wave a few metres long and a metre high drew it in corners between its rows, and
+  // pressed long crowfoot stems flat against the surface between steep dives. So the reach
+  // s is counted as R = s / sqrt(1 + (s / 8)^2), the same over the first few metres, never
+  // past eight, for the wave's size and for how far along it the wave has run.
   const gain = compliance.mul(strength.mul(0.024).add(0.014).add(min(stir, 1.5).mul(0.025)));
   const safeS = max(s, 1e-4);
-  const sPower = pow(safeS, 0.3);
-  const envelope = gain.mul(safeS).mul(sPower);
-  const envelopeSlope = gain.mul(1.3).mul(sPower);
-  const theta = waterTime.mul(1.05).sub(s.mul(1.1)).add(phase);
-  const ripple = waterTime.mul(1.75).sub(s.mul(1.8)).add(phase.mul(2.3));
+  const settle = float(1).add(safeS.mul(0.125).mul(safeS.mul(0.125)));
+  const reach = safeS.div(settle.sqrt());
+  const reachSlope = float(1).div(settle.mul(settle.sqrt()));
+  const sPower = pow(reach, 0.3);
+  const envelope = gain.mul(reach).mul(sPower);
+  const envelopeSlope = gain.mul(1.3).mul(sPower).mul(reachSlope);
+  const theta = waterTime.mul(1.05).sub(reach.mul(1.1)).add(phase);
+  const ripple = waterTime.mul(1.75).sub(reach.mul(1.8)).add(phase.mul(2.3));
   const shape = sin(theta).add(sin(ripple).mul(0.3));
   const wave = envelope.mul(shape);
-  const waveSlope = envelopeSlope.mul(shape).sub(envelope.mul(cos(theta).mul(1.1).add(cos(ripple).mul(0.54))));
+  const waveSlope = envelopeSlope.mul(shape).sub(envelope.mul(cos(theta).mul(1.1).add(cos(ripple).mul(0.54))).mul(reachSlope));
   return vec2(bendAmount.add(wave), bendSlope.add(waveSlope));
 }
 
@@ -111,8 +121,9 @@ const vPlantFade = varyingProperty("float", "vPlantFade");
 // What sort of leaf a blade is, packed beside its thinness (all eight vertex buffers are in
 // use): the vertex's first `thin` number is thinness + 2 x code, where the code is the cut
 // its material gives it (CUT) plus LOW for a plant low on the bed that casts no shadow worth
-// the drawing. (Read back as floor(x / 2 + 1 / 4), which the interpolation between a
-// blade's vertices cannot tip into the next code.)
+// the drawing, plus NEAR for the crossing strip of a strand, drawn only near the eye. (Read
+// back as floor(x / 2 + 1 / 4), which the interpolation between a blade's vertices cannot
+// tip into the next code.)
 //
 // The cuts give a leaf its species' outline out of the same few triangles, by leaving out
 // what lies outside it (foliageMaterial):
@@ -125,14 +136,18 @@ const vPlantFade = varyingProperty("float", "vPlantFade");
 //   FINGERS   a kelp blade split into straps
 //   MONOCOT   whole, with the parallel veins of a grass-like leaf
 //   FLOWER    a petal: out only in summer (plantSeason.bloom), each plant's in its own week
-export const CUT = { NONE: 0, BEDLEAF: 1, FEATHER: 2, BRUSH: 3, SCALES: 4, NOTCH: 5, FRILL: 6, FINGERS: 7, MONOCOT: 8, FLOWER: 9 };
+//   TRESS     a crowfoot tress: thread-fine leaves combed out along the current into one
+//             streaming strand, whole but for its frayed end
+export const CUT = { NONE: 0, BEDLEAF: 1, FEATHER: 2, BRUSH: 3, SCALES: 4, NOTCH: 5, FRILL: 6, FINGERS: 7, MONOCOT: 8, FLOWER: 9, TRESS: 10 };
 export const LOW = 16;
-const packThin = (thin, cut, low) => thin + 2 * (cut + (low ? LOW : 0));
+export const NEAR = 32;
+const packThin = (thin, cut, low, near = false) => thin + 2 * (cut + (low ? LOW : 0) + (near ? NEAR : 0));
 const thinCode = attribute("thin", "vec2").x;
 const plantCode = floor(thinCode.mul(0.5).add(0.25));
 const leafThin = thinCode.sub(plantCode.mul(2)).clamp(0, 1);
 const cutMode = mod(plantCode, 16);
-const lowPlant = plantCode.greaterThanEqual(LOW);
+const lowPlant = mod(plantCode, 32).greaterThanEqual(LOW);
+const nearOnly = plantCode.greaterThanEqual(NEAR);
 // Each plant's own shade (vPlantTint: brighter or darker, greener or yellower, from a hash of
 // where it stands), and per vertex (vPlantShade) how much of the water's light reaches in to
 // the foot of a clump (x), how much of a brown film of diatoms and silt lies on the leaf
@@ -214,9 +229,13 @@ function strandPosition({ shadow = false } = {}) {
     // shadow map, so are the plants low on the bed (turf, fallen leaves, crowfoot flowers)
     // and the fine threads and moss shoots of the small tufts on the stones, whose cut
     // outlines the map cannot hold: whole, they would throw solid shadows of nothing.
+    // So too is the second, crossing strip of a strand (NEAR) in the shadow map, where it
+    // stands edge-on to the sun, and beyond twenty metres from the eye, where the strand is
+    // a few pixels across whichever way it turns.
     const offSeason = cutMode.equal(CUT.FLOWER).and(plantSeason.bloom.lessThan(hash13(root.xzx.add(5.3)).mul(0.8).add(0.1)));
-    if (shadow) return select(fade.greaterThan(0).and(lowPlant.or(offSeason).or(cutMode.equal(CUT.SCALES)).or(cutMode.equal(CUT.BRUSH)).not()), moved, anchor);
-    return select(fade.greaterThan(0).and(offSeason.not()), moved, anchor);
+    if (shadow) return select(fade.greaterThan(0).and(lowPlant.or(offSeason).or(nearOnly).or(cutMode.equal(CUT.SCALES)).or(cutMode.equal(CUT.BRUSH)).not()), moved, anchor);
+    const far = nearOnly.and(length(root.sub(plantEye)).greaterThan(20));
+    return select(fade.greaterThan(0).and(offSeason.or(far).not()), moved, anchor);
   })();
 }
 
@@ -269,6 +288,13 @@ export function foliageMaterial() {
     const mottling = sin(v.mul(64).add(sin(leafUv.x.mul(25)))).mul(0.035).add(0.965);
     base.mulAssign(mottling.mul(edge.mul(-0.09).add(1).add(veins.mul(0.12))));
     base.assign(mix(base, base.mul(1.22).add(vec3(0.008, 0.012, 0)), midrib.mul(0.6)));
+    // A crowfoot tress is a bundle of threads: lighter and darker ones side by side along
+    // it, wavering, as long as they have pixels to show in.
+    If(cutMode.equal(CUT.TRESS), () => {
+      const strand = floor(leafUv.x.mul(7).add(sin(v.mul(13).add(vPlantShade.z.mul(40))).mul(0.35)));
+      const shade = fract(sin(strand.mul(12.9898).add(vPlantShade.z.mul(71))).mul(43758.5453));
+      base.mulAssign(mix(1, shade.mul(0.45).add(0.78), smoothstep(0.12, 0.3, du.mul(7)).oneMinus()));
+    });
     // Leaf undersides are paler and warmer than the upper surface.
     base.mulAssign(select(faceDirection.lessThan(0), vec3(0.82, 0.76, 0.66), vec3(1)));
     // In autumn the weed dies back: browner, the old growth more than the tips.
@@ -302,6 +328,7 @@ export function foliageMaterial() {
       const half = max(w, 1e-4).mul(0.5);
       return smoothstep(edgeAt.sub(half), edgeAt.add(half), d).oneMinus();
     };
+    const pick = (i) => fract(sin(i.mul(12.9898).add(seed)).mul(43758.5453));
     const seed = float(0).toVar();
     seed.assign(vPlantShade.z.mul(6.2832));
     // Milfoil: five pinnae a side, the midrib between them. (The phases' change across a
@@ -330,10 +357,15 @@ export function foliageMaterial() {
     // Straps from a third of the way up.
     const fingerW = du.mul(5);
     const fingers = mix(max(inside(float(0.38), abs(fract(leafUv.x.mul(5)).sub(0.5)), fingerW), inside(float(0.3), v, dv)), float(1), smoothstep(0.2, 0.4, fingerW));
+    // A crowfoot tress, whole but for its end, where its threads part and end one by one.
+    const tressW = du.mul(6);
+    const tressHalf = mix(0.62, 0.2, smoothstep(0.6, 1, v));
+    const tressEnd = pick(floor(leafUv.x.mul(6)).add(3.1)).mul(0.25).add(0.75);
+    const tress = mix(inside(tressHalf, abs(fract(leafUv.x.mul(6)).sub(0.5)), tressW).mul(inside(tressEnd, v, dv)), float(1), smoothstep(0.3, 0.5, tressW));
     const cut = select(
       cutMode.equal(CUT.FEATHER),
       feather,
-      select(cutMode.equal(CUT.BRUSH), brush, select(cutMode.equal(CUT.SCALES), scales, select(cutMode.equal(CUT.NOTCH), notch, select(cutMode.equal(CUT.FRILL), frill, select(cutMode.equal(CUT.FINGERS), fingers, float(1)))))),
+      select(cutMode.equal(CUT.BRUSH), brush, select(cutMode.equal(CUT.SCALES), scales, select(cutMode.equal(CUT.NOTCH), notch, select(cutMode.equal(CUT.FRILL), frill, select(cutMode.equal(CUT.FINGERS), fingers, select(cutMode.equal(CUT.TRESS), tress, float(1))))))),
     );
     // (Thin tissue passes light, which the lighting below gives it; a leaf itself is drawn
     // whole: left-out pixels would read as a grain wherever the view moves.)
@@ -449,6 +481,8 @@ export function paletteAt(palette, age, target = new THREE.Color()) {
 //   lanceolate  widest a third of the way out, tapering long (a pondweed leaf)
 //   strap       the same width all along, cut off square (a length of wrack)
 //   strapEnd    the same, with a rounded end (the tip of a wrack frond)
+//   tress       narrow at the stem, then broad nearly all its length, fraying out at the
+//               end (a crowfoot tress: CUT.TRESS parts its threads there)
 // Without one, a leaf is widest near its middle, a ribbon near its foot.
 const ENVELOPES = {
   linear: (t) => Math.min(1, 5 * t) * (1 - 0.4 * Math.pow(t, 6)),
@@ -456,9 +490,13 @@ const ENVELOPES = {
   lanceolate: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.66)), 0.8),
   strap: (t) => Math.min(1, 6 * t),
   strapEnd: (t) => Math.min(1, 6 * t) * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, t - 0.75) / 0.25, 2))),
+  tress: (t) => (0.35 + 0.65 * Math.min(1, 5 * t)) * (1 - 0.45 * t * t),
 };
 
-// Each blade is a curved, cupped surface. It bends across its face unless it rides on a
+// Each blade is a curved, cupped surface (cup: how far its edges rise over its middle, in
+// half-widths; crossed: a second strip along it, that share of its width, turned a quarter
+// round its length and riding on the first strip's strands, so that a strand lying out
+// along the current shows a body from the side as well as from above). It bends across its face unless it rides on a
 // parent strand, in which case it inherits the parent's motion at the attachment. Returns
 // its curve, its length and its frame at t ({ tangent, side, normal }), for what grows on it
 // to ride along (or nothing, for a blade not grown).
@@ -485,6 +523,8 @@ export function blade(
     envelope: outline = null,
     crinkle = 0.016,
     spacing = 0,
+    cup = 0.19,
+    crossed = 0,
   } = {},
 ) {
   // Even an omitted background blade consumes its original two random values. This
@@ -504,9 +544,7 @@ export function blade(
   // (spacing: rows no further apart than that, up to 28, so a long ribbon bends without
   // corners.)
   if (spacing) rows = Math.min(28, Math.max(rows, Math.ceil(length / spacing)));
-  const start = batch.positions.length / 3;
   const brown = new THREE.Color("#6b5a2a");
-  const code = packThin(thin, cut, low);
   const frame = (t) => {
     const tangent = curve.getTangent(t);
     const theta = twist + turn * t;
@@ -514,38 +552,46 @@ export function blade(
     side.addScaledVector(tangent, -side.dot(tangent)).normalize();
     return { tangent, side, normal: new THREE.Vector3().crossVectors(side, tangent).normalize() };
   };
-  for (let i = 0; i <= rows; i++) {
-    const t = i / rows;
-    const center = curve.getPoint(t);
-    const { tangent, side, normal } = frame(t);
-    const envelope = outline
-      ? ENVELOPES[outline](t)
-      : ribbon
-        ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
-        : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
-    const halfWidth = width * Math.max(0.005, envelope);
-    const strand = attached || {
-      direction: normal,
-      tangent,
-      distance: t * length,
-      compliance,
-    };
-    const tint = (color.isColor ? color.clone() : paletteAt(color, age[0] + (age[1] - age[0]) * t)).multiplyScalar(0.86 + 0.14 * Math.sin(Math.PI * t * 0.9));
-    if (browning) tint.lerp(brown, smoothJS(1 - browning, 1, t) * 0.8);
-    for (let j = 0; j <= cols; j++) {
-      const u = (j / cols) * 2 - 1;
-      // (crinkle: how much the margin waves, in the leaf's plane and out of it.)
-      const wave = 1 + crinkle * Math.sin(t * 25 + phase) * u * u;
-      const p = center.clone().addScaledVector(side, u * halfWidth * wave);
-      p.addScaledVector(
-        normal,
-        halfWidth *
-          (0.19 * u * u + (0.045 + 1.5 * (crinkle - 0.016)) * Math.sin(t * 15 + phase) * Math.abs(u)),
-      );
-      batch.vertex(p, [j / cols, t], tint, root, strand, code);
-      if (i < rows && j < cols) {
-        const a = start + i * (cols + 1) + j;
-        batch.quad(a, a + 1, a + cols + 1, a + cols + 2);
+  for (const quarter of crossed ? [false, true] : [false]) {
+    const first = batch.positions.length / 3;
+    const code = packThin(thin, cut, low, quarter);
+    for (let i = 0; i <= rows; i++) {
+      const t = i / rows;
+      const center = curve.getPoint(t);
+      const { tangent, side: flat, normal: up } = frame(t);
+      // (The crossing strip's side is the first one's normal; it rides on the first one's
+      // strand, so the two sway as one.)
+      const side = quarter ? up : flat;
+      const normal = quarter ? flat.clone().negate() : up;
+      const envelope = outline
+        ? ENVELOPES[outline](t)
+        : ribbon
+          ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
+          : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
+      const halfWidth = width * Math.max(0.005, envelope) * (quarter ? crossed : 1);
+      const strand = attached || {
+        direction: up,
+        tangent,
+        distance: t * length,
+        compliance,
+      };
+      const tint = (color.isColor ? color.clone() : paletteAt(color, age[0] + (age[1] - age[0]) * t)).multiplyScalar(0.86 + 0.14 * Math.sin(Math.PI * t * 0.9));
+      if (browning) tint.lerp(brown, smoothJS(1 - browning, 1, t) * 0.8);
+      for (let j = 0; j <= cols; j++) {
+        const u = (j / cols) * 2 - 1;
+        // (crinkle: how much the margin waves, in the leaf's plane and out of it.)
+        const wave = 1 + crinkle * Math.sin(t * 25 + phase) * u * u;
+        const p = center.clone().addScaledVector(side, u * halfWidth * wave);
+        p.addScaledVector(
+          normal,
+          halfWidth *
+            (cup * u * u + (0.045 + 1.5 * (crinkle - 0.016)) * Math.sin(t * 15 + phase) * Math.abs(u)),
+        );
+        batch.vertex(p, [j / cols, t], tint, root, strand, code);
+        if (i < rows && j < cols) {
+          const a = first + i * (cols + 1) + j;
+          batch.quad(a, a + 1, a + cols + 1, a + cols + 2);
+        }
       }
     }
   }

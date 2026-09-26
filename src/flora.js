@@ -164,16 +164,15 @@ export function hangingMoss(batch, at, flow, random, size = 1) {
 const PETAL = new THREE.Color(0.78, 0.78, 0.72);
 
 // Water crowfoot (Ranunculus fluitans): a clump of long stems streaming low down the
-// current, each bearing all along it tassels of thread-fine leaves; the stems nearest the
-// surface flower there in summer.
+// current, the thread-fine leaves all along each one combed out by the water into a tress,
+// green and glossy, frayed at its end; the stems nearest the surface flower there in summer.
 //
 // (Grown from the numbers it has always drawn from the river's stream -- a stem's length,
-// rise, drift, foot and colour, and its blade's own two -- and, for all that is new, from a
-// stream of its own. Two stems in five are no longer grown, only drawn for.)
+// rise, drift, foot, colour and width, and its blade's own two -- and, for its bearing, from
+// a stream of its own.)
 export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
-  const stream = plantRandom(x, z, 1);
-  const own = ranger(stream);
+  const own = ranger(plantRandom(x, z, 1));
   const depth = surface - ground;
   const root = vec(x, ground - 0.05, z);
   const count = Math.floor(range(18, 34));
@@ -189,7 +188,6 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
     const base = root.clone().add(spread(random(), random(), 0.45, d).offset);
     const { way } = bearing(d, own, 0.12);
     const color = tones(PALETTE.crowfoot, random(), random(), random());
-    const grown = own(0, 1) < 0.6;
     // Streaming low: it rises to a height of its own and runs out along the current, the
     // whole of it lowered together if it would reach the surface (never point by point,
     // which put corners in it).
@@ -197,57 +195,42 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
     const k = Math.min(1, (surface - 0.3 - base.y) / Math.max(1e-3, lift));
     const points = [
       base,
-      base.clone().addScaledVector(way, length * 0.12).addScaledVector(up, lift * 0.5 * k),
+      base.clone().addScaledVector(way, length * 0.15).addScaledVector(up, lift * 0.45 * k),
       base.clone().addScaledVector(way, length * 0.5).addScaledVector(up, lift * 0.9 * k).addScaledVector(side, drift),
       base.clone().addScaledVector(way, length).addScaledVector(up, lift * k).addScaledVector(side, drift * 1.4),
     ];
-    const rows = Math.min(20, Math.max(6, Math.round(length / 0.9)));
-    // (The width once drawn for a ribbon is still drawn; a stem is narrower.)
-    range(0.03, 0.07);
-    const tress = blade(batch, points, 0.025 * scale, color, root, 1.3, { rows, cols: 1, ribbon: true, thin: 1, twist: flow + Math.PI / 2, age: [0.9, 0.1], emit: grown });
-    if (!tress) continue;
-    tips.push(points[3]);
-    // The tassels: every metre or so along the stem, alternately to either side, each a
-    // spray of threads streaming back along it.
-    let flip = 1;
-    for (let at = 0.12 * tress.length + own(0.3, 0.9) * scale; at < tress.length * 0.97; at += own(0.9, 1.4) * scale) {
-      const t = at / tress.length;
-      const node = tress.curve.getPoint(t);
-      const { tangent, side: across, normal } = tress.frame(t);
-      const long = own(0.6, 1.3) * scale * (0.6 + 0.4 * Math.sin(Math.PI * t));
-      flip = -flip;
-      const tip = node.clone().addScaledVector(tangent, long).addScaledVector(across, flip * 0.15 * long);
-      const mid = node.clone().addScaledVector(tangent, long * 0.5).addScaledVector(across, flip * 0.08 * long);
-      const old = 0.9 - 0.8 * t;
-      blade(batch, [node, mid, tip], long * 0.25, color, root, 1.3, {
-        rows: 3,
-        cols: 1,
-        thin: 1,
-        twist: flow + Math.PI / 2,
-        age: [old + 0.05, old - 0.1],
-        cut: CUT.BRUSH,
-        attached: { direction: normal, tangent, distance: at, compliance: 1.3 },
-        random: stream,
-      });
-    }
+    // A row every 0.8 m or so: the current's wave runs down a long stem some metres from
+    // crest to crest, and rows further apart than a quarter of that bend it in corners. A
+    // narrower strip crossed along it, so that seen from the side, lying out along the
+    // current, it is still a strand with a body and not a line.
+    const rows = Math.min(32, Math.max(8, Math.ceil(length / 0.8)));
+    const tress = blade(batch, points, range(0.03, 0.07) * scale * 1.25, color, root, 1, { rows, cols: 1, ribbon: true, thin: 1, twist: flow + Math.PI / 2, age: [0.85, 0.1], envelope: "tress", cut: CUT.TRESS, crossed: 0.6 });
+    tips.push({ at: points[3], tress });
   }
-  // A few flowers held at the surface: five white petals round a yellow eye, over the tips
-  // of the stems that come nearest to it. (Where they once stood is still drawn for.)
-  tips.sort((a, b) => b.y - a.y);
+  // A few flowers held at the surface: five white petals round a yellow eye, each on a stalk
+  // from the tip of one of the stems that come nearest to it, riding on that tip as it
+  // sways (and held under the surface with the stem when the current lifts it). (Where they
+  // once stood is still drawn for.)
+  tips.sort((a, b) => b.at.y - a.at.y);
   const flowers = Math.floor(range(0, 5));
   for (let k = 0; k < flowers; k++) {
     range(4, 14);
     range(-1.2, 1.2);
     const tip = tips[k];
-    const near = tip && surface - tip.y < 1.6;
-    const at = near ? tip.clone() : root.clone();
-    at.y = surface - 0.03;
-    if (near) stem(batch, [tip.clone(), tip.clone().lerp(at, 0.5).addScaledVector(d, 0.1), at.clone()], 0.012 * scale, PALETTE.crowfoot, root, 0.6, null, { rows: 3, age: [0.3, 0], cut: CUT.FLOWER, low: true });
+    const near = tip && surface - tip.at.y < 1.6;
+    const at = near ? tip.at.clone() : root.clone();
+    at.y = surface - 0.065;
+    let ride = null;
+    if (near) {
+      const { normal, tangent } = tip.tress.frame(1);
+      ride = { direction: normal, tangent, distance: tip.tress.length, compliance: 1 };
+      stem(batch, [tip.at.clone(), tip.at.clone().lerp(at, 0.5).addScaledVector(d, 0.1), at.clone()], 0.012 * scale, PALETTE.crowfoot, root, 0.6, ride, { rows: 3, age: [0.3, 0], cut: CUT.FLOWER, low: true });
+    }
     for (let p = 0; p < 5; p++) {
       const a = (p / 5) * TAU + range(-0.1, 0.1);
       const petal = at.clone().add(vec(Math.cos(a) * 0.14, 0.01, Math.sin(a) * 0.14));
       const mid = at.clone().add(vec(Math.cos(a) * 0.08, 0.015, Math.sin(a) * 0.08));
-      blade(batch, [at, mid, petal], 0.06, PETAL, root, 0.4, { rows: 2, cols: 2, thin: 1, emit: near, cut: CUT.FLOWER, low: true });
+      blade(batch, [at, mid, petal], 0.06, PETAL, root, 0.4, { rows: 2, cols: 2, thin: 1, emit: near, cut: CUT.FLOWER, low: true, attached: ride });
     }
   }
 }
