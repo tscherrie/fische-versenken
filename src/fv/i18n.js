@@ -23,7 +23,12 @@ const WORDS = [
     "<b>撃て！</b>左クリックで武器を撃つ。スペースはこれまでどおりダッシュ、かみつき、ジャンプ。サケ以外はみんな、きみを食べようとしている。",
     "<b>Огън!</b> Левият бутон на мишката стреля с оръжието ти, интервалът остава спринт, захапка и скок. Всичко, което не е сьомга, иска да те изяде.",
   ],
-  ["Von einer jungen Forelle totgebissen", "Bitten to death by a young trout", "被一条小鳟鱼咬死", "若いマスにかみ殺された", "Изхапана до смърт от млада пъстърва"],
+  ["Von einer jungen Forelle erstochen", "Stabbed by a young trout", "被一条小鳟鱼刺死", "若いマスに刺された", "Намушкана от млада пъстърва"],
+  ["Von einer Groppe niedergeschossen", "Shot down by a bullhead", "被一条杜父鱼击倒", "カジカに撃ち倒された", "Застреляна от главоч"],
+  ["Von einer Bachforelle erschossen", "Shot dead by a brown trout", "被一条褐鳟射杀", "ブラウントラウトに射殺された", "Застреляна от балканска пъстърва"],
+  ["Abgesägte Schrotflinte", "Sawn-off shotgun", "短管猎枪", "ソードオフ・ショットガン", "Рязана пушка"],
+  ["Kampfmesser", "Combat knife", "战斗刀", "コンバットナイフ", "Боен нож"],
+  ["Maschinenpistole", "Submachine gun", "冲锋枪", "サブマシンガン", "Автомат"],
 ];
 
 for (const [de, en, zh, ja, bg] of WORDS) {

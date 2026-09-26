@@ -7,6 +7,8 @@
 // The game moves only in fixed steps here (salmon.run), so a scene comes out the same way
 // every time.
 
+import { LOOK_SCENES, runLook } from "./scenes-look.js";
+
 export const SCENES = [
   // A parr in the brook, a young trout pack and a bullhead ahead: fire into them.
   { name: "piu", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["troutParr", 7, -0.8], ["troutParr", 7.5, 0], ["troutParr", 7, 0.8], ["bullhead", 5, 0.4]] },
@@ -14,6 +16,9 @@ export const SCENES = [
   { name: "forelle", stage: "fingerling", at: 400, season: "summer", hour: 13, spawn: [["trout", 9, 0]] },
   // Nobody fires: the pack goes for the fish (the bites, the strength bar).
   { name: "angriff", stage: "yearling", at: 1500, season: "summer", hour: 14, fire: false, spawn: [["troutParr", 5, -1], ["troutParr", 5.5, 0], ["troutParr", 5, 1]] },
+  // Nobody fires back: a brown trout with its submachine gun and a bullhead with its
+  // shotgun open up on a parr (the tells, the bursts, the hits).
+  { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
   // shooting at whatever comes: kills, bites, deaths.
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
@@ -29,6 +34,8 @@ export const SCENES = [
   // Kills close to the eye: what a hit and a sinking leave in the water.
   { name: "splatter", stage: "parr", at: 2500, season: "summer", hour: 15, splatter: true, spawn: [["troutParr", 3.5, -0.4], ["troutParr", 4, 0.3], ["bullhead", 3, 0.1], ["trout", 7, 0]] },
 ];
+
+SCENES.push(...LOOK_SCENES);
 
 export function sceneURL(set, scene, extra = "") {
   for (const [k, v] of new URLSearchParams(location.search)) if (k.startsWith("x")) extra += `&${k}=${v}`;
@@ -93,6 +100,11 @@ async function runScene(salmon, extreme, query) {
     look.yaw = Math.atan2(d.z, d.x);
     look.pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(d.y, Math.hypot(d.x, d.z))));
   };
+  if (scene.look)
+    return runLook({ salmon, extreme, set, scene, errors, next: async () => {
+      await nextTask();
+      if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+    } });
   if (scene.pilot) return pilot(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.closeup) return closeup(salmon, extreme, set, scene, list, index, extra, errors, query);
   if (scene.splatter) return splatter(salmon, extreme, set, scene, list, index, extra, errors);
@@ -108,6 +120,7 @@ async function runScene(salmon, extreme, query) {
       kills: combat.players[0].kills,
       heat: +(combat.players[0].arsenal.heat.piu ?? 0).toFixed(2),
       shots: combat.projectiles.live.length,
+      incoming: combat.hostile.live.length,
       threats: salmon.life.hunters.threats(fish, []).map((t) => `${t.kind}:${t.level}`),
       enemies: combat.enemies.list.map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, d: +e.position.distanceTo(fish.position).toFixed(2) })),
     });

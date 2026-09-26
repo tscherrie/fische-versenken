@@ -12,6 +12,7 @@ import { createAim } from "./aim.js";
 import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
+import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
@@ -34,6 +35,7 @@ export function createCombat(game) {
   const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const director = createDirector({ random });
+  const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
 
@@ -126,20 +128,41 @@ export function createCombat(game) {
     }
   }
 
-  // An enemy's strike landed on a player.
-  function hurt(outcome) {
-    return (player, e) => {
-      const f = player.fish;
-      if (clock < player.safeUntil || f.safe || game.now.dead > 0) return;
-      player.safeUntil = clock + 0.8;
-      if (e.spec.swallows && e.size >= 2.2 * f.length) {
-        outcome.killed = e.spec.name;
-        return;
-      }
-      const damage = e.spec.bite * clamp(e.size / f.length, 0.25, 1);
-      f.energy = Math.max(0, f.energy - damage);
+  // An enemy's strike landed on a player: a fish big enough swallows it (the base game's
+  // rule), a knife stabs, a plain bite bites. After a strike a player is untouchable a
+  // moment, after a bullet only a blink (a burst should count, not just its first round).
+  function hurt(player, e, outcome, shot = null) {
+    const f = player.fish;
+    if (clock < player.safeUntil || f.safe || game.now.dead > 0) return;
+    const melee = e.spec.weapon?.kind === "melee" ? e.spec.weapon : null;
+    if (!shot && e.spec.swallows && e.size >= 2.2 * f.length) {
+      outcome.killed = e.spec.name;
+      return;
+    }
+    const damage = shot ? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1);
+    player.safeUntil = clock + (shot ? 0.12 : 0.8);
+    f.energy = Math.max(0, f.energy - damage);
+    if (clock - (player.feltAt ?? -1) > 0.35) {
+      player.feltAt = clock;
       outcome.bitten = true;
-    };
+    }
+    if (f.energy <= 0) outcome.killed = shot?.cause ?? e.spec.name;
+  }
+  // An enemy's gun goes off: its pellets fly from its snout toward where the salmon will be.
+  const enemyMuzzle = new THREE.Vector3();
+  const pellet = new THREE.Vector3();
+  function enemyShoots(e, dir, gun) {
+    enemies.snout(e, enemyMuzzle);
+    for (let i = 0; i < gun.pellets; i++) {
+      pellet.copy(dir);
+      pellet.x += (random() - 0.5) * 2 * gun.spread;
+      pellet.y += (random() - 0.5) * 2 * gun.spread;
+      pellet.z += (random() - 0.5) * 2 * gun.spread;
+      pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
+      hostile.fire({ source: e, weapon: gun.id, cause: gun.cause, position: enemyMuzzle.clone(), velocity: pellet.clone(), damage: gun.damage, radius: 0.03 + 0.01 * e.size, life: (gun.range[1] * 1.4) / gun.speed, size: 0.05 + 0.02 * e.size, tint: [7, 3.2, 0.7], stretch: 3.5, s: e.river.s });
+    }
+    fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, { size: 0.12 + 0.05 * e.size, life: 0.08, r: 5, g: 2.6, b: 0.6 });
+    sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
   }
 
   // What a sunk enemy gives back: a little growth for every kill, so fighting pays as well as
@@ -201,7 +224,17 @@ export function createCombat(game) {
     if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
     fireWeapons(local, dt);
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length });
-    enemies.update(dt, game.now.time, players, hurt(outcome));
+    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
+    hostile.update(dt, players, {
+      onPlayer(shot, player) {
+        hurt(player, shot.source, outcome, shot);
+        fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 4, speed: 0.6, size: shot.size * 0.8, life: 0.12, r: 6, g: 1.2, b: 0.6, random });
+        gore.hit?.({ position: player.fish.position, heading: player.fish.heading, size: player.fish.length, kind: "salmon", dead: false }, shot.position, shot.velocity.clone().normalize(), shot.weapon);
+      },
+      onGround(shot) {
+        fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random });
+      },
+    });
     signals.whiffs(outcome);
     if (projectiles.live.length) terrain.collidersNear(fish.position.x, fish.position.z, WEAPONS.piu.reach(L) + 4, stones);
     else stones.length = 0;
@@ -240,7 +273,10 @@ export function createCombat(game) {
     hud.update(dt, shown ? local.arsenal : null);
     fx.begin();
     for (const p of projectiles.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
+    for (const p of hostile.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     models.update(players);
+    // (The enemies' own weapons, strapped on the same way, once the models draw them.)
+    models.enemies?.(enemies.list);
     // A weapon that is hot glows at the muzzle.
     const a = local.arsenal;
     const w = WEAPONS[a.back];
@@ -257,6 +293,7 @@ export function createCombat(game) {
     players,
     enemies,
     projectiles,
+    hostile,
     director,
     aim,
     step,

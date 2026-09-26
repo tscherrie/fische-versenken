@@ -150,8 +150,10 @@ export function createEnemies(scene, { random }) {
     e.strikeDir.normalize();
   }
 
-  // One step of an enemy's plan. `hurt(player, enemy)` is called when a strike lands.
-  function think(e, dt, time, players, hurt) {
+  // One step of an enemy's plan. `hooks.hurt(player, enemy)` is called when a strike lands,
+  // `hooks.shoot(enemy, direction, weapon)` for each shot of a gun.
+  function think(e, dt, time, players, hooks) {
+    const hurt = hooks.hurt;
     const spec = e.spec;
     const p = pick(e, players);
     e.target = p;
@@ -172,7 +174,67 @@ export function createEnemies(scene, { random }) {
     const sees = !untouchable && dist < sight * 2.2;
     const strikeAt = spec.range + 0.4 * L + 0.3 * e.size;
     e.t += dt;
+    // A gun: once it is loaded and the salmon is in its range, it stops to aim (the tell),
+    // then fires. A fish big enough to swallow the salmon still goes for that when it is
+    // close enough.
+    const gun = spec.weapon?.kind === "ranged" ? spec.weapon : null;
+    if (gun) {
+      e.reload = Math.max(0, (e.reload ?? 0) - dt);
+      const swallowing = spec.swallows && e.size >= 2.2 * L && dist < strikeAt * 1.2;
+      const ready = e.mode === "lurk" || e.mode === "approach" || e.mode === "hover";
+      if (ready && sees && !swallowing && e.reload <= 0 && dist >= gun.range[0] && dist <= gun.range[1] && striking(p) < 3) {
+        e.mode = "aim";
+        e.t = 0;
+      }
+    }
     switch (e.mode) {
+      case "aim": {
+        steer(e, lead(e, fish, gun.speed, want), rate * 2, dt);
+        speed = spec.cruise * 0.1;
+        if (untouchable || dist > gun.range[1] * 1.3) {
+          e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
+          e.reload = 0.5;
+          break;
+        }
+        if (e.t > gun.tell) {
+          e.mode = "fire";
+          e.t = gun.interval;
+          e.shots = gun.burst;
+        }
+        break;
+      }
+      case "fire": {
+        steer(e, lead(e, fish, gun.speed, want), rate * 1.2, dt);
+        speed = spec.cruise * 0.1;
+        if (e.t >= gun.interval && e.shots > 0) {
+          e.t = 0;
+          e.shots--;
+          hooks.shoot?.(e, lead(e, fish, gun.speed, want).normalize(), gun);
+        }
+        if (e.shots <= 0 && e.t >= gun.interval) {
+          e.reload = gun.reload;
+          e.mode = spec.behaviour === "ambush" ? "lurk" : "hover";
+          e.t = 0;
+        }
+        break;
+      }
+      case "hover": {
+        // A gunner between bursts: round the salmon at a middle distance, closing in only if
+        // it is too far.
+        const radius = (gun.range[0] + gun.range[1]) * 0.45;
+        want.set(-to.z * e.orbit, 0, to.x * e.orbit).normalize();
+        want.addScaledVector(to, (dist - radius) / Math.max(dist, 1e-3));
+        steer(e, want, rate, dt);
+        speed = spec.cruise * 1.2;
+        if (dist > gun.range[1] * 1.5) {
+          e.mode = "approach";
+          e.t = 0;
+        } else if (spec.swallows && e.size >= 2.2 * L && dist < strikeAt && striking(p) < 2 && !untouchable) {
+          e.mode = "coil";
+          e.t = 0;
+        }
+        break;
+      }
       case "lurk": {
         // On the bed, still; turning slowly toward whatever comes near, creeping a little.
         if (sees && dist < sight * 2) steer(e, to, spec.turn * 0.4, dt);
@@ -195,6 +257,12 @@ export function createEnemies(scene, { random }) {
         }
         steer(e, lead(e, fish, spec.chase, want), rate, dt);
         speed = dist > strikeAt * 3 ? spec.chase : spec.chase * 0.6;
+        // A gunner stops closing in at its range and circles there.
+        if (gun && dist < gun.range[1] * 0.85 && !(spec.swallows && e.size >= 2.2 * L)) {
+          e.mode = "hover";
+          e.t = 0;
+          break;
+        }
         if (spec.behaviour === "stalker" && dist < strikeAt && striking(p) < 2) {
           e.mode = "coil";
           e.t = 0;
@@ -283,7 +351,7 @@ export function createEnemies(scene, { random }) {
     e.gape += (0.35 - e.gape) * (1 - Math.exp(-dt * 2));
   }
 
-  function update(dt, time, players, hurt) {
+  function update(dt, time, players, hooks) {
     whiffs.length = 0;
     for (const crowd of Object.values(crowds)) crowd.begin();
     for (let i = list.length - 1; i >= 0; i--) {
@@ -295,7 +363,7 @@ export function createEnemies(scene, { random }) {
           continue;
         }
       } else {
-        let speed = think(e, dt, time, players, hurt);
+        let speed = think(e, dt, time, players, hooks);
         if (e.stagger > 0) {
           e.stagger -= dt;
           speed *= 0.25;
@@ -321,7 +389,7 @@ export function createEnemies(scene, { random }) {
         e.position.y = e.spec.bottom && e.mode === "lurk" ? low : clamp(e.position.y, low, high);
         const beat = 0.6 + (e.speed / e.size) * 1.4;
         e.phase = (e.phase + dt * TAU * beat) % TAU;
-        const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" ? 0.35 : 0.08;
+        const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;
         e.gape += (wantGape - e.gape) * (1 - Math.exp(-dt * 12));
       }
       // (A dead fish's fins hang still.)
@@ -367,7 +435,7 @@ export function createEnemies(scene, { random }) {
       const k = (e.size / MODEL_LENGTH) * fade;
       matrix.compose(e.position, quaternion, scale.set(k, k, k));
       crowd.body.setMatrixAt(slot, matrix);
-      const coiled = e.mode === "coil";
+      const coiled = e.mode === "coil" || e.mode === "aim";
       const amplitude = e.dead ? 0 : coiled ? 0.95 : 0.3 + Math.min(0.5, (e.speed / e.size) * 0.4);
       crowd.swim.setXYZW(slot, e.phase, amplitude, 0, e.mode === "lurk" ? 0.5 : 0.1);
       crowd.fin.setX(slot, e.finPhase);
