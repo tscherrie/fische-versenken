@@ -1935,10 +1935,14 @@ function shadeFarFish(materials, mesh) {
 // Where the crowds of fish are looked at from, for their distance detail and to leave out
 // the ones out of sight: the game's camera, the canvas it draws on (for its height in
 // pixels), the scene (for how far one sees through its water) and the sun's shadow camera
-// (a fish out of view may still cast a shadow into it). Set once by the game.
-const fishView = { camera: null, canvas: null, scene: null, shadow: null };
+// (a fish out of view may still cast a shadow into it). Set once by the game. The canvas's
+// height is kept from a resize observer: clientHeight read in split(), twice a frame, made
+// the browser work out the page's style there and then, after whatever the frame had
+// changed on the screen so far (the threat arrows, the bars).
+const fishView = { camera: null, canvas: null, scene: null, shadow: null, height: 900 };
 export function setFishView(camera, canvas, scene, shadow = null) {
-  Object.assign(fishView, { camera, canvas, scene, shadow });
+  Object.assign(fishView, { camera, canvas, scene, shadow, height: canvas?.clientHeight || 900 });
+  if (canvas) new ResizeObserver(() => (fishView.height = canvas.clientHeight || 900)).observe(canvas);
 }
 const lodFrustum = new THREE.Frustum(),
   shadowFrustum = new THREE.Frustum(),
@@ -2098,7 +2102,7 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
       // (Through the water: at this distance next to nothing of a fish gets through.)
       const density = fishView.scene?.fog?.density ?? 0;
       if (density > 0) reach = 3.5 / density;
-      perUnit = (fishView.canvas?.clientHeight || 900) / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      perUnit = fishView.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
       small = fishQuality.fine ? 48 : 64;
       const shadow = fishView.shadow;
       shadowed = body.castShadow && !!shadow;
