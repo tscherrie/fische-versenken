@@ -5,7 +5,8 @@
 //
 // The pictures and numbers land in shots/<set>/. The development server
 // (tools/capture-server.mjs) is started if it is not running yet. --headed shows the window;
-// --webgl passes ?webgl to the game (for a renderer that can fall back to WebGL 2).
+// --webgl passes ?webgl to the game (for a renderer that can fall back to WebGL 2);
+// --costs times each part of the scene, --plantab the water plants (src/dev/shots.js).
 
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -56,7 +57,7 @@ if (only) query.set("only", only);
 if (args.includes("--webgl")) query.set("webgl", "");
 if (args.includes("--stages")) query.set("stages", "");
 if (args.includes("--smoke")) query.set("smoke", "");
-for (const flag of ["fixsun", "nomirror", "noamb", "costs", "dumpwindow"]) if (args.includes(`--${flag}`)) query.set(flag, "");
+for (const flag of ["fixsun", "nomirror", "noamb", "costs", "plantab", "dumpwindow"]) if (args.includes(`--${flag}`)) query.set(flag, "");
 if (option("quality")) query.set("q", option("quality"));
 // (--xname[=value]: passed on as ?xname=value, for a switch tried out in the game's code.)
 for (const a of args) if (a.startsWith("--x")) query.set(a.slice(2).split("=")[0], a.split("=")[1] ?? "");
@@ -105,7 +106,7 @@ while (finished < list.length) {
     console.log(`${set}: ${finished}/${list.length}`);
   }
   // A point that takes over two minutes has hung (ten when every part is being timed).
-  if (Date.now() - lastProgress > (args.includes("--costs") ? 600000 : 120000)) {
+  if (Date.now() - lastProgress > (args.includes("--costs") || args.includes("--plantab") ? 600000 : 120000)) {
     console.error(`stuck after ${finished} of ${list.length}`);
     break;
   }
