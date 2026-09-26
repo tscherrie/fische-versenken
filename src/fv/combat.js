@@ -285,6 +285,7 @@ export function createCombat(game) {
     for (const p of projectiles.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     // (A spent bullet, sinking, is only a faint glint until it gets a look of its own.)
     for (const p of hostile.live) {
+      if (p.rested) continue;
       const k = p.spent ? 0.06 : 1;
       fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     }

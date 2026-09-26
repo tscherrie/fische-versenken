@@ -11,6 +11,8 @@ import { bed, level, locate } from "../course.js";
 // Below this share of its first speed a bullet is spent: harmless, sinking.
 const SPENT = 0.25;
 const SINK = 0.45;
+// A spent round that reached the bed lies there this long, then goes.
+const REST = 8;
 
 export function createHostile({ capacity = 160 } = {}) {
   const live = [];
@@ -51,11 +53,15 @@ export function createHostile({ capacity = 160 } = {}) {
 
   // A shot: `drag` is how fast the water takes its speed (per second).
   function fire(shot) {
+    // (Full: the oldest goes, which is most likely a round lying on the bed.)
     if (live.length >= capacity) live.shift();
     shot.age = 0;
     shot.speed0 = shot.velocity.length();
     shot.drag ??= 1.5;
     shot.spent = false;
+    // Seconds since it was spent, and whether it lies on the bed.
+    shot.spentAge = 0;
+    shot.rested = false;
     shot.river = { s: shot.s ?? null, u: 0 };
     shot.last = shot.position.clone();
     live.push(shot);
@@ -70,8 +76,14 @@ export function createHostile({ capacity = 160 } = {}) {
         live.splice(i, 1);
         continue;
       }
+      if (p.rested) {
+        p.spentAge += dt;
+        if (p.spentAge > REST + (p.restAt ?? 0)) live.splice(i, 1);
+        continue;
+      }
       p.last.copy(p.position);
       p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
+      if (p.spent) p.spentAge += dt;
       if (!p.spent && p.velocity.length() < SPENT * p.speed0) p.spent = true;
       if (p.spent) p.velocity.y += (-SINK - p.velocity.y) * (1 - Math.exp(-dt * 2));
       p.position.addScaledVector(p.velocity, dt);
@@ -100,7 +112,16 @@ export function createHostile({ capacity = 160 } = {}) {
         continue;
       }
       locate(p.position.x, p.position.z, p.river.s, p.river);
-      if (p.position.y < bed(p.river.s, p.river.u)) {
+      const floor = bed(p.river.s, p.river.u);
+      if (p.position.y < floor) {
+        // A spent round settles on the bed; a live one strikes it and is gone.
+        if (p.spent) {
+          p.position.y = floor;
+          p.velocity.set(0, 0, 0);
+          p.rested = true;
+          p.restAt = p.spentAge;
+          continue;
+        }
         live.splice(i, 1);
         onGround?.(p);
         continue;
