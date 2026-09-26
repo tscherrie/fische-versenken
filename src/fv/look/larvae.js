@@ -330,22 +330,33 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     m[14] += e.position.z;
     mesh.setMatrixAt(slot, matrix);
 
-    // What the jaws or the mask do, from gape and, where the record says, the plan of attack.
+    // What the jaws or the mask do, from gape and, where the record says, the plan of attack:
+    // drawn up (coil) the weapon is cocked, in the strike it is out for as long as the lunge
+    // lasts, and it snaps shut as the enemy turns away (recover: it has hit, or missed).
     const gape = e.gape ?? 0;
     let jaw, claw;
     if (mesh === kinds.beetleLarva.mesh) {
-      // Cocked wide, snapped shut once the lunge has gone home.
-      jaw = dead ? 0.35 : mode === "coil" ? Math.max(gape, ease(0, 0.2, t)) : mode === "strike" ? 1 - ease(0.14, 0.22, t) : gape;
+      // The mandibles: wide open drawn up and lunging, shut in a tenth of a second after.
+      if (dead) jaw = 0.35;
+      else if (mode === "coil") jaw = Math.max(gape, ease(0, 0.2, t));
+      else if (mode === "strike") jaw = 1;
+      else if (mode === "recover") jaw = Math.max(gape, 1 - ease(0, 0.1, t));
+      else jaw = gape;
       claw = 0;
     } else {
-      // The mask: held back while it draws up, shot out in a few hundredths of a second, held
-      // out a moment, drawn back in.
+      // The mask: held folded while it draws up (the hooks already parting), shot out in a few
+      // hundredths of a second and held out through the lunge, the hooks closing as it turns
+      // away and the mask drawn back in.
       if (dead) jaw = 0.12;
-      else if (mode === "strike") jaw = ease(0, 0.07, t) * (1 - ease(0.3, 0.5, t));
-      else if (mode === "recover") jaw = t < 0.2 ? 0.3 * (1 - ease(0, 0.2, t)) : 0;
+      else if (mode === "strike") jaw = ease(0, 0.07, t);
+      else if (mode === "recover") jaw = 1 - ease(0.04, 0.3, t);
       else if (mode === "coil" || mode === "approach" || mode === "lurk") jaw = 0;
       else jaw = clamp((gape - 0.35) / 0.65, 0, 1);
-      claw = dead ? 0.35 : mode === "coil" ? 0.4 * ease(0, 0.2, t) : mode === "strike" ? 1 - ease(0.07, 0.13, t) : 0;
+      if (dead) claw = 0.35;
+      else if (mode === "coil") claw = 0.4 * ease(0, 0.2, t);
+      else if (mode === "strike") claw = 0.4 + 0.6 * ease(0.02, 0.06, t);
+      else if (mode === "recover") claw = 1 - ease(0, 0.06, t);
+      else claw = 0;
     }
     const limp = dead ? ease(0, Math.PI, e.rolled ?? Math.PI) : 0;
     const speedStride = e.speed === undefined ? 1 : clamp(0.35 + e.speed / Math.max(0.05, e.size * 0.8), 0.35, 1.3);
