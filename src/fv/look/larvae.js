@@ -5,16 +5,19 @@
 // sees them, the water's mirror and window do not draw them again.
 //
 //   const larvae = createLarvae(scene, { capacity: 24, light });
-//   larvae.draw(enemies.list);   // every frame, with the whole list
+//   larvae.draw(enemies.list, dt);   // every frame, with the whole list (dt is optional)
 //
 // draw() picks out the records with `spec.render === "larva"` and poses each from what the
 // enemy system keeps on it: position (the body's centre, REST.foot of its size above the
-// ground), heading, size; phase drives the legs; gape, mode and t open the jaws or shoot the
-// mask, rear it toward its prey and jab it forward in the strike (t below 0 in recover is a
-// larva held back, not attacking); dead and rolled turn it limp, legs curled, on its back
-// where the enemy system lays a corpse. A third draw lays a soft dark patch on the ground
-// under each one, so the camouflaged animals still stand out from the gravel at the distance
-// the player meets them. Nothing is allocated per frame.
+// ground), heading, size; tilt pitches it up or down a slope, or as it swims up; grounded and
+// climbing say whether it walks or swims (up to the alevin: its legs row or fold back then);
+// phase drives the legs; gape, mode and t open the jaws or shoot the mask, rear it toward its
+// prey and jab it forward in the strike (t below 0 in recover is a larva held back, not
+// attacking); dead and rolled turn it limp, legs curled, on its back where the enemy system
+// lays a corpse. A third draw lays a soft dark patch on the ground under each one, so the
+// camouflaged animals still stand out from the gravel at the distance the player meets them;
+// it stays on the ground a larva leaves as it swims up, and fades as it rises. Nothing is
+// allocated per frame.
 //
 // The shader moves each part itself (larva-shapes.js rigs them): a leg swings at the hip and
 // lifts on its way forward in the insects' tripod gait and folds at the knee when the animal
@@ -68,16 +71,13 @@ import {
 import { ownInstanceMatrix } from "../../render/instancing.js";
 import { underwaterInscatter } from "../../render/fog.js";
 import { waterLit } from "../../render/water.js";
+import { CORPSE_SECONDS } from "../enemies.js";
 import { BACK, EYE, MASK, PART, REST, WAIST, beetleLarvaGeometry, dragonflyLarvaGeometry } from "./larva-shapes.js";
 
 export { REST };
 
 const LAYER = 1;
 const TAU = Math.PI * 2;
-// A dead enemy's record stays this long, fading out over its last second and a half, as the
-// enemy system's own crowds do. (Main's fv/enemies.js exports it as CORPSE_SECONDS: import it
-// from there once look-models has main merged in; the branch's base does not have it yet.)
-const CORPSE_SECONDS = 40;
 
 const rotX = (v, a) => {
   const c = cos(a),
@@ -96,13 +96,18 @@ const rotZ = (v, a) => {
 };
 
 // How each kind looks beyond its shape: its mottling (0 fine grain, 1 blotched camouflage),
-// how far the abdomen sways as it crawls, how high it rears when it draws up to strike, how
-// far (in its lengths) it jabs forward as the strike goes off, and the size of the dark
-// patch it leaves on the gravel under it (long, wide).
+// how far the abdomen sways as it crawls and as it swims, how high it rears when it draws up
+// to strike, how far (in its lengths) it jabs forward as the strike goes off, and the size of
+// the dark patch it leaves on the gravel under it (long, wide). (The beetle larva swims by
+// rowing and wriggling; the dragonfly larva by jetting water out of its gut, its legs laid
+// back and its body still.)
 const KIND = {
-  beetleLarva: { shape: beetleLarvaGeometry, blotch: 0, relief: 1, sway: 0.05, rear: 0.24, jab: 0.1, shadow: [1.3, 0.52] },
-  dragonflyLarva: { shape: dragonflyLarvaGeometry, blotch: 1, relief: 0.5, sway: 0.012, rear: 0.2, jab: 0.13, shadow: [1.25, 0.72] },
+  beetleLarva: { shape: beetleLarvaGeometry, blotch: 0, relief: 1, sway: 0.05, swimSway: 0.11, rear: 0.24, jab: 0.1, shadow: [1.3, 0.52] },
+  dragonflyLarva: { shape: dragonflyLarvaGeometry, blotch: 1, relief: 0.5, sway: 0.012, swimSway: 0.02, rear: 0.2, jab: 0.13, shadow: [1.25, 0.72] },
 };
+// The steepest the body is tilted, either way (the ground's sample under the head can land on
+// the side of a pebble).
+const MAX_TILT = 0.8;
 // How many facets across a radian of the compound eye.
 const FACETS = 11;
 
@@ -124,20 +129,33 @@ function larvaMaterial(mesh, kind, { light }) {
       pivot = rig.yzw;
     const phase = state.x,
       jaw = state.y,
-      claw = state.z,
-      limp = state.w;
+      claw = state.z;
+    // (One number for two states that never come together: dead above 0, swimming below.)
+    const limp = max(state.w, 0),
+      swim = max(state.w.negate(), 0);
     const stride = look.y;
 
     // The legs, in the insects' tripod: the front and hind legs of one side step with the
     // middle leg of the other. A leg swings forward lifted and pushes back on the ground; dead,
-    // it folds in under the body and bends at the knee.
+    // it folds in under the body and bends at the knee. Swimming, the beetle larva's legs
+    // row together, spread level, the hind pair a little behind, folded on the way forward;
+    // the dragonfly larva lays its legs back along its sides.
     const leg = part.sub(PART.leg);
     const pair = floor(leg.mul(0.5).add(0.01));
     const sideBit = leg.sub(pair.mul(2));
     const side = sideBit.mul(-2).add(1);
     const ph = phase.add(fract(pair.add(sideBit).mul(0.5)).mul(TAU));
-    const swing = sin(ph).mul(0.34).mul(stride).mul(side);
-    const lift = max(cos(ph), 0).mul(0.4).mul(stride);
+    let swimSwing, swimLift;
+    if (kind === "beetleLarva") {
+      const stroke = phase.sub(pair.mul(0.6));
+      swimSwing = sin(stroke).mul(0.5).sub(0.2);
+      swimLift = max(cos(stroke), 0).mul(0.15).add(0.3);
+    } else {
+      swimSwing = sin(phase.add(pair)).mul(0.04).sub(1.05);
+      swimLift = float(0.38);
+    }
+    const swing = mix(sin(ph).mul(0.34).mul(stride), swimSwing, swim).mul(side);
+    const lift = mix(max(cos(ph), 0).mul(0.4).mul(stride), swimLift, swim);
     const hip = side.mul(limp.mul(1.05).sub(lift));
     const knee = side.mul(limp.mul(1.6).add(lift.mul(0.4))).mul(joint.w);
     const kneeAt = joint.xyz;
@@ -312,12 +330,13 @@ function larvaMaterial(mesh, kind, { light }) {
 
 // The dark patch under each larva: the gravel in its own shade. It grounds the animal on the
 // stones and gives it an edge against them, where its camouflage would otherwise lose it at the
-// distance the player meets it. A soft oval, darkest under the middle of the body.
-function shadowMaterial() {
+// distance the player meets it. A soft oval, darkest under the middle of the body, as dark as
+// each one's `strength` says (it pales as its larva rises off the ground).
+function shadowMaterial(strength) {
   const material = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
   const q = uv().sub(0.5).mul(2);
   material.colorNode = vec3(0);
-  material.opacityNode = smoothstep(0.3, 1, length(q)).oneMinus().mul(0.7);
+  material.opacityNode = smoothstep(0.3, 1, length(q)).oneMinus().mul(0.7).mul(varying(instancedBufferAttribute(strength)));
   return material;
 }
 
@@ -328,7 +347,7 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
   for (const [kind, def] of Object.entries(KIND)) {
     const geometry = def.shape({ detail: light ? 0.6 : 1 });
     const mesh = new THREE.InstancedMesh(geometry, undefined, capacity);
-    // Per larva: (leg phase, jaw or mask, hooks, limp) and (seed, stride, sway, size).
+    // Per larva: (leg phase, jaw or mask, hooks, limp or swimming) and (seed, stride, sway, size).
     mesh.userData.state = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
     mesh.userData.look = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -339,7 +358,9 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     triangles += geometry.index.count / 3;
   }
   // The shadows of both kinds in one draw, after the larvae (it is see-through).
-  const shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), shadowMaterial(), capacity * entries.length);
+  const room = capacity * entries.length;
+  const strength = new THREE.InstancedBufferAttribute(new Float32Array(room), 1).setUsage(THREE.DynamicDrawUsage);
+  const shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), shadowMaterial(strength), room);
   shadows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   shadows.name = "Combat larva shadows";
   shadows.renderOrder = 1;
@@ -359,6 +380,8 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
   const basis = new THREE.Matrix4();
   const turn = new THREE.Matrix4();
   const lean = new THREE.Matrix4();
+  const tip = new THREE.Matrix4();
+  const shift = new THREE.Matrix4();
   const matrix = new THREE.Matrix4();
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
   const ease = (a, b, x) => {
@@ -369,6 +392,42 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
   const TAIL = [-0.36, -REST.foot + 0.005];
   let shadowCount = 0;
 
+  // What is kept of each larva from one frame to the next, by its record's id: how far it has
+  // gone over to swimming and its tilt, both eased (so neither jumps when the enemy system flips
+  // from walking to climbing, or its sample of the ground under the head lands on another
+  // pebble), and the height and slope of the ground it last walked on (for its shadow while it
+  // swims up, and once it is dead: the record no longer says). Records without the enemy
+  // system's grounded or climbing (the look scenes' posed ones) keep nothing.
+  const keptId = new Float64Array(room).fill(NaN);
+  const keptAt = new Float64Array(room).fill(-1);
+  const keptSwim = new Float32Array(room),
+    keptTilt = new Float32Array(room),
+    keptFloor = new Float32Array(room),
+    keptSlope = new Float32Array(room);
+  let draws = 0,
+    lastDraw = -1,
+    dt = 0;
+  const tiltOf = (e) => clamp(e.tilt ?? 0, -MAX_TILT, MAX_TILT);
+  // The slot kept for e (a new one if it has none: one not used in the last draw), or -1.
+  function kept(e) {
+    let free = -1;
+    for (let i = 0; i < room; i++) {
+      if (keptId[i] === e.id) {
+        keptAt[i] = draws;
+        return i;
+      }
+      if (free < 0 && keptAt[i] < draws - 1) free = i;
+    }
+    if (free < 0) return -1;
+    keptId[free] = e.id;
+    keptAt[free] = draws;
+    keptSwim[free] = !e.dead && e.climbing ? 1 : 0;
+    keptTilt[free] = tiltOf(e);
+    keptFloor[free] = e.position.y - (e.dead ? REST.dead : REST.foot) * e.size;
+    keptSlope[free] = e.grounded ? keptTilt[free] : 0;
+    return free;
+  }
+
   function pose(slot, e, entry) {
     const { kind, mesh, def, state, look } = entry;
     const dead = !!e.dead;
@@ -377,20 +436,47 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     // goes down -- in recover: that is not an attack, and it must not look like one.)
     const t = e.t ?? 0;
     const holding = mode === "recover" && t < 0;
-    // Facing: the heading laid flat (a crawler keeps its belly to the bed).
+    // Walking or swimming, the tilt, the ground it walked on last.
+    const k0 = e.id !== undefined && (e.grounded !== undefined || e.climbing !== undefined) ? kept(e) : -1;
+    let swim, tilt, floorY, slope;
+    if (k0 >= 0) {
+      if (!dead) {
+        keptSwim[k0] += ((e.climbing ? 1 : 0) - keptSwim[k0]) * (1 - Math.exp(-dt * 6));
+        keptTilt[k0] += (tiltOf(e) - keptTilt[k0]) * (1 - Math.exp(-dt * 12));
+        if (e.grounded) {
+          keptFloor[k0] = e.position.y - REST.foot * e.size;
+          keptSlope[k0] = keptTilt[k0];
+        }
+      }
+      swim = keptSwim[k0];
+      tilt = keptTilt[k0];
+      floorY = keptFloor[k0];
+      slope = keptSlope[k0];
+    } else {
+      swim = !dead && e.climbing ? 1 : 0;
+      tilt = tiltOf(e);
+      floorY = e.position.y - (dead ? REST.dead : REST.foot) * e.size;
+      slope = e.climbing ? 0 : tilt;
+    }
+    if (dead) swim = 0;
+
+    // Facing: the heading laid flat; the tilt then pitches it about the ground under its middle.
     X.set(e.heading.x, 0, e.heading.z);
     if (X.lengthSq() < 1e-8) X.set(1, 0, 0);
     X.normalize();
     Z.set(-X.z, 0, X.x);
     basis.makeBasis(X, Y, Z);
-    // Dead, it lies still on its back (no rocking: it lies on the stones, not in open water).
+    // Dead, it lies still on its back (no rocking: it lies on the stones, not in open water),
+    // and flat: the tilt it had goes as it rolls over.
     const rolled = dead ? (e.rolled ?? Math.PI) : (e.rolled ?? 0);
     if (rolled !== 0) basis.multiply(turn.makeRotationX(rolled));
+    const over = (1 - Math.cos(rolled)) * 0.5;
+    const pitch = dead ? tilt * (1 - over) : tilt;
     // Drawing up to strike, it rears its head toward its prey (higher when the prey is above
-    // it: the heading's own rise, which the flat body does not follow otherwise); it holds that
-    // through the strike, the mask or the jaws shooting out along it, and jabs forward as the
-    // strike goes off; turning away, it settles back.
-    const aim = Math.max(def.rear, Math.min(0.3, Math.asin(clamp(e.heading.y, -1, 1))));
+    // the line the tilt already gives it); it holds that through the strike, the mask or the
+    // jaws shooting out along it, and jabs forward as the strike goes off; turning away, it
+    // settles back.
+    const aim = Math.max(def.rear, Math.min(0.3, Math.asin(clamp(e.heading.y, -1, 1)) - pitch));
     let rear = 0,
       jab = 0;
     if (!dead && mode === "coil") rear = aim * ease(0, 0.25, t);
@@ -407,35 +493,51 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
         s = Math.sin(rear);
       lean.setPosition(TAIL[0] - (TAIL[0] * c - TAIL[1] * s), TAIL[1] - (TAIL[0] * s + TAIL[1] * c), 0);
     }
+    const c = Math.cos(pitch),
+      s = Math.sin(pitch);
+    if (pitch !== 0) tip.makeRotationZ(pitch).setPosition(-REST.foot * s, -REST.foot + REST.foot * c, 0);
     const fade = dead ? clamp((CORPSE_SECONDS - (e.corpse ?? 0)) / 1.5, 0, 1) : 1;
     const k = e.size * fade;
     matrix.makeScale(k, k, k);
+    if (pitch !== 0) matrix.multiply(tip);
+    if (jab !== 0) matrix.multiply(shift.makeTranslation(jab, 0, 0));
     if (rear !== 0) matrix.multiply(lean);
     matrix.premultiply(basis);
-    // (The lean's own shift stays: the place is added to it, not set over it.) On its back, a
-    // dead one is lifted so its back, not its middle, lies where the enemy system lays it.
-    const over = (1 - Math.cos(rolled)) * 0.5;
-    const raise = dead ? (BACK[kind] - REST.dead) * over * e.size : 0;
+    // (The lean's own shift stays: the place is added to it, not set over it.) A dead one lies
+    // lower than a live one stands (REST): lifted so its feet, and once over its back, not its
+    // middle, rest where the enemy system lays it.
+    const raise = dead ? ((REST.foot - REST.dead) * (1 - over) + (BACK[kind] - REST.dead) * over) * e.size : 0;
     const m = matrix.elements;
-    m[12] += e.position.x + X.x * jab * e.size;
+    m[12] += e.position.x;
     m[13] += e.position.y + raise;
-    m[14] += e.position.z + X.z * jab * e.size;
+    m[14] += e.position.z;
     mesh.setMatrixAt(slot, matrix);
 
-    // Its shadow on the ground under it (where the feet, or a dead one's back, touch it). (Each
-    // kind has room for `capacity`, so the shadows never run out before the larvae do.)
+    // Its shadow on the ground under it: where its feet stand, tilted with them; or, swimming
+    // up or sinking dead, on the ground it left (or, dead, the lower ground it comes down to),
+    // paler and wider the higher it is. (Each kind has room for `capacity`, so the shadows never
+    // run out before the larvae do.)
     const [long, wide] = def.shadow;
-    const under = (dead ? REST.dead : REST.foot) * e.size - 0.004 * e.size;
-    matrix.makeBasis(X, Y, Z);
-    m[0] *= long * k;
-    m[1] *= long * k;
-    m[2] *= long * k;
-    m[8] *= wide * k;
-    m[9] *= wide * k;
-    m[10] *= wide * k;
-    m[12] = e.position.x + X.x * (jab - 0.04) * e.size;
-    m[13] = e.position.y - under;
-    m[14] = e.position.z + X.z * (jab - 0.04) * e.size;
+    const bottom = e.position.y - (dead ? REST.dead : REST.foot) * e.size;
+    const groundY = Math.min(floorY, bottom);
+    const rise = Math.max(0, bottom - groundY) / e.size;
+    const spread = 1 + 0.6 * Math.min(rise, 1.5);
+    const lie = dead ? slope * (1 - over) : swim > 0.5 ? slope : pitch;
+    const lc = Math.cos(lie),
+      ls = Math.sin(lie);
+    const along = (jab - 0.04) * e.size,
+      clear = 0.004 * e.size;
+    matrix.makeBasis(X, Y, Z).multiply(turn.makeRotationZ(lie));
+    m[0] *= long * k * spread;
+    m[1] *= long * k * spread;
+    m[2] *= long * k * spread;
+    m[8] *= wide * k * spread;
+    m[9] *= wide * k * spread;
+    m[10] *= wide * k * spread;
+    m[12] = e.position.x + X.x * (along * lc - clear * ls);
+    m[13] = groundY + along * ls + clear * lc;
+    m[14] = e.position.z + X.z * (along * lc - clear * ls);
+    strength.array[shadowCount] = 1 - ease(0, 1.5, rise);
     shadows.setMatrixAt(shadowCount++, matrix);
 
     // What the jaws or the mask do, from gape and, where the record says, the plan of attack:
@@ -473,11 +575,11 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     state[i] = e.phase ?? 0;
     state[i + 1] = jaw;
     state[i + 2] = claw;
-    state[i + 3] = limp;
+    state[i + 3] = dead ? limp : -swim;
     const id = e.id ?? slot + 1;
     look[i] = ((id * 0.6180339) % 1) * 10;
     look[i + 1] = stride;
-    look[i + 2] = def.sway * (dead ? 0 : Math.min(1, stride));
+    look[i + 2] = dead ? 0 : def.sway * Math.min(1, stride) * (1 - swim) + def.swimSway * swim;
     look[i + 3] = e.size;
   }
 
@@ -485,8 +587,14 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     // For the numbers: triangles of one of each.
     triangles,
     meshes: [kinds.beetleLarva.mesh, kinds.dragonflyLarva.mesh, shadows],
-    // Every frame, with the whole enemy list (or any list of such records).
-    draw(list) {
+    // Every frame, with the whole enemy list (or any list of such records), and the seconds
+    // since the last frame if the caller has them (a pause or slow motion then holds the easing
+    // too); without them the page's clock is used.
+    draw(list, seconds) {
+      const now = performance.now();
+      dt = typeof seconds === "number" ? Math.max(0, seconds) : lastDraw < 0 ? 0 : clamp((now - lastDraw) / 1000, 0, 0.1);
+      lastDraw = now;
+      draws++;
       kinds.beetleLarva.n = 0;
       kinds.dragonflyLarva.n = 0;
       shadowCount = 0;
@@ -508,6 +616,7 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
       if (shadowCount > 0 || shadows.count > 0) {
         shadows.count = shadowCount;
         shadows.instanceMatrix.needsUpdate = true;
+        strength.needsUpdate = true;
       }
     },
   };
