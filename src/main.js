@@ -850,36 +850,28 @@ async function start() {
     if (!ballShown) return;
     ballShown = false;
     huntBar.hidden = true;
-    goal.classList.remove("on");
+    if (goal) arrowClass(goal, "on", false);
     if (quiet || mode.vegan) return;
     const n = baitball.caught;
     track("ball", { outcome: "end", caught: n, kind: baitball.ball.kind });
     hud.toast(n >= 8 ? "Festmahl!" : "Der Ball zerstiebt", `Erbeutet: ${n}`, 5);
     if (n >= 8) feat("ball", { delay: 1.5 });
   }
-  // The green arrow to the ball, when it is off the screen or far.
-  const goal = document.createElement("div");
-  goal.className = "threat goal";
-  goal.innerHTML = '<svg viewBox="0 0 40 26"><path d="M5 22 20 6l15 16" /></svg><span class="name"></span>';
+  // The green arrow to the ball, when it is off the screen or far: made like the hunters'
+  // arrows (below) at the first frame, so it comes after theirs.
+  let goal = null;
   function goalArrow() {
-    if (!goal.parentNode) threatBox.append(goal);
+    goal ??= arrowElement("threat goal");
     const b = baitball.ball;
     const show = baitball.on && dead <= 0 && fish.position.distanceTo(b.centre) > b.radius + 10;
-    goal.classList.toggle("on", show);
+    arrowClass(goal, "on", show);
     if (!show) return;
-    const w = habitat.clientWidth,
-      h = habitat.clientHeight;
     ballAt.copy(b.centre).project(camera);
-    let x = ballAt.x * w * 0.5,
-      y = -ballAt.y * h * 0.5;
+    let x = ballAt.x * arrowBox.w * 0.5,
+      y = -ballAt.y * arrowBox.h * 0.5;
     if (ballAt.z > 1) (x = -x), (y = -y);
-    const a = Math.atan2(y, x);
-    const px = w * 0.5 + Math.cos(a) * w * 0.4,
-      py = h * 0.5 + Math.sin(a) * h * 0.36;
-    goal.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
-    goal.firstChild.style.transform = `rotate(${(a + Math.PI / 2).toFixed(3)}rad)`;
-    const name = goal.querySelector(".name");
-    if (name.textContent !== translate(b.title)) name.textContent = translate(b.title);
+    pointArrow(goal, x, y);
+    arrowName(goal, translate(b.title));
   }
   // The scent of home (scent.js): at sea a spawner finds its river by the smell of the brook
   // it hatched in -- a bar for how strong it is and whether it grows the way it swims; the
@@ -1582,13 +1574,37 @@ async function start() {
   threatBox.id = "threats";
   threatBox.setAttribute("aria-hidden", "true");
   habitat.append(threatBox);
-  const arrows = Array.from({ length: 4 }, () => {
+  // The arrows cost the page no layout: each is made once, and a frame writes only what
+  // changed since the last one -- mostly its place and its turn, as transforms; a class, a
+  // name or a fade only when that changes. The ring's size comes from a resize observer:
+  // clientWidth read mid-frame would have the browser work out style and layout there and
+  // then.
+  const arrowBox = { w: habitat.clientWidth, h: habitat.clientHeight };
+  new ResizeObserver(() => ((arrowBox.w = habitat.clientWidth), (arrowBox.h = habitat.clientHeight))).observe(habitat);
+  function arrowElement(className) {
     const el = document.createElement("div");
-    el.className = "threat";
+    el.className = className;
     el.innerHTML = '<svg viewBox="0 0 40 26"><path d="M5 22 20 6l15 16" /></svg><span class="name"></span>';
     threatBox.append(el);
-    return el;
-  });
+    return { el, svg: el.firstChild, name: el.lastChild, key: null, on: false, hunt: false, coil: false, title: "", fade: "", move: "", turn: "" };
+  }
+  // On the ring, towards (x, y) from the middle of the screen, and turned that way.
+  function pointArrow(arrow, x, y) {
+    const a = Math.atan2(y, x);
+    const move = `translate(${(arrowBox.w * 0.5 + Math.cos(a) * arrowBox.w * 0.4).toFixed(1)}px, ${(arrowBox.h * 0.5 + Math.sin(a) * arrowBox.h * 0.36).toFixed(1)}px)`;
+    const turn = `rotate(${(a + Math.PI / 2).toFixed(3)}rad)`;
+    if (move !== arrow.move) arrow.el.style.transform = arrow.move = move;
+    if (turn !== arrow.turn) arrow.svg.style.transform = arrow.turn = turn;
+  }
+  function arrowClass(arrow, name, on) {
+    if (arrow[name] === on) return;
+    arrow[name] = on;
+    arrow.el.classList.toggle(name, on);
+  }
+  function arrowName(arrow, title) {
+    if (title !== arrow.title) arrow.name.textContent = arrow.title = title;
+  }
+  const arrows = Array.from({ length: 4 }, () => arrowElement("threat"));
   const threatList = [];
   const threatAt = new THREE.Vector3();
   const warned = new WeakMap();
@@ -1597,14 +1613,23 @@ async function start() {
     const list = dead > 0 || celebration.active || fish.safe || mode.vegan ? [] : life.hunters.threats(fish, threatList);
     if (list === threatList && redd.on) redd.threats(fish, list);
     list.sort((a, b) => b.level - a.level);
-    const w = habitat.clientWidth,
-      h = habitat.clientHeight;
-    for (let i = 0; i < arrows.length; i++) {
-      const el = arrows[i];
+    const w = arrowBox.w,
+      h = arrowBox.h;
+    const shown = Math.min(list.length, arrows.length);
+    // A hunter keeps its arrow while it is among the four shown (the list is made afresh
+    // each frame, the hunters' keys stay), so an arrow changes its name and colour only
+    // when its hunter changes; one newly shown takes an arrow left free.
+    for (const arrow of arrows) {
+      let kept = false;
+      for (let i = 0; i < shown; i++) if (list[i].key === arrow.key) kept = true;
+      if (!kept) arrow.key = null;
+    }
+    for (let i = 0; i < shown; i++) {
       const th = list[i];
-      if (!th) {
-        el.classList.remove("on", "hunt", "coil");
-        continue;
+      let arrow = arrows.find((a) => a.key !== null && a.key === th.key);
+      if (!arrow) {
+        arrow = arrows.find((a) => a.key === null);
+        arrow.key = th.key ?? th;
       }
       threatAt.copy(th.position);
       if (th.above) threatAt.y += 6;
@@ -1616,17 +1641,13 @@ async function start() {
       // For the ear: where it is, left to right, and how near.
       th.pan = clamp(x / (w * 0.5), -1, 1);
       th.near = 1 - clamp(th.position.distanceTo(fish.position) / 45, 0, 1);
-      const a = Math.atan2(y, x);
-      const px = w * 0.5 + Math.cos(a) * w * 0.4,
-        py = h * 0.5 + Math.sin(a) * h * 0.36;
-      el.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
-      el.firstChild.style.transform = `rotate(${(a + Math.PI / 2).toFixed(3)}rad)`;
-      el.style.opacity = (0.4 + 0.6 * th.level).toFixed(2);
-      el.classList.add("on");
-      el.classList.toggle("hunt", th.level >= 0.7);
-      el.classList.toggle("coil", !!th.coiled);
-      const name = el.querySelector(".name");
-      if (name.textContent !== translate(th.title)) name.textContent = translate(th.title);
+      pointArrow(arrow, x, y);
+      const fade = (0.4 + 0.6 * th.level).toFixed(2);
+      if (fade !== arrow.fade) arrow.el.style.opacity = arrow.fade = fade;
+      arrowClass(arrow, "on", true);
+      arrowClass(arrow, "hunt", th.level >= 0.7);
+      arrowClass(arrow, "coil", !!th.coiled);
+      arrowName(arrow, translate(th.title));
       // Its name in words when it starts hunting, once in a while.
       if (th.level >= 0.8 && th.key && time - (warned.get(th.key) ?? -1e9) > 20) {
         warned.set(th.key, time);
@@ -1635,6 +1656,12 @@ async function start() {
       if (th.level >= 0.6)
         hud.tip("warn", "<b>Gefahr!</b> Die Pfeile am Bildrand zeigen, wo dich ein Jäger im Blick hat: gelb – er hat dich bemerkt, rot – er jagt dich. Pulsiert der Pfeil, stößt er gleich zu: jetzt zur Seite ausweichen!", 11);
     }
+    for (const arrow of arrows)
+      if (arrow.key === null) {
+        arrowClass(arrow, "on", false);
+        arrowClass(arrow, "hunt", false);
+        arrowClass(arrow, "coil", false);
+      }
     // And by ear: a swell where one notices the fish, pulses from the one hunting it, a
     // quickening tick before a strike (the heart beats then as well).
     sound.warn(list);
