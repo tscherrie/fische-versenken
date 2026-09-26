@@ -6,7 +6,7 @@
 // carried there is left behind in a capsule of its own -- for five seconds it can take that
 // back, and a teammate can have it. A capsule also sinks down at every stage-up with the new
 // stage's weapon, the old king leaves the katana, and a weapon lost with a death waits a
-// minute where the fish died.
+// minute where the fish died. (item.stage is the weapon's stage, for the capsule's colour.)
 
 import * as THREE from "three";
 import { randomGenerator } from "../../shared/random.js";
@@ -99,12 +99,12 @@ export function createPickups({ weapons, random = Math.random }) {
       if (!usable(id)) return;
       const f = player.fish;
       const p = at ? at.clone() : f.position.clone().addScaledVector(f.heading, 1.5 + 2 * f.length);
-      add({ x: p.x, y: p.y + 1.5 + f.length, z: p.z, weapon: id, place: ARSENAL[id]?.place ?? "back", owner: player.id, sinking: true, life: 180, stage: f.stage, size: 0.4 + 0.25 * f.length });
+      add({ x: p.x, y: p.y + 1.5 + f.length, z: p.z, weapon: id, place: ARSENAL[id]?.place ?? "back", owner: player.id, sinking: true, life: 180, stage: ARSENAL[id]?.stage, size: 0.4 + 0.25 * f.length });
     },
     // A weapon left where a fish died: a minute to come back for it.
     revenge(player, id, at) {
       if (!id || !usable(id)) return;
-      add({ x: at.x, y: at.y, z: at.z, weapon: id, place: ARSENAL[id]?.place ?? "back", owner: null, life: REVENGE_LIFE, lock: 0, stage: player.fish.stage, size: 0.4 + 0.25 * player.fish.length });
+      add({ x: at.x, y: at.y, z: at.z, weapon: id, place: ARSENAL[id]?.place ?? "back", owner: null, life: REVENGE_LIFE, lock: 0, stage: ARSENAL[id]?.stage, size: 0.4 + 0.25 * player.fish.length });
     },
     // Each step: slots near the player come up with a capsule rolled for it; capsules are
     // taken by swimming into them.
@@ -128,7 +128,7 @@ export function createPickups({ weapons, random = Math.random }) {
           if (!id) continue;
           const floor = bed(slot.s, slot.u);
           const y = Math.min(level(slot.s) - 0.4, (slot.y ?? floor) + 0.35 + 0.2 * f.length);
-          add({ x: slot.x, y, z: slot.z, weapon: id, place: ARSENAL[id].place, owner: player.id, slot: slot.id, band, life: 1e9, stage: f.stage, size: 0.4 + 0.25 * f.length, hidden: slot.hidden });
+          add({ x: slot.x, y, z: slot.z, weapon: id, place: ARSENAL[id].place, owner: player.id, slot: slot.id, band, life: 1e9, stage: ARSENAL[id].stage, size: 0.4 + 0.25 * f.length, hidden: slot.hidden });
         }
       }
       for (let i = items.length - 1; i >= 0; i--) {
@@ -164,7 +164,7 @@ export function createPickups({ weapons, random = Math.random }) {
           if (item.slot !== undefined) slots[item.slot].taken.add(item.band);
           // What it carried waits in a capsule of its own (locked for it a moment, unless it
           // swims back in within the few seconds of the undo).
-          if (old && old !== item.weapon) add({ x: f.position.x, y: f.position.y, z: f.position.z, weapon: old, place: ARSENAL[old]?.place ?? "back", owner: null, life: DROP_LIFE, lock: TAKE_LOCK, lockFor: player.id, undo: UNDO, stage: f.stage, size: item.size });
+          if (old && old !== item.weapon) add({ x: f.position.x, y: f.position.y, z: f.position.z, weapon: old, place: ARSENAL[old]?.place ?? "back", owner: null, life: DROP_LIFE, lock: TAKE_LOCK, lockFor: player.id, undo: UNDO, stage: ARSENAL[old]?.stage, size: item.size });
           onTake?.(player, item.weapon, old);
           break;
         }
