@@ -277,7 +277,10 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
     const size = mix(hash(3.3).mul(0.04).add(0.03).mul(u.mul(0.5).add(0.8)).mul(scale), R.mul(hash(9.1).mul(0.1).add(0.05)).mul(burst.mul(-0.3).add(1)), burstOne);
     // Never smaller than about four pixels, so the column still gives away a capsule hidden in
     // the lee of a stone from further off than the bubbles themselves would show.
-    const seen = max(size, length(centre.sub(cameraPosition)).mul(0.007));
+    // (A burst bubble waiting for its capsule to be taken is no size at all, so it costs
+    // nothing to draw.)
+    const waiting = burstOne.mul(step(burst, 0));
+    const seen = max(size, length(centre.sub(cameraPosition)).mul(0.007)).mul(waiting.oneMinus());
     bubbleMaterial.scaleNode = vec2(seen, seen);
     const alpha = mix(columnAlpha, burstAlpha, burstOne);
     // A bubble under water seen against the light: a dark edge (the light bent away at the
@@ -317,6 +320,9 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
   // When each taken item was first drawn taken, for items that do not keep their takenAge. (A
   // weak map: the item is the owner's, and goes when the owner drops it, whatever its index.)
   const takenAt = new WeakMap();
+  // How far into its burst the capsule drawn in each slot was last frame: a slot's burst
+  // bubbles are written only while it bursts or has just stopped (idle, they are not drawn).
+  const slotBurst = new Float32Array(capacity);
 
   // Scratch.
   const colour = new THREE.Color();
@@ -328,6 +334,9 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
 
   const column = bubbleGeometry.attributes.column.array;
   const bubble = bubbleGeometry.attributes.bubble.array;
+  // (Each slot's burst bubbles are marked as such from the start: until a capsule there is
+  // taken, draw() leaves them be.)
+  for (let n = 0; n < capacity; n++) for (let b = columnBubbles; b < perCapsule; b++) bubble[(n * perCapsule + b) * 4 + 3] = -1;
   const states = state.array,
     tints = tint.array;
 
@@ -370,7 +379,9 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
         tints[n * 4 + 1] = colour.g;
         tints[n * 4 + 2] = colour.b;
         tints[n * 4 + 3] = item.place === "belly" ? -1 : 1;
-        for (let b = 0; b < perCapsule; b++) {
+        const bubblesNow = burst > 0 || slotBurst[n] > 0 ? perCapsule : columnBubbles;
+        slotBurst[n] = burst;
+        for (let b = 0; b < bubblesNow; b++) {
           const o = (n * perCapsule + b) * 4;
           column[o] = position.x;
           column[o + 1] = position.y;
