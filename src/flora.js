@@ -74,9 +74,9 @@ const PALETTE = {};
 function palette(name, young, body, old, gain = 1.35) {
   PALETTE[name] = { young: new THREE.Color(young).multiplyScalar(Math.min(gain, 1.15)), body: new THREE.Color(body).multiplyScalar(gain), old: new THREE.Color(old).multiplyScalar(gain) };
 }
-palette("crowfoot", "#7a9234", "#4b6128", "#3d4222");
+palette("crowfoot", "#83a03a", "#55702c", "#434a24");
 palette("milfoil", "#6d7f35", "#4a5d2a", "#3a3a22");
-palette("starwort", "#7a8e3a", "#58702e", "#46522a");
+palette("starwort", "#72863a", "#556c2e", "#46522a");
 palette("starwortStem", "#6a8030", "#4e6428", "#3e4424");
 palette("pondweed", "#76823a", "#5f6a2a", "#4a4026");
 palette("pondweedRed", "#80603a", "#6a4a2a", "#4a3624");
@@ -163,7 +163,7 @@ const PETAL = new THREE.Color(0.78, 0.78, 0.72);
 //
 // (Grown from the numbers it has always drawn from the river's stream -- a stem's length,
 // rise, drift, foot and colour, and its blade's own two -- and, for all that is new, from a
-// stream of its own. Half the stems are no longer grown, only drawn for.)
+// stream of its own. Two stems in five are no longer grown, only drawn for.)
 export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
   const stream = plantRandom(x, z, 1);
@@ -183,7 +183,7 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
     const base = root.clone().add(spread(random(), random(), 0.45, d).offset);
     const { way } = bearing(d, own, 0.12);
     const color = tones(PALETTE.crowfoot, random(), random(), random());
-    const grown = own(0, 1) < 0.5;
+    const grown = own(0, 1) < 0.6;
     // Streaming low: it rises to a height of its own and runs out along the current, the
     // whole of it lowered together if it would reach the surface (never point by point,
     // which put corners in it).
@@ -204,7 +204,7 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
     // The tassels: every metre or so along the stem, alternately to either side, each a
     // spray of threads streaming back along it.
     let flip = 1;
-    for (let at = 0.12 * tress.length + own(0.3, 0.9) * scale; at < tress.length * 0.97; at += own(0.8, 1.3) * scale) {
+    for (let at = 0.12 * tress.length + own(0.3, 0.9) * scale; at < tress.length * 0.97; at += own(0.9, 1.4) * scale) {
       const t = at / tress.length;
       const node = tress.curve.getPoint(t);
       const { tangent, side: across, normal } = tress.frame(t);
@@ -776,7 +776,7 @@ export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1, g
       for (let i = 0; i < 4; i++) {
         const a = a0 + (i / 4) * TAU;
         const tip = node.clone().add(vec(Math.cos(a) * leaf, leaf * 0.45, Math.sin(a) * leaf)).addScaledVector(d, leaf * 0.4);
-        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.17 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1], cut: CUT.FEATHER, emit: !low || i % 2 === 0 });
+        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.13 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1], cut: CUT.FEATHER, emit: !low || i % 2 === 0 });
       }
     }
   }
@@ -799,7 +799,7 @@ export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.2
     const points = [root.clone(), root.clone().addScaledVector(dir, out * 0.3).add(vec(0, h * 0.7, 0)), root.clone().addScaledVector(dir, out).add(vec(0, h, 0))];
     // (The hue it was given picks the kind: reddish rush below 0.2, olive moss above.)
     const color = tones(hue < 0.2 ? PALETTE.rush : PALETTE.turfMoss, random(), random(), random());
-    blade(batch, points, range(0.05, 0.1) * scale * 2, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true, cut: CUT.BRUSH });
+    blade(batch, points, range(0.05, 0.1) * scale * 1.6, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true, cut: CUT.BRUSH });
   }
 }
 
