@@ -112,7 +112,18 @@ const vPlantFade = varyingProperty("float", "vPlantFade");
 // its material gives it (CUT) plus LOW for a plant low on the bed that casts no shadow worth
 // the drawing. (Read back as floor(x / 2 + 1 / 4), which the interpolation between a
 // blade's vertices cannot tip into the next code.)
-export const CUT = { NONE: 0, BEDLEAF: 1 };
+//
+// The cuts give a leaf its species' outline out of the same few triangles, by leaving out
+// what lies outside it (foliageMaterial):
+//   BEDLEAF   a leaf lying on the bed (whole; not thinned in front of the lens)
+//   FEATHER   milfoil: fine pinnae off a midrib, angled toward the tip
+//   BRUSH     threads fanning from the foot (green algae, the rush of the turf)
+//   SCALES    a moss shoot's overlapping scale leaves
+//   NOTCH     the notched tip of a starwort leaf
+//   FRILL     a frilled margin (dulse, sugar kelp)
+//   FINGERS   a kelp blade split into straps
+//   MONOCOT   whole, with the parallel veins of a grass-like leaf
+export const CUT = { NONE: 0, BEDLEAF: 1, FEATHER: 2, BRUSH: 3, SCALES: 4, NOTCH: 5, FRILL: 6, FINGERS: 7, MONOCOT: 8 };
 export const LOW = 16;
 const packThin = (thin, cut, low) => thin + 2 * (cut + (low ? LOW : 0));
 const thinCode = attribute("thin", "vec2").x;
@@ -122,10 +133,10 @@ const cutMode = mod(plantCode, 16);
 const lowPlant = plantCode.greaterThanEqual(LOW);
 // Each plant's own shade (vPlantTint: brighter or darker, greener or yellower, from a hash of
 // where it stands), and per vertex (vPlantShade) how much of the water's light reaches in to
-// the foot of a clump (x) and how much of a brown film of diatoms and silt lies on the leaf
-// there (y). All worked out per vertex: per pixel it cost milliseconds.
+// the foot of a clump (x), how much of a brown film of diatoms and silt lies on the leaf
+// there (y), and a number of the plant's own for its cut shapes (z). All worked out per vertex: per pixel it cost milliseconds.
 const vPlantTint = varyingProperty("vec3", "vPlantTint");
-const vPlantShade = varyingProperty("vec2", "vPlantShade");
+const vPlantShade = varyingProperty("vec3", "vPlantShade");
 // Hashes without a sine (after Dave Hoskins), steady at the river's coordinates of some
 // thousands of metres, where a sine of the scaled coordinate has lost its digits.
 const hash13 = (p) => {
@@ -177,7 +188,7 @@ function strandPosition({ shadow = false } = {}) {
       vPlantTint.assign(mix(vec3(1), vec3(1.12, 1, 0.7), h.y.mul(0.7)).mul(h.x.mul(0.32).add(0.84)));
       const out = length(rest.sub(root));
       const film = smoothstep(0.45, 0.8, valueNoise3(rest.mul(vec3(0.8, 1.5, 0.8)).add(h.z.mul(17)))).mul(smoothstep(0.3, 2.5, out).mul(-0.6).add(1));
-      vPlantShade.assign(vec2(mix(0.5, 1, smoothstep(0, 1.4, out)), film));
+      vPlantShade.assign(vec3(mix(0.5, 1, smoothstep(0, 1.4, out)), film, h.z));
     }
     const pushed = stir.rgb.mul(bend.w.mul(0.17).mul(along.w).mul(along.w).div(along.w.mul(along.w).mul(0.07).add(1))).toVar();
     pushed.subAssign(along.xyz.mul(dot(pushed, along.xyz)));
@@ -218,19 +229,79 @@ export function foliageMaterial() {
     // The plant's own shade, and the film of diatoms and silt, brown, over the old growth.
     const base = attribute("color", "vec3").mul(vPlantTint).toVar();
     base.assign(mix(base, vec3(0.1, 0.07, 0.025), vPlantShade.y.mul(0.55)));
+    // How far the leaf's coordinates move across a pixel, for every cut and pattern below.
+    // (Worked out here, at the top, once: a derivative taken in a branch is garbage.)
+    const du = float(0).toVar();
+    du.assign(fwidth(leafUv.x));
+    const dv = float(0).toVar();
+    dv.assign(fwidth(leafUv.y));
+    const across = abs(leafUv.x.sub(0.5)).toVar();
+    const a = float(0).toVar();
+    a.assign(across.mul(2));
+    const v = leafUv.y;
     // The midrib highlight fades once a leaf is only a few pixels wide, so needle leaves do
     // not clip to white specks.
-    const midrib = smoothstep(0.008, 0.035, abs(leafUv.x.sub(0.5))).oneMinus().mul(smoothstep(0.02, 0.06, fwidth(leafUv.x)).oneMinus());
-    const veins = pow(cos(leafUv.y.sub(abs(leafUv.x.sub(0.5)).mul(0.32)).mul(155)).mul(0.5).add(0.5), 22);
-    const edge = pow(abs(leafUv.x.sub(0.5)).mul(2), 5);
-    const mottling = sin(leafUv.y.mul(64).add(sin(leafUv.x.mul(25)))).mul(0.035).add(0.965);
+    const midrib = smoothstep(0.008, 0.035, across).oneMinus().mul(smoothstep(0.02, 0.06, du).oneMinus());
+    // Veins: pinnate off the midrib, or parallel along a grass-like leaf.
+    const monocot = cutMode.equal(CUT.MONOCOT);
+    const veins = select(monocot, pow(cos(across.mul(88)).mul(0.5).add(0.5), 10).mul(0.6), pow(cos(v.sub(across.mul(0.32)).mul(155)).mul(0.5).add(0.5), 22));
+    const edge = pow(a, 5);
+    const mottling = sin(v.mul(64).add(sin(leafUv.x.mul(25)))).mul(0.035).add(0.965);
     base.mulAssign(mottling.mul(edge.mul(-0.09).add(1).add(veins.mul(0.12))));
     base.assign(mix(base, base.mul(1.22).add(vec3(0.008, 0.012, 0)), midrib.mul(0.6)));
     // Leaf undersides are paler and warmer than the upper surface.
     base.mulAssign(select(faceDirection.lessThan(0), vec3(0.82, 0.76, 0.66), vec3(1)));
+
+    // The cut shapes. Each edge is softened over the width of a pixel (the alpha test's
+    // dither makes that a clean edge over a few frames), and once its detail is too fine for
+    // the pixels it gives way to a plain, narrower outline, so a distant feather is a slim
+    // leaf and not a paddle or a shimmer.
+    // (Everything the cuts share is a variable set here: a shared expression is worked out
+    // where it is first used, and that may be inside another cut's branch.)
+    const aw = float(0).toVar();
+    aw.assign(du.mul(2));
+    // (1 inside the edge, 0 outside, softened over w; never over nothing, which is a NaN.)
+    const inside = (edgeAt, d, w) => {
+      const half = max(w, 1e-4).mul(0.5);
+      return smoothstep(edgeAt.sub(half), edgeAt.add(half), d).oneMinus();
+    };
+    const seed = float(0).toVar();
+    seed.assign(vPlantShade.z.mul(6.2832));
+    // Milfoil: five pinnae a side, the midrib between them. (The phases' change across a
+    // pixel is worked out from the leaf coordinates', not taken again: that keeps each cut's
+    // sums inside its own branch, and only the leaves that have it pay for it.)
+    const featherPhase = v.mul(5).sub(a);
+    const featherW = dv.mul(5).add(aw);
+    const pinna = inside(float(0.2), abs(fract(featherPhase).sub(0.5)), featherW).mul(inside(v.mul(-0.35).add(1), a, aw));
+    const feather = mix(max(pinna, inside(float(0.08), a, aw)), inside(float(0.5), a, aw), smoothstep(0.35, 0.6, featherW));
+    // Four threads from the foot, each its own length, tapering and wavering; far off, a
+    // slim blade.
+    const fan = v.mul(0.85).add(0.15);
+    const brushPhase = leafUv.x.sub(0.5).div(fan).mul(4).add(sin(v.mul(9).add(seed)).mul(0.15));
+    const brushW = du.mul(4).add(across.mul(3.4).mul(dv).div(fan)).div(fan).add(dv.mul(1.35));
+    const threadLength = fract(sin(floor(brushPhase).mul(12.9898).add(seed)).mul(43758.5453));
+    const thread = inside(v.mul(-0.18).add(0.3), abs(fract(brushPhase).sub(0.5)), brushW).mul(inside(threadLength.mul(0.4).add(0.6), v, dv));
+    const brush = mix(thread, inside(v.mul(-0.45).add(0.75), a, aw), smoothstep(0.5, 0.8, brushW));
+    // Scale leaves in overlapping tiers up a moss shoot.
+    const scaleEdge = mix(float(1).sub(abs(fract(v.mul(6)).sub(0.5)).mul(2)).mul(0.45).add(0.55), float(0.8), smoothstep(0.2, 0.4, dv.mul(6)));
+    const scales = inside(scaleEdge, a, aw);
+    // A notch at the tip.
+    const notch = float(1).sub(inside(v.sub(0.88).mul(3), a, aw));
+    // A frilled margin.
+    const frillEdge = mix(sin(v.mul(43).add(seed)).mul(0.14).add(0.86), float(0.86), smoothstep(0.3, 0.6, dv.mul(43).mul(0.14)));
+    const frill = inside(frillEdge, a, aw);
+    // Straps from a third of the way up.
+    const fingerW = du.mul(5);
+    const fingers = mix(max(inside(float(0.38), abs(fract(leafUv.x.mul(5)).sub(0.5)), fingerW), inside(float(0.3), v, dv)), float(1), smoothstep(0.2, 0.4, fingerW));
+    const cut = select(
+      cutMode.equal(CUT.FEATHER),
+      feather,
+      select(cutMode.equal(CUT.BRUSH), brush, select(cutMode.equal(CUT.SCALES), scales, select(cutMode.equal(CUT.NOTCH), notch, select(cutMode.equal(CUT.FRILL), frill, select(cutMode.equal(CUT.FINGERS), fingers, float(1)))))),
+    );
     // (Thin tissue passes light, which the lighting below gives it; a leaf itself is drawn
     // whole: left-out pixels would read as a grain wherever the view moves.)
     const alpha = float(1).toVar();
+    alpha.assign(cut);
     // A leaf right in front of the lens thins away rather than filling the picture -- but not
     // a leaf lying flat on the bed, which would only show as a pale, see-through patch on the
     // ground.
@@ -244,7 +315,7 @@ export function foliageMaterial() {
   material.normalNode = Fn(() => {
     const normal = normalize(vLeafNormal).mul(faceDirection).toVar();
     const rib = exp(pow(leafUv.x.sub(0.5).mul(60), 2).negate()).mul(0.0015);
-    const veinHeight = pow(cos(leafUv.y.sub(abs(leafUv.x.sub(0.5)).mul(0.32)).mul(155)).mul(0.5).add(0.5), 16).mul(0.00025);
+    const veinHeight = select(cutMode.equal(CUT.MONOCOT), pow(cos(abs(leafUv.x.sub(0.5)).mul(88)).mul(0.5).add(0.5), 8).mul(0.00018), pow(cos(leafUv.y.sub(abs(leafUv.x.sub(0.5)).mul(0.32)).mul(155)).mul(0.5).add(0.5), 16).mul(0.00025));
     const detailFade = smoothstep(0.003, 0.012, max(fwidth(leafUv.x), fwidth(leafUv.y))).oneMinus();
     const micro = sin(leafUv.x.mul(230)).mul(sin(leafUv.y.mul(310))).mul(0.00003).mul(detailFade);
     const height = rib.add(veinHeight).add(micro);

@@ -108,7 +108,7 @@ export function mossTuft(batch, at, flow, random, size = 1) {
       base.clone().addScaledVector(d, length).add(vec(0, length * (trailing ? range(-0.15, 0.05) : range(0.2, 0.5)), 0)),
     ];
     const color = tones(PALETTE.fontinalis, (hue + random()) / 2, random(), random());
-    blade(batch, points, range(0.05, 0.09) * size, color, root, 1.1, { rows: trailing ? 5 : 3, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.15] });
+    blade(batch, points, range(0.05, 0.09) * size * 1.25, color, root, 1.1, { rows: trailing ? 5 : 3, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.15], cut: CUT.SCALES });
   }
 }
 
@@ -125,7 +125,7 @@ export function hangingMoss(batch, at, flow, random, size = 1) {
     const base = at.clone().add(vec(range(-0.35, 0.35) * size, range(-0.05, 0.05), range(-0.35, 0.35) * size));
     const points = [base, base.clone().addScaledVector(d, length * 0.12).add(vec(0, -length * 0.5, 0)), base.clone().addScaledVector(d, length * 0.4).add(vec(0, -length, 0))];
     const color = tones(PALETTE.fontinalis, (hue + random()) / 2, random(), random());
-    blade(batch, points, range(0.04, 0.08) * size, color, at, 1.2, { rows: 4, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.2] });
+    blade(batch, points, range(0.04, 0.08) * size * 1.25, color, at, 1.2, { rows: 4, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.2], cut: CUT.SCALES });
   }
 }
 
@@ -560,7 +560,7 @@ export function algae(batch, at, flow, random, size = 1) {
       base.clone().addScaledVector(d, length).add(vec(0, length * range(-0.12, 0.04), 0)),
     ];
     const color = tones(PALETTE.cladophora, random(), random(), random());
-    blade(batch, points, range(0.018, 0.035) * size, color, at, 1.4, { rows: 6, cols: 1, ribbon: true, thin: 1, browning: random() < 0.25 ? 0.25 : 0, age: [1, 0] });
+    blade(batch, points, range(0.018, 0.035) * size * 2, color, at, 1.4, { rows: 6, cols: 1, ribbon: true, thin: 1, browning: random() < 0.25 ? 0.25 : 0, age: [1, 0], cut: CUT.BRUSH });
   }
 }
 
@@ -648,7 +648,7 @@ export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1) {
       for (let i = 0; i < 4; i++) {
         const a = a0 + (i / 4) * TAU;
         const tip = node.clone().add(vec(Math.cos(a) * leaf, leaf * 0.45, Math.sin(a) * leaf)).addScaledVector(d, leaf * 0.4);
-        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.09 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1] });
+        blade(batch, [node, node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.1, 0)), tip], 0.17 * scale, green, root, 1, { rows: 2, cols: 1, thin: 1, age: [old + 0.05, old - 0.1], cut: CUT.FEATHER });
       }
     }
   }
@@ -671,7 +671,7 @@ export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.2
     const points = [root.clone(), root.clone().addScaledVector(dir, out * 0.3).add(vec(0, h * 0.7, 0)), root.clone().addScaledVector(dir, out).add(vec(0, h, 0))];
     // (The hue it was given picks the kind: reddish rush below 0.2, olive moss above.)
     const color = tones(hue < 0.2 ? PALETTE.rush : PALETTE.turfMoss, random(), random(), random());
-    blade(batch, points, range(0.05, 0.1) * scale * 1.6, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true });
+    blade(batch, points, range(0.05, 0.1) * scale * 2, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true, cut: CUT.BRUSH });
   }
 }
 
