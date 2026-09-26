@@ -9,6 +9,8 @@ import { createLarvae } from "../larvae.js";
 
 const nextTask = () => new Promise((r) => setTimeout(r, 0));
 const query = new URLSearchParams(location.search);
+// As combat would make them: light on the Niedrig quality (and with ?xlight).
+const light = query.has("xlight") || query.get("quality") === "eco";
 
 // For looking into the shading (?xdebug=paint: the painted colours unlit; ?xdebug=normal:
 // the shading normal as a colour).
@@ -38,9 +40,12 @@ export async function runModelScene(ctx) {
     warnings.push(args.map(String).join(" ").slice(0, 500));
     consoleWarn(...args);
   };
-  const record = [];
+  const record = [{ label: "backend", backend: ctx.salmon.renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2", quality: query.get("quality") }];
   try {
-    await SCENES[scene.name](ctx, record);
+    // (?xbaseline: the game at the scene's place without the models, to tell the page's own
+    // warnings from theirs.)
+    if (query.has("xbaseline")) await ctx.salmon.capture(`${set}/${scene.name}-ohne`, 1280, 720);
+    else await SCENES[scene.name](ctx, record);
   } catch (error) {
     errors.push(String(error?.stack ?? error));
   }
@@ -98,7 +103,7 @@ const SCENES = {
   async "larven-nah"(ctx, record) {
     const { salmon } = ctx;
     const { fish, THREE, scene } = salmon;
-    const larvae = createLarvae(scene, { capacity: 24, light: query.has("xlight") });
+    const larvae = createLarvae(scene, { capacity: 24, light });
     debugLarvae(larvae, query.get("xdebug"));
     record.push({ label: "triangles", perKind: larvae.meshes.map((m) => ({ name: m.name, triangles: m.geometry.index.count / 3 })) });
     const { ahead, left, up } = frameOf(salmon);
@@ -135,6 +140,12 @@ const SCENES = {
     e = pose("beetleLarva", 0.55, { mode: "coil", t: 0.3, gape: 0.35, phase: 2.2 });
     look(e, [0.85, 0.45, 0.42], 0.3);
     await picture(ctx, "kaefer-zangen-offen", draw);
+    // The lunge, mandibles wide, and the snap as it bites.
+    e = pose("beetleLarva", 0.55, { mode: "strike", t: 0.2, gape: 1, phase: 0.4 });
+    look(e, [0.95, 0.35, 0.55], 0.35);
+    await picture(ctx, "kaefer-biss", draw);
+    e = pose("beetleLarva", 0.55, { mode: "recover", t: 0.06, gape: 1, phase: 0.4 });
+    await picture(ctx, "kaefer-zugebissen", draw);
     e = pose("beetleLarva", 0.55, { dead: true, rolled: Math.PI, corpse: 3, mode: "dead", gape: 0.35 });
     look(e, [0.3, 0.75, 0.62], 0);
     await picture(ctx, "kaefer-tot", draw);
@@ -156,6 +167,10 @@ const SCENES = {
     e = pose("dragonflyLarva", 0.42, { mode: "strike", t: 0.16, gape: 1, phase: 1.1 });
     look(e, [1.15, 0.5, 0.45], 0.45);
     await picture(ctx, "libelle-maske-vorn", draw);
+    // Turning away after the strike: the hooks shut on what they caught, the mask coming in.
+    e = pose("dragonflyLarva", 0.42, { mode: "recover", t: 0.07, gape: 1, phase: 1.1 });
+    look(e, [1.15, 0.5, 0.45], 0.45);
+    await picture(ctx, "libelle-zugepackt", draw);
     e = pose("dragonflyLarva", 0.42, { dead: true, rolled: Math.PI, corpse: 3, mode: "dead" });
     look(e, [0.3, 0.75, 0.62], 0);
     await picture(ctx, "libelle-tot", draw);
@@ -166,10 +181,16 @@ const SCENES = {
     const b = rest(fish.position.clone().addScaledVector(ahead, 0.45).addScaledVector(left, -0.32), 0.42);
     list.push(larva(THREE, "beetleLarva", a, ahead.clone().negate().applyAxisAngle(up, -0.6), 0.55, { id: 2, phase: 1.5, mode: "coil", t: 0.3 }));
     list.push(larva(THREE, "dragonflyLarva", b, ahead.clone().negate().applyAxisAngle(up, 0.5), 0.42, { id: 3, phase: 0.3 }));
+    // (An alevin of the stage's middle length posed on the gravel between them, for the size:
+    // the player's own fish is elsewhere, up on a stone.)
     const middle = a.clone().add(b).multiplyScalar(0.5);
-    const eye = middle.clone().addScaledVector(ahead, -0.95).addScaledVector(left, 0.15).addScaledVector(up, 0.42);
+    const brood = rest(middle.clone().addScaledVector(ahead, -0.2), 0.26);
+    brood.y += 0.01;
+    const remove = salmon.showcase("alevin", "alevin", 0.26, brood.toArray(), Math.atan2(left.z, left.x));
+    const eye = middle.clone().addScaledVector(ahead, -0.75).addScaledVector(left, 0.1).addScaledVector(up, 0.32);
     salmon.view(eye.toArray(), middle.toArray(), 0.004);
     await picture(ctx, "mit-brut", draw);
+    remove();
     record.push({ label: "fish", stage: fish.stage, length: +fish.length.toFixed(3) });
   },
 
@@ -179,7 +200,7 @@ const SCENES = {
     const { salmon, extreme } = ctx;
     const { fish, scene, look, held } = salmon;
     const combat = extreme.combat;
-    const larvae = createLarvae(scene, { capacity: 24 });
+    const larvae = createLarvae(scene, { capacity: 24, light });
     for (const kind of ["dragonflyLarva", "beetleLarva"]) combat.enemies.drawnBy?.(kind);
     extreme.testing = true;
     const steer = () => {
@@ -234,7 +255,7 @@ const SCENES = {
 async function capsuleScene(ctx, record) {
   const { salmon } = ctx;
   const { fish, THREE, course, scene } = salmon;
-  const capsules = createCapsules(scene, { capacity: 24 });
+  const capsules = createCapsules(scene, { capacity: 24, light });
   record.push({ label: "triangles", perCapsule: trianglesOf(Object.values(capsules.meshes)) });
   // A stand-in for the weapon model at the docking point (models.js will put the real one
   // there): a unit long along x, a receiver and a barrel in dark gunmetal.
@@ -322,42 +343,45 @@ async function capsuleScene(ctx, record) {
   record.push({ label: "anchor", shows: capsules.anchor(0, docked), matrix: docked.elements.map((v) => +v.toFixed(3)) });
 }
 
-// What the models cost: 24 of each kind (larvae beside an alevin-size capsule set) in view, the
-// frame timed with and without them, back to back and waited for, several times over.
+// What the models cost: 24 larvae of each kind and 24 capsules in view, the frame timed with
+// and without them, back to back and waited for, several times over.
 async function costScene(ctx, record) {
   const { salmon } = ctx;
   const { fish, THREE, course, scene, renderer } = salmon;
-  const light = new URLSearchParams(location.search).get("quality") === "eco";
   const larvae = createLarvae(scene, { capacity: 24, light });
   const capsules = createCapsules(scene, { capacity: 24, light });
   const { ahead, left, up } = frameOf(salmon);
-  const L = fish.length;
   const spot = {};
   const ground = (p) => {
     course.locate(p.x, p.z, fish.river.s, spot);
     return course.bed(spot.s, spot.u);
   };
   await salmon.run(0.2);
+  const rest = restOn(salmon);
   const list = [];
   const items = [];
+  // The larvae in rows on the gravel ahead of the alevin, the capsules (the alevin's own size)
+  // hanging over the gravel among them.
   for (let i = 0; i < 48; i++) {
     const row = Math.floor(i / 8),
       col = i % 8;
-    const p = fish.position.clone().addScaledVector(ahead, (1.4 + row * 0.5) * L).addScaledVector(left, (col - 3.5) * 0.45 * L);
-    const size = 0.45 * L;
-    p.y = ground(p) + size * 0.12;
-    list.push(larva(THREE, i % 2 ? "beetleLarva" : "dragonflyLarva", p, ahead.clone().negate().applyAxisAngle(up, (col - 3.5) * 0.2), size, { id: i + 1, phase: i * 0.7, mode: i % 5 === 0 ? "strike" : "approach", t: 0.1, gape: i % 5 === 0 ? 1 : 0.08 }));
+    const kind = i % 2 ? "beetleLarva" : "dragonflyLarva";
+    const size = kind === "beetleLarva" ? 0.52 : 0.4;
+    const p = rest(fish.position.clone().addScaledVector(ahead, 0.7 + row * 0.42).addScaledVector(left, (col - 3.5) * 0.36), size);
+    list.push(larva(THREE, kind, p, ahead.clone().negate().applyAxisAngle(up, (col - 3.5) * 0.2), size, { id: i + 1, phase: i * 0.7, mode: i % 5 === 0 ? "strike" : "approach", t: 0.1, gape: i % 5 === 0 ? 1 : 0.08 }));
   }
   for (let i = 0; i < 24; i++) {
-    const p = fish.position.clone().addScaledVector(ahead, (2 + Math.floor(i / 6) * 0.7) * L).addScaledVector(left, ((i % 6) - 2.5) * 0.7 * L);
-    p.y = Math.max(fish.position.y + 0.5 * L, ground(p) + 0.6 * L);
-    items.push({ x: p.x, y: p.y, z: p.z, place: "back", weapon: "piu", state: "idle", age: 4 + i, stage: fish.stage, size: 0.3 * L });
+    const p = fish.position.clone().addScaledVector(ahead, 1 + Math.floor(i / 6) * 0.6).addScaledVector(left, ((i % 6) - 2.5) * 0.5);
+    p.y = ground(p) + 0.45;
+    items.push({ x: p.x, y: p.y, z: p.z, place: i % 2 ? "belly" : "back", weapon: "piu", state: "idle", age: 4 + i, stage: fish.stage });
   }
-  const eye = fish.position.clone().addScaledVector(ahead, -0.8 * L).addScaledVector(up, 0.6 * L);
-  salmon.view(eye.toArray(), fish.position.clone().addScaledVector(ahead, 2.5 * L).toArray(), 0.01);
-  const all = [...larvae.meshes, ...Object.values(capsules.meshes)];
-  const show = (on) => {
-    for (const m of all) m.visible = on;
+  // Seen from above and behind the grid, as the game's camera sees the redd round an alevin.
+  const middle = list[27].position.clone();
+  const eye = middle.clone().addScaledVector(ahead, -1.9).addScaledVector(up, 1.25);
+  salmon.view(eye.toArray(), middle.toArray(), 0.01);
+  const groups = { larvae: larvae.meshes, capsules: Object.values(capsules.meshes) };
+  const show = (which) => {
+    for (const [name, meshes] of Object.entries(groups)) for (const m of meshes) m.visible = which.includes(name);
   };
   larvae.draw(list);
   capsules.draw(items, 7.5);
@@ -366,7 +390,8 @@ async function costScene(ctx, record) {
     capsules.draw(items, 7.5);
   });
   // Frames back to back and waited for (the card's whole frame; per-pass timestamps overlap
-  // on Apple's GPUs).
+  // on Apple's GPUs), the configurations taken in turn, round after round, so a slow spell of
+  // the machine falls on all of them alike.
   const sync = async () => {
     const device = renderer.backend?.device;
     if (device) return device.queue.onSubmittedWorkDone();
@@ -382,21 +407,40 @@ async function costScene(ctx, record) {
   };
   renderer.setSize(1280, 720, false);
   for (let i = 0; i < 20; i++) salmon.draw(0);
-  const on = [],
-    off = [];
-  for (let round = 0; round < 9; round++) {
-    show(true);
-    on.push(await frame());
-    show(false);
-    off.push(await frame());
+  // And the models alone: only layer 1 (theirs, with the effects and enemies, none of which
+  // are about here) drawn straight to the screen, so the rest of the frame's time -- and its
+  // noise, when other work shares the card -- stays out of it. (An upper bound: in the game
+  // the gravel hides some of their pixels before they are shaded.)
+  const { camera } = salmon;
+  const alone = async (n = 60) => {
+    const mask = camera.layers.mask;
+    camera.layers.set(1);
+    renderer.setRenderTarget(null);
+    await sync();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) renderer.render(scene, camera);
+    await sync();
+    camera.layers.mask = mask;
+    return (performance.now() - t0) / n;
+  };
+  const configurations = { none: [], larvae: ["larvae"], capsules: ["capsules"], both: ["larvae", "capsules"] };
+  const times = Object.fromEntries(Object.keys(configurations).map((k) => [k, []]));
+  const only = Object.fromEntries(Object.keys(configurations).map((k) => [k, []]));
+  for (let round = 0; round < 15; round++) {
+    for (const [name, which] of Object.entries(configurations)) {
+      show(which);
+      times[name].push(await frame());
+      only[name].push(await alone());
+    }
     await nextTask();
   }
-  show(true);
+  show(["larvae", "capsules"]);
   const stats = (a) => {
     const s = [...a].sort((x, y) => x - y);
     return { median: +s[Math.floor(s.length / 2)].toFixed(3), min: +s[0].toFixed(3), max: +s.at(-1).toFixed(3) };
   };
-  const diff = on.map((v, i) => v - off[i]);
+  // What each adds, round by round against the round's own frame without them.
+  const added = (name, t = times) => stats(t[name].map((v, i) => v - t.none[i]));
   // The processor's side: draw() of both, with everything posed.
   const cpu = (fn, n = 2000) => {
     const t0 = performance.now();
@@ -415,9 +459,10 @@ async function costScene(ctx, record) {
     larvae: list.length,
     capsules: items.length,
     triangles: { larvaOfEachKind: larvae.triangles, capsule: trianglesOf(Object.values(capsules.meshes)) },
-    frameWith: stats(on),
-    frameWithout: stats(off),
-    difference: stats(diff),
+    frame: Object.fromEntries(Object.keys(times).map((k) => [k, stats(times[k])])),
+    added: { larvae: added("larvae"), capsules: added("capsules"), both: added("both") },
+    alone: Object.fromEntries(Object.keys(only).map((k) => [k, stats(only[k])])),
+    addedAlone: { larvae: added("larvae", only), capsules: added("capsules", only), both: added("both", only) },
     drawMicroseconds: { larvae: larvaMicros, capsules: capsuleMicros },
   });
 }

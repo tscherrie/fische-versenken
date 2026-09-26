@@ -22,6 +22,7 @@ LOOK_SCENES.push(
   { name: "larven-kiesbett", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // Weapon capsules in the brook: idle, taken (the burst), one behind a stone.
   { name: "kapsel-nah", look: true, models: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
-  // What 24 of each cost: the frame timed with and without them, and draw() on the processor.
-  { name: "modelle-kosten", look: true, models: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // What 24 of each cost, in the redd where the larvae come, seen by the game's own camera: the
+  // frame timed with and without them, and draw() on the processor.
+  { name: "modelle-kosten", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
 );
