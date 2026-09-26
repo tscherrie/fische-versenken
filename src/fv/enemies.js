@@ -418,6 +418,17 @@ export function createEnemies(scene, { random }) {
           climbing = Math.hypot(fp.x - e.position.x, fp.z - e.position.z) < 2.5 + 3 * e.size && fp.y > low;
         }
         e.position.y = (e.spec.crawls && !climbing) || (e.spec.bottom && e.mode === "lurk") ? low : clamp(e.position.y, low, high);
+        // For the look: whether a crawler walks or swims up, and how the ground under its head
+        // tilts it (radians, head up positive), so head and jaws follow a slope.
+        if (e.spec.crawls) {
+          e.climbing = climbing;
+          e.grounded = !climbing;
+          if (!climbing && hooks.ground) {
+            const reach = 0.4 * e.size;
+            const ahead = hooks.ground.height(e.position.x + e.heading.x * reach, e.position.z + e.heading.z * reach, floor) + e.size * 0.08;
+            e.tilt = Math.atan2(ahead - low, reach);
+          } else e.tilt = Math.asin(clamp(e.heading.y, -1, 1));
+        }
         const beat = 0.6 + (e.speed / e.size) * 1.4;
         e.phase = (e.phase + dt * TAU * beat) % TAU;
         const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;
