@@ -296,6 +296,8 @@ function digest(r) {
     meshesShown: pick((x) => x.stress.meshes?.shown),
     meshesHidden: pick((x) => x.stress.meshes?.hidden),
     meshes: pick((x) => x.stress.meshes?.cost),
+    meshCalls: pick((x) => x.stress.meshes?.calls),
+    meshTriangles: pick((x) => x.stress.meshes?.triangles),
   };
   const delta = (a, b) => d[b].map((v, i) => v - d[a][i]);
   d.gpu = delta("gpuRef", "gpuFight");
@@ -349,8 +351,10 @@ function summary(r) {
     row("… of it the page's style and layout (ms)", d.layoutRef, d.layoutFight, d.layout, 3),
     row("… of it the draw's script (ms)", d.drawRef, d.drawFight, d.draw),
     row("Left on the heap a frame (KB)", d.heapRef, d.heapFight, d.heap, 0),
-    row("Draw calls", d.callsRef, d.callsFight, d.calls, 0),
-    row("Triangles", d.trisRef, d.trisFight, d.tris, 0),
+    ["Draw calls of combat's meshes, shown against hidden", "–", "–", signed(mid(d.meshCalls), 0), spread(d.meshCalls, 0)],
+    ["Triangles of combat's meshes, shown against hidden", "–", "–", signed(mid(d.meshTriangles), 0), spread(d.meshTriangles, 0)],
+    row("Draw calls of the whole frame (medians; the scene's own count varies)", d.callsRef, d.callsFight, d.calls, 0),
+    row("Triangles of the whole frame (medians)", d.trisRef, d.trisFight, d.tris, 0),
   ];
   if (c.glTimer) rows.splice(1, 0, row("Card, WebGL timer query per frame (ms)", d.glRef, d.glFight, d.gl));
   lines.push(table(["", "no fight", "fight", "difference", "difference over the repeats"], rows));
@@ -582,8 +586,8 @@ async function summaries(list) {
               `${f(mid(a.digest.meshes), 3)} (${spread(a.digest.meshes, 3)})${a.digest.gpuBound ? "" : " ≤"}`,
               `${f(mid(a.digest.combat), 3)} (${spread(a.digest.combat, 3)})`,
               `${signed(mid(a.digest.total))} (${spread(a.digest.total)})`,
-              signed(mid(a.digest.calls), 0),
-              signed(mid(a.digest.tris), 0),
+              signed(mid(a.digest.meshCalls ?? a.digest.calls), 0),
+              signed(mid(a.digest.meshTriangles ?? a.digest.tris), 0),
               `card ${a.digest.verdict.gpuOk ? "within" : "**over**"}, combat's script ${a.digest.verdict.cpuOk ? "within" : "**over**"}, frame's script ${a.digest.verdict.totalOk ? "within" : "**over**"}`,
               a.errors,
             ],

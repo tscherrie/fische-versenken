@@ -608,11 +608,29 @@ async function measure(ctx, here, name) {
       scripts.push(c);
       await nextTask();
     }
+    // The draw calls and triangles of the meshes, the same way: the scene's own count changes
+    // from frame to frame (some passes run only every few frames), so the difference of two
+    // single frames, or of a fight and a calm, would not be theirs alone.
+    const counted = (on) => {
+      show(on);
+      const calls = [],
+        triangles = [];
+      for (let i = 0; i < 8; i++) {
+        renderer.info.reset();
+        salmon.draw(0);
+        calls.push(renderer.info.render.drawCalls ?? renderer.info.render.calls);
+        triangles.push(renderer.info.render.triangles);
+      }
+      return [median(calls), median(triangles)];
+    };
+    const [callsShown, trianglesShown] = counted(true);
+    const [callsHidden, trianglesHidden] = counted(false);
     show(true);
+    await sync();
     const sorted = [...diffs].sort((x, y) => x - y);
     const q = (p) => +sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))].toFixed(3);
     // (script: what handing the meshes to the card costs the processor, a share of the draw.)
-    return { cost: q(0.5), low: q(0.25), high: q(0.75), shown: +median(on).toFixed(3), hidden: +median(off).toFixed(3), script: +median(scripts).toFixed(3) };
+    return { cost: q(0.5), low: q(0.25), high: q(0.75), shown: +median(on).toFixed(3), hidden: +median(off).toFixed(3), script: +median(scripts).toFixed(3), calls: callsShown - callsHidden, triangles: trianglesShown - trianglesHidden };
   }
 
   // No fight at all for the reference: combat's step and frame are not run (once its sparks
