@@ -1,6 +1,12 @@
-# Salmon Survival Next
+# Fische versenken
 
-The same game, with new graphics: rebuilt on three.js r186 and WebGPU (with WebGL 2 where a browser has no WebGPU), one step at a time. It is a work in progress, so some things may look rough while they are being redone. Since 26 September 2026 it is the game at salmon-survival.vercel.app, and a salmon saved there swims on in it. The original graphics are still there to play: [play](https://salmon-survival-next.vercel.app) · [code](https://github.com/tscherrie/salmon-survival).
+Salmon Survival with weapons that are fun, and co-op for up to four friends. The same river, the same life -- hatch in the gravel of the source, grow up in the brook, go down to the sea with the smolts, come home to spawn -- the same graphics (it is built on [Salmon Survival Next](https://github.com/tscherrie/salmon-survival-next) and keeps taking its updates), only now everything that is not a salmon comes for you, and you have something to answer with: a little pew-pew laser for the fry, bigger guns with every stage, torpedoes, a katana on your back, and whatever else is fun, found along the way and behind stones. Work in progress: the combat and the co-op are being built.
+
+**Play it in the browser:** https://fische-versenken.vercel.app
+
+The calm original: [Salmon Survival](https://salmon-survival.vercel.app).
+
+## The base game
 
 Live one salmon's whole life in a Nordic river. Hatch in the gravel of the source, grow up in the brook, go down to the sea with the smolts, and fight your way home to spawn where you were born. On the way: storms and flash floods, an angler's fly, otters, gill nets, a fish ladder, sea lice at the salmon farm, the northern lights.
 
@@ -18,7 +24,7 @@ Written with Claude Opus 5.5.
 
 ## Contribute, give feedback
 
-Found a bug, have an idea, want to add a fish, a plant or a translation? Open an [issue](https://github.com/tscherrie/salmon-survival-next/issues) or a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a bug, have an idea, want to add a fish, a plant or a translation? Open an [issue](https://github.com/tscherrie/fische-versenken/issues) or a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Run it yourself
 

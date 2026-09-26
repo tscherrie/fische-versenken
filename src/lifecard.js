@@ -7,7 +7,7 @@ import { track } from "./track.js";
 // are still out there. It can be shared as a picture (or saved, or posted on X); the button
 // goes on with the next sibling, or, when none is left, a new brood.
 
-const SITE = "https://salmon-survival.vercel.app";
+const SITE = "https://fische-versenken.vercel.app";
 const pick = (e) => (e ? (e[lang] ?? e.en ?? e.de) : "");
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -105,7 +105,7 @@ export function createLifeCard({ habitat, onGo }) {
     g.fillStyle = "rgba(243, 251, 247, 0.55)";
     g.font = font(700, 22);
     g.textAlign = "right";
-    g.fillText("Salmon Survival · salmon-survival.vercel.app", 1130, 628);
+    g.fillText("Fische versenken · fische-versenken.vercel.app", 1130, 628);
     g.textAlign = "left";
     return await new Promise((r) => c.toBlob(r, "image/png"));
   }
@@ -142,8 +142,8 @@ export function createLifeCard({ habitat, onGo }) {
     try {
       const blob = await picture();
       const file = blob && new File([blob], `salmon-survival-${current.number}.png`, { type: "image/png" });
-      if (file && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text, title: "Salmon Survival" });
-      else if (navigator.share) await navigator.share({ text: current.share, url: SITE, title: "Salmon Survival" });
+      if (file && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text, title: "Fische versenken" });
+      else if (navigator.share) await navigator.share({ text: current.share, url: SITE, title: "Fische versenken" });
       else {
         await navigator.clipboard.writeText(text);
         status(word("copied"));
