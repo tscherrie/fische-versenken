@@ -1,10 +1,19 @@
 // The weapon capsules along the river: a silver bubble hanging in the water with the weapon
 // turning slowly inside it, a ring round it in the colour of the stage the weapon belongs
-// to, and a thin column of little bubbles rising from it to the surface -- which is what
-// gives away one tucked into the lee of a stone. Swum into, it bursts: the shell swells and
-// is gone, the ring flies apart, a cloud of bubbles scatters. The ring rides a little above
-// the bubble's middle for a weapon worn on the back and a little below it for one worn at
-// the belly, so the place shows before the capsule is reached.
+// to, and a column of bubbles rising from it to the surface in little trailing clusters, dark
+// edged so they show against the bright surface too -- which is what gives away one tucked
+// into the lee of a stone. Swum into, it pops: the shell swells a little, flashes at its rim
+// and is gone within a tenth of a second, the ring flies apart, a cloud of bubbles is flung
+// out and drifts up. The ring rides a little above the bubble's middle for a weapon worn on
+// the back and a little below it for one worn at the belly, so the place shows before the
+// capsule is reached.
+//
+// Items: { x, y, z, place: "back"|"belly", weapon, state: "idle"|"taken", age, stage?, size?,
+// takenAge? }. `size` is the capsule's whole size, across (as pickups.js keeps it for how near
+// a fish must come): the bubble's radius is half of it. Without it the stage sets the size.
+// `stage` (an index or an id of salmon.js STAGES) picks the ring's colour; without it, the
+// weapon's own stage. `takenAge`, if kept, is the time since it was taken; otherwise the burst
+// is timed from the first frame the item is drawn taken.
 //
 // Three instanced draws on layer 1 (out of the water's mirror and the Snell's window, with
 // the enemies and the effects): the shells, the rings, the bubbles. The shell and the ring
@@ -16,7 +25,7 @@
 // see below.
 
 import * as THREE from "three";
-import { Fn, abs, atan, attribute, cameraPosition, cameraViewMatrix, clamp, cos, dot, float, fract, length, max, mix, modelWorldMatrix, normalGeometry, normalize, normalView, positionGeometry, positionViewDirection, positionWorld, pow, reflect, sin, smoothstep, step, uniform, uv, varyingProperty, vec2, vec3, vec4 } from "three/tsl";
+import { Fn, PI, abs, atan, attribute, cameraPosition, cameraViewMatrix, clamp, cos, dot, float, fract, length, max, mix, modelWorldMatrix, normalGeometry, normalize, normalView, positionGeometry, positionViewDirection, positionWorld, pow, reflect, round, sin, smoothstep, step, uniform, uv, varyingProperty, vec2, vec3, vec4 } from "three/tsl";
 import { STAGES } from "../../salmon.js";
 import { PointCloud, perPoint } from "../../materials.js";
 import { ditherThreshold } from "../../render/dither.js";
@@ -44,10 +53,23 @@ export const STAGE_COLOURS = {
 const WEAPON_STAGES = { piu: "alevin" };
 
 // How long the burst takes once a capsule is taken, in seconds; after it the capsule is not
-// drawn and its anchor shows nothing.
-export const BURST_SECONDS = 0.7;
+// drawn and its anchor shows nothing. (Within the 0.6 s pickups.js keeps a taken item.) The
+// shell itself is gone in the first tenth of a second: it pops, it does not fade.
+export const BURST_SECONDS = 0.55;
+const POP = 0.1 / BURST_SECONDS;
 // A capsule grows in over this long after it appears.
 const GROW_SECONDS = 0.6;
+// The bubble column: how fast its bubbles rise (a few millimetres across, two decimetres a
+// second), and the length of water one bubble's loop covers before it starts again at the
+// shell. Both fixed, so the bubbles' places follow the clock alone, however the column's
+// height or the capsule's place changes: where the surface comes lower, the loop is cut off
+// there.
+const RISE = 2;
+const LOOP = 5;
+// The clock runs round every hour (the draw's time modulo 3600): rates in whole turns an hour,
+// so nothing jumps when it does.
+const HOUR = 3600;
+const hourly = (turnsPerSecond) => round(turnsPerSecond.mul(HOUR)).div(HOUR);
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const smooth01 = (x) => {
@@ -71,19 +93,22 @@ function stageOf(item) {
 }
 
 export function createCapsules(scene, { capacity = 24, light = false } = {}) {
-  const columnBubbles = light ? 10 : 20;
-  const burstBubbles = light ? 12 : 24;
+  const columnBubbles = light ? 24 : 45;
+  const burstBubbles = light ? 20 : 40;
   const perCapsule = columnBubbles + burstBubbles;
   const clock = uniform(0);
+  // The daylight on the bubbles (1 by day; falls.js and life.js get the same from the game).
+  const daylight = uniform(1);
 
   // Per capsule, shared by the shell and the ring: (seed, burst 0..1, grow 0..1, radius) and
   // the stage colour (rgb, and the place: 1 back, -1 belly).
   const state = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
   const tint = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
 
-  // ---- The shell: a bubble of air, a mirror at its rim (the water's light turned back at
-  // the glancing surface) and clear in the middle, where the weapon shows through. It breathes
-  // in slow wobbles, as a trapped bubble does in the current.
+  // ---- The shell: a bubble of air, a band of quicksilver at its rim (the water's light turned
+  // back whole at the glancing surface) and clear in the middle, where the weapon shows
+  // through. It breathes in slow wobbles, as a trapped bubble does in the current. Taken, it
+  // swells a little, flashes at the rim and is gone.
   const shellGeometry = new THREE.SphereGeometry(1, light ? 24 : 40, light ? 16 : 28);
   shellGeometry.setAttribute("capsule", state);
   const shell = new THREE.InstancedMesh(shellGeometry, undefined, capacity);
@@ -93,6 +118,7 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
     const s = attribute("capsule", "vec4");
     const vNormal = varyingProperty("vec3", "vShellNormal");
     const vFade = varyingProperty("float", "vShellFade");
+    const vFlash = varyingProperty("float", "vShellFlash");
     shellMaterial.positionNode = Fn(() => {
       const p = positionGeometry;
       const seed = s.x.mul(TAU);
@@ -102,21 +128,26 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
         .mul(0.03)
         .add(sin(t.mul(3.1).add(seed.mul(1.7)).add(p.x.mul(2.8))).mul(0.022))
         .add(sin(t.mul(1.7).add(seed.mul(2.3)).add(p.z.mul(2.5))).mul(0.018));
-      const burst = s.y;
-      const k = wobble.add(1).mul(burst.mul(0.7).add(1)).mul(s.z);
+      const pop = s.y.div(POP).clamp(0, 1);
+      const k = wobble.add(1).mul(smoothstep(0, 1, pop).mul(0.15).add(1)).mul(s.z);
       const world = modelWorldMatrix.mul(matrix);
       vNormal.assign(cameraViewMatrix.mul(world.mul(vec4(normalGeometry, 0))).xyz);
-      vFade.assign(burst.oneMinus().pow(2).mul(s.z));
+      vFade.assign(smoothstep(0.55, 1, pop).oneMinus().mul(s.z));
+      vFlash.assign(sin(pop.mul(PI)));
       return matrix.mul(vec4(p.mul(k), 1)).xyz;
     })();
     shellMaterial.normalNode = normalize(vNormal);
     // A bubble in water mirrors almost nothing face on and everything toward its rim, where
-    // the light inside it is turned back whole (total reflection): a broad band of quicksilver
-    // round a clear middle.
+    // the light inside it is turned back whole (total reflection): a narrow bright band of
+    // quicksilver round a clear middle.
     const facing = abs(dot(normalize(vNormal), positionViewDirection));
-    const fresnel = pow(facing.oneMinus(), 1.7);
-    shellMaterial.opacityNode = mix(0.1, 1, fresnel).mul(vFade);
+    const fresnel = pow(facing.oneMinus(), 3.2);
+    shellMaterial.opacityNode = mix(0.06, 1, fresnel).mul(vFade);
     shellMaterial.colorNode = vec3(0.95, 0.97, 1);
+    // (And a thin neutral band right at the rim, where the mirror turns the bright surface
+    // back: what makes it read as quicksilver rather than tinted glass.)
+    const band = smoothstep(0.78, 0.97, facing.oneMinus());
+    shellMaterial.emissiveNode = vec3(2.2, 2.3, 2.4).mul(fresnel).mul(vFlash).add(vec3(0.55, 0.58, 0.6).mul(band)).mul(daylight.mul(0.8).add(0.2));
     waterLit(shellMaterial, {
       mirror: 0,
       // What the rim mirrors: the water round it, bright toward the lit surface and the
@@ -124,7 +155,7 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
       beforeIndirect: ({ radiance }) => {
         const reflectView = reflect(positionViewDirection.negate(), normalView);
         const reflectWorld = normalize(cameraViewMatrix.transpose().mul(vec4(reflectView, 0)).xyz);
-        const surroundings = underwaterInscatter(reflectWorld).mul(2.1).add(fogNodes().color.mul(6).mul(smoothstep(0.45, 0.97, reflectWorld.y)));
+        const surroundings = underwaterInscatter(reflectWorld).mul(3.2).add(fogNodes().color.mul(8).mul(smoothstep(0.45, 0.97, reflectWorld.y)));
         radiance.addAssign(surroundings);
       },
     });
@@ -135,7 +166,8 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
   shell.renderOrder = 2;
 
   // ---- The ring: a band of lit metal in the stage colour, glowing, slowly turning on a
-  // tilted axis; three brighter marks run round it so the turning shows.
+  // tilted axis; three brighter marks run round it so the turning shows. Taken, it flies
+  // apart: widening and fading over the whole burst.
   const ringGeometry = new THREE.TorusGeometry(1.28, 0.045, light ? 6 : 10, light ? 48 : 96).rotateX(Math.PI / 2);
   ringGeometry.setAttribute("capsule", state);
   ringGeometry.setAttribute("tint", tint);
@@ -166,7 +198,7 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
       const burst = s.y;
       const tilt = sin(clock.mul(0.7).add(seed)).mul(0.12).add(0.32);
       const spin = clock.mul(0.5).add(seed);
-      const k = burst.mul(1.1).add(1).mul(s.z);
+      const k = burst.oneMinus().pow(3).oneMinus().mul(1.1).add(1).mul(s.z);
       const world = modelWorldMatrix.mul(matrix);
       vNormal.assign(cameraViewMatrix.mul(world.mul(vec4(turn(normalGeometry, tilt, spin), 0))).xyz);
       vAround.assign(atan(p.z, p.x));
@@ -195,8 +227,8 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
   // bursts. Each sprite knows its capsule (centre, radius) and its own seed; the shader
   // works out where it is, so the processor only writes the capsule's place.
   const bubbleGeometry = new THREE.BufferGeometry();
-  // (centre xyz, radius) and (seed, burst 0..1, grow, 1 for a burst bubble); position is
-  // there for the point count.
+  // (centre xyz, radius) and (seed, burst 0..1, grow, kind: 0-2 a column bubble and its place
+  // in its cluster, -1 a burst bubble); position is there for the point count.
   bubbleGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(capacity * perCapsule * 3), 3));
   bubbleGeometry.setAttribute("column", new THREE.BufferAttribute(new Float32Array(capacity * perCapsule * 4), 4).setUsage(THREE.DynamicDrawUsage));
   bubbleGeometry.setAttribute("bubble", new THREE.BufferAttribute(new Float32Array(capacity * perCapsule * 4), 4).setUsage(THREE.DynamicDrawUsage));
@@ -210,52 +242,57 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
     const seed = bub.x,
       burst = bub.y,
       grow = bub.z,
-      burstOne = bub.w;
+      kind = bub.w;
+    const burstOne = step(kind, -0.5);
     const hash = (k) => fract(sin(seed.mul(k).add(k * 0.37)).mul(43758.5453));
-    // The column: small bubbles let go from the top of the shell, rising and zigzagging, a
-    // little larger the higher they get, all the way to the surface (the column spans the
-    // water above the capsule, so it is as dense in a shallow run as in a pool); gone there.
+    // The column: bubbles let go from the top of the shell in little clusters, each cluster at
+    // its own speed, spiralling as they rise and a little larger the higher they get, up to
+    // the surface; gone there. (A cluster's bubbles share its seed and trail one another.)
     const top = surfaceLevelAt(centre);
-    const height = clamp(top.sub(centre.y).sub(R), R.mul(2), 12);
-    // (Bubbles of a few millimetres rise at a steady two decimetres a second, whatever size
-    // the capsule is.)
-    const speed = float(2.2);
-    const u = fract(clock.mul(speed).div(height).add(seed));
+    const u = fract(clock.mul(hourly(hash(4.7).mul(0.6).add(0.7).mul(RISE / LOOP))).add(seed).sub(kind.mul(hash(11.3).mul(0.05).add(0.008))));
+    const h = u.mul(LOOP);
+    const spin = clock.mul(hourly(hash(6.1).mul(4 / TAU).add(5 / TAU))).add(hash(8.3)).mul(TAU).add(kind.mul(1.3));
+    const swing = h.clamp(0, 1).mul(0.025).add(0.018);
     const rise = centre.add(
       vec3(
-        sin(clock.mul(5.3).add(seed.mul(40))).mul(R).mul(0.06).mul(u.add(0.2)),
-        R.mul(0.92).add(u.mul(height)),
-        cos(clock.mul(4.7).add(seed.mul(31))).mul(R).mul(0.06).mul(u.add(0.2)),
+        sin(spin).mul(swing).add(hash(2.9).sub(0.5).mul(R).mul(0.3)),
+        R.mul(0.92).add(h),
+        cos(spin.mul(1.21)).mul(swing).add(hash(7.7).sub(0.5).mul(R).mul(0.3)),
       ),
     );
-    const columnAlpha = smoothstep(0, 0.06, u)
-      .mul(smoothstep(0.75, 1, u).oneMinus())
-      .mul(smoothstep(top.sub(R.mul(0.3).add(0.05)), top, rise.y).oneMinus())
+    const columnAlpha = smoothstep(0, 0.012, u)
+      .mul(smoothstep(0.85, 1, u).oneMinus())
+      .mul(smoothstep(top.sub(0.08), top, rise.y).oneMinus())
       .mul(burst.oneMinus())
       .mul(grow);
-    // The burst: flung out all round (more upward), slowing, and drifting up.
-    const dir = normalize(vec3(hash(12.9).sub(0.5), hash(78.2).sub(0.35), hash(37.7).sub(0.5)));
+    // The burst: flung out all round from the shell (more upward), slowing, then drifting up.
+    const dir = normalize(vec3(hash(12.9).sub(0.5), hash(78.2).sub(0.3), hash(37.7).sub(0.5)));
     const out = burst.oneMinus().pow(3).oneMinus();
-    const flung = centre.add(dir.mul(R).mul(out.mul(hash(5.1).mul(1.4).add(0.6)).add(0.8))).add(vec3(0, R.mul(burst).mul(1.5), 0));
-    const burstAlpha = smoothstep(0, 0.05, burst).mul(burst.oneMinus());
+    const flung = centre
+      .add(dir.mul(R).mul(out.mul(hash(5.1).mul(0.9).add(0.3)).add(0.9)))
+      .add(vec3(sin(burst.mul(9).add(hash(1.3).mul(TAU))).mul(R).mul(0.05), R.mul(burst).mul(1.2), 0));
+    const burstAlpha = smoothstep(0, 0.02, burst).mul(smoothstep(0.6, 1, burst).oneMinus());
     bubbleMaterial.positionNode = mix(rise, flung, burstOne);
     const scale = clamp(R.mul(2), 0.6, 1.8);
-    const size = mix(hash(3.3).mul(0.026).add(0.016).mul(u.mul(0.6).add(0.8)).mul(scale), R.mul(hash(9.1).mul(0.07).add(0.03)), burstOne);
-    // Never smaller than a few pixels, so the column still gives away a capsule hidden in the
-    // lee of a stone from further off than the bubbles themselves would show.
-    const seen = max(size, length(centre.sub(cameraPosition)).mul(0.0032));
+    const size = mix(hash(3.3).mul(0.04).add(0.03).mul(u.mul(0.5).add(0.8)).mul(scale), R.mul(hash(9.1).mul(0.1).add(0.05)).mul(burst.mul(-0.3).add(1)), burstOne);
+    // Never smaller than about four pixels, so the column still gives away a capsule hidden in
+    // the lee of a stone from further off than the bubbles themselves would show.
+    const seen = max(size, length(centre.sub(cameraPosition)).mul(0.007));
     bubbleMaterial.scaleNode = vec2(seen, seen);
     const alpha = mix(columnAlpha, burstAlpha, burstOne);
-    // Shaded as the game's own bubbles: a thin bright rim, a milky body, a highlight up and
-    // to one side (materials.js createBubbleMaterial).
+    // A bubble under water seen against the light: a dark edge (the light bent away at the
+    // glancing rim), a bright ring inside it, a clear middle and a highlight up and to one
+    // side. The dark edge is what keeps it visible against the bright surface.
     const q = uv().sub(0.5);
     const r = length(q);
-    const rim = smoothstep(0.38, 0.47, r).mul(smoothstep(0.47, 0.5, r).oneMinus());
-    const body = smoothstep(0.2, 0.5, r).oneMinus();
-    const glint = smoothstep(0, 0.14, length(q.sub(vec2(-0.12, 0.14)))).oneMinus();
+    const edge = smoothstep(0.36, 0.44, r).mul(step(r, 0.5));
+    const ringIn = smoothstep(0.26, 0.36, r).mul(smoothstep(0.36, 0.42, r).oneMinus());
+    const body = smoothstep(0.1, 0.4, r).oneMinus();
+    const glint = smoothstep(0, 0.12, length(q.sub(vec2(-0.1, 0.12)))).oneMinus();
     const near = smoothstep(0.1, 0.6, length(positionWorld.sub(cameraPosition)));
-    bubbleMaterial.colorNode = vec3(1.6, 1.75, 1.8);
-    bubbleMaterial.opacityNode = rim.mul(0.5).add(body.mul(0.3)).add(glint.mul(0.9)).mul(alpha).mul(near).mul(step(r, 0.5));
+    const bright = vec3(1.6, 1.75, 1.8).mul(daylight);
+    bubbleMaterial.colorNode = mix(bright, vec3(0.03, 0.045, 0.05), edge.mul(glint.oneMinus()));
+    bubbleMaterial.opacityNode = edge.mul(0.7).add(ringIn.mul(0.75)).add(body.mul(0.18)).add(glint.mul(0.9)).clamp(0, 1).mul(alpha).mul(near).mul(step(r, 0.5));
   }
   const bubbles = new PointCloud(bubbleGeometry, bubbleMaterial);
   bubbles.name = "Combat capsule bubbles";
@@ -277,11 +314,9 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
   // much of that model shows.
   const anchors = Array.from({ length: capacity }, () => new THREE.Matrix4());
   const shows = new Float32Array(capacity);
-  // The item last seen at each index and when it was first seen taken (-1: not yet), so a
-  // burst plays out even where the caller's age counts from the capsule's appearing.
-  const seen = new Array(capacity).fill(null);
-  const waiting = new Uint8Array(capacity);
-  const takenAt = new Float64Array(capacity).fill(-1);
+  // When each taken item was first drawn taken, for items that do not keep their takenAge. (A
+  // weak map: the item is the owner's, and goes when the owner drops it, whatever its index.)
+  const takenAt = new WeakMap();
 
   // Scratch.
   const colour = new THREE.Color();
@@ -297,9 +332,8 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
     tints = tint.array;
 
   return {
-    // Every frame: the capsules to show, { x, y, z, place, weapon, state, age, stage?, size? }
-    // (size: the bubble's radius, when it should not follow the stage), and the game's clock
-    // in seconds (it drives the wobble, the turning and the bubbles).
+    // Every frame: the capsules to show (see the top of the file), and the game's clock in
+    // seconds (it drives the wobble, the turning and the bubbles).
     draw(items, time) {
       clock.value = time % 3600;
       let n = 0;
@@ -307,24 +341,21 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
       for (let i = 0; i < count; i++) {
         const item = items[i];
         shows[i] = 0;
-        // How far into the burst (the age counted from the taking, or from when this index
-        // was first seen taken, whichever is less).
+        // How far into the burst.
         let burst = 0;
         if (item.state === "taken") {
-          if (seen[i] !== item) takenAt[i] = -1;
-          else if (waiting[i]) takenAt[i] = time;
-          const age = item.age ?? 0;
-          burst = (takenAt[i] >= 0 ? Math.min(time - takenAt[i], age) : age) / BURST_SECONDS;
-          waiting[i] = 0;
-        } else {
-          takenAt[i] = -1;
-          waiting[i] = 1;
+          let since = item.takenAge;
+          if (typeof since !== "number") {
+            let at = takenAt.get(item);
+            if (at === undefined) takenAt.set(item, (at = time));
+            since = time - at;
+          }
+          burst = Math.max(0, since) / BURST_SECONDS;
         }
-        seen[i] = item;
         if (burst >= 1) continue;
         const grow = item.state === "taken" ? 1 : smooth01((item.age ?? GROW_SECONDS) / GROW_SECONDS);
         const st = stageOf(item);
-        const R = item.size ?? Math.max(0.16, Math.min(2.6, 0.21 * (st.length[0] + st.length[1])));
+        const R = item.size > 0 ? item.size * 0.5 : Math.max(0.16, Math.min(2.6, 0.21 * (st.length[0] + st.length[1])));
         const seed = ((item.x * 12.9898 + item.z * 78.233) % 1 + 1) % 1;
         // Hovering: a slow bob, as a buoyant thing tethered in the current would.
         position.set(item.x, item.y + Math.sin(time * 1.1 + seed * TAU) * 0.06 * R, item.z);
@@ -345,24 +376,23 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
           column[o + 1] = position.y;
           column[o + 2] = position.z;
           column[o + 3] = R;
-          bubble[o] = (seed * 7.31 + b / columnBubbles) % 1;
+          // Column bubbles in threes (a cluster shares its seed, and its bubbles trail one
+          // another closely or loosely), then the burst's, each its own.
+          const inColumn = b < columnBubbles;
+          const cluster = inColumn ? Math.floor(b / 3) : b;
+          bubble[o] = (seed * 7.31 + cluster * 0.618034) % 1;
           bubble[o + 1] = burst;
           bubble[o + 2] = grow;
-          bubble[o + 3] = b < columnBubbles ? 0 : 1;
+          bubble[o + 3] = inColumn ? b % 3 : -1;
         }
         // The weapon's anchor: at the centre, turning slowly about the vertical, sized so a
-        // model a unit long fits inside; it vanishes in the first half of the burst.
+        // model a unit long fits inside; it goes with the shell as it pops.
         quaternion.setFromAxisAngle(up, time * 0.9 + seed * TAU);
         anchors[i].compose(position, quaternion, scale.setScalar(R * 1.45 * grow));
-        shows[i] = grow * (1 - smooth01(burst * 2));
+        shows[i] = grow * (1 - smooth01(burst / POP));
         n++;
       }
-      for (let i = count; i < capacity; i++) {
-        seen[i] = null;
-        waiting[i] = 0;
-        takenAt[i] = -1;
-        shows[i] = 0;
-      }
+      for (let i = count; i < capacity; i++) shows[i] = 0;
       shell.count = n;
       ring.count = n;
       bubbleGeometry.setDrawRange(0, n * perCapsule);
@@ -378,11 +408,15 @@ export function createCapsules(scene, { capacity = 24, light = false } = {}) {
     // with its world matrix -- origin at the bubble's centre, turning slowly about the
     // vertical, scaled so that a model one unit long (along x, centred on its origin) fits in
     // the bubble -- and returns how much of the model shows (1 while the capsule waits, 0
-    // once the burst is half over, and for an index with no capsule: hide it then).
+    // once the shell has popped, and for an index with no capsule: hide it then).
     anchor(i, out) {
       if (i < 0 || i >= capacity || shows[i] <= 0) return 0;
       out.copy(anchors[i]);
       return shows[i];
+    },
+    // The daylight on the bubbles, 0 (night) to 1, as the game gives falls.js and life.js.
+    light(value) {
+      daylight.value = value;
     },
     // The meshes (for costs and tests).
     meshes: { shell, ring, bubbles },
