@@ -121,26 +121,32 @@ function tones(p, h, s, l) {
 const ageUp = (t) => 0.95 - 0.85 * t * t * (3 - 2 * t);
 
 // Fontinalis: short dark strands trailing downstream from a point on a stone.
-// A dense tuft: a mound of short shoots round the point and the long ones trailing.
-export function mossTuft(batch, at, flow, random, size = 1) {
+// A dense tuft: a mound of short shoots round the point and the long ones trailing -- slim,
+// many of them, each scaled with its small leaves (foliage.js CUT.SCALES). (The strands it
+// has always drawn for are still drawn, in the same order, their blades' own two numbers from
+// the shared stream blade() draws from by default; half as many again grow wholly from a
+// stream of the tuft's own, own.)
+function mossStrand(batch, at, root, flow, random, size, hue, trailing, own = null) {
   const range = ranger(random);
-  const count = Math.floor(range(12, 22));
+  const a = trailing ? flow + range(-0.5, 0.5) : range(0, TAU);
+  const d = vec(Math.cos(a), 0, Math.sin(a));
+  const length = (trailing ? range(0.6, 1.6) : range(0.25, 0.6)) * size;
+  const base = at.clone().add(vec(range(-0.25, 0.25) * size, 0, range(-0.25, 0.25) * size));
+  const points = [
+    base,
+    base.clone().addScaledVector(d, length * 0.35).add(vec(0, length * (trailing ? 0.18 : 0.5), 0)),
+    base.clone().addScaledVector(d, length).add(vec(0, length * (trailing ? range(-0.15, 0.05) : range(0.2, 0.5)), 0)),
+  ];
+  const color = tones(PALETTE.fontinalis, (hue + random()) / 2, random(), random());
+  blade(batch, points, range(0.05, 0.09) * size * 0.4, color, root, 1.1, { rows: trailing ? 5 : 3, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.15], cut: CUT.SCALES, random: own });
+}
+export function mossTuft(batch, at, flow, random, size = 1) {
+  const count = Math.floor(ranger(random)(12, 22));
   const root = at.clone();
   const hue = random();
-  for (let i = 0; i < count; i++) {
-    const trailing = i % 3 === 0;
-    const a = trailing ? flow + range(-0.5, 0.5) : range(0, TAU);
-    const d = vec(Math.cos(a), 0, Math.sin(a));
-    const length = (trailing ? range(0.6, 1.6) : range(0.25, 0.6)) * size;
-    const base = at.clone().add(vec(range(-0.25, 0.25) * size, 0, range(-0.25, 0.25) * size));
-    const points = [
-      base,
-      base.clone().addScaledVector(d, length * 0.35).add(vec(0, length * (trailing ? 0.18 : 0.5), 0)),
-      base.clone().addScaledVector(d, length).add(vec(0, length * (trailing ? range(-0.15, 0.05) : range(0.2, 0.5)), 0)),
-    ];
-    const color = tones(PALETTE.fontinalis, (hue + random()) / 2, random(), random());
-    blade(batch, points, range(0.05, 0.09) * size * 1.25, color, root, 1.1, { rows: trailing ? 5 : 3, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.15], cut: CUT.SCALES });
-  }
+  for (let i = 0; i < count; i++) mossStrand(batch, at, root, flow, random, size, hue, i % 3 === 0);
+  const own = plantRandom(at.x, at.z, 6);
+  for (let i = 0; i < Math.floor(count / 2); i++) mossStrand(batch, at, root, flow, own, size, hue, i % 3 === 0, own);
 }
 
 // Moss and weed hanging from the roof of a cave or an overhang: dark strands down from the
@@ -149,15 +155,20 @@ export function hangingMoss(batch, at, flow, random, size = 1) {
   const range = ranger(random);
   const count = Math.floor(range(8, 15));
   const hue = random();
-  for (let i = 0; i < count; i++) {
+  // (As for a tuft: the strands always drawn for, then half as many from a stream of its own.)
+  const hang = (random, own = null) => {
+    const range = ranger(random);
     const a = flow + range(-0.6, 0.6);
     const d = vec(Math.cos(a), 0, Math.sin(a));
     const length = range(0.4, 1.5) * size;
     const base = at.clone().add(vec(range(-0.35, 0.35) * size, range(-0.05, 0.05), range(-0.35, 0.35) * size));
     const points = [base, base.clone().addScaledVector(d, length * 0.12).add(vec(0, -length * 0.5, 0)), base.clone().addScaledVector(d, length * 0.4).add(vec(0, -length, 0))];
     const color = tones(PALETTE.fontinalis, (hue + random()) / 2, random(), random());
-    blade(batch, points, range(0.04, 0.08) * size * 1.25, color, at, 1.2, { rows: 4, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.2], cut: CUT.SCALES });
-  }
+    blade(batch, points, range(0.04, 0.08) * size * 0.4, color, at, 1.2, { rows: 4, cols: 1, ribbon: true, thin: 0.9, age: [0.9, 0.2], cut: CUT.SCALES, random: own });
+  };
+  for (let i = 0; i < count; i++) hang(random);
+  const own = plantRandom(at.x, at.z, 7);
+  for (let i = 0; i < Math.floor(count / 2); i++) hang(own, own);
 }
 
 // White petals, as white as a petal is (not paper): lit through from above as well.
@@ -433,7 +444,7 @@ export function kelp(batch, x, z, ground, surface, flow, random, scale = 1) {
     // leaf has 1.)
     const color = tones(PALETTE.kelp, random(), random(), random());
     range(0.35, 0.7);
-    blade(batch, p, own(1.2, 2) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.3, twist: a + Math.PI / 2, age: [0.6, 0], cut: CUT.FINGERS, emit: i < laminae });
+    blade(batch, p, own(1.2, 2) * scale, color, root, 1.0, { rows: 12, cols: 3, ribbon: true, thin: 0.3, twist: a + Math.PI / 2, age: [0.6, 0], cut: CUT.FINGERS, emit: i < laminae, crinkle: 0.05 });
   }
 }
 
@@ -626,12 +637,15 @@ export function burReed(batch, x, z, ground, surface, flow, random, scale = 1) {
     const float = range(3, 9) * scale;
     // In water deeper than a bur-reed can reach the surface through (some 4 m), its leaves
     // stay submerged: ribbons streaming in the current a few metres over the bed, not
-    // strands twenty metres tall.
+    // strands twenty metres tall -- and never up through the surface, however long (the
+    // ribbon's height is at most its middle points' 0.7 of its reach, and is lowered to
+    // stay 0.3 m under).
     const reach = float * 0.8;
+    const low = Math.min(1, (depth - 0.3) / (0.7 * reach));
     const points =
       depth < 4
         ? [root.clone(), root.clone().addScaledVector(dir, depth * 0.3).add(vec(0, depth * 0.6, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float * 0.3).add(vec(0, depth - 0.08, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float).add(vec(0, depth - 0.05, 0))]
-        : [root.clone(), root.clone().addScaledVector(dir, reach * 0.1).add(vec(0, reach * 0.45, 0)), root.clone().addScaledVector(dir, reach * 0.5).add(vec(0, reach * 0.7, 0)), root.clone().addScaledVector(dir, reach).add(vec(0, reach * 0.6, 0))];
+        : [root.clone(), root.clone().addScaledVector(dir, reach * 0.1).add(vec(0, reach * 0.45 * low, 0)), root.clone().addScaledVector(dir, reach * 0.5).add(vec(0, reach * 0.7 * low, 0)), root.clone().addScaledVector(dir, reach).add(vec(0, reach * 0.6 * low, 0))];
     const color = tones(PALETTE.burReed, random(), random(), random());
     blade(batch, points, range(0.1, 0.16) * scale, color, root, 1.1, { rows: 16, cols: 1, ribbon: true, thin: 1, twist: a + Math.PI / 2, browning: random() < 0.3 ? 0.25 : 0, age: [0.8, 0.2], spacing: 0.6, cut: CUT.MONOCOT });
   }
@@ -773,24 +787,32 @@ export function milfoil(batch, x, z, ground, surface, flow, random, scale = 1, g
   }
 }
 
-// A tuft of the low turf over the gravel: bulbous rush, reddish-green in soft water, or a
-// cushion of moss, a handful of short blades. (Fewer and broader than they once were: of the
-// blades it has always drawn for, the first half or so is grown, the rest kept only as the
-// numbers they drew. It casts no shadow worth its cost.)
-export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.22) {
+// A tuft of the low turf over the gravel: bulbous rush, reddish-green in soft water, its
+// thread-fine leaves fanning from the foot, or a cushion of moss, a handful of short blades.
+// (Fewer and broader than they once were: of the blades it has always drawn for, the first
+// three in five or so are grown, the rest kept only as the numbers they drew. It casts no
+// shadow worth its cost.) On dry ground (wet false: an island, a roof of rock) it is grass,
+// as it always was: every blade, its old colours, its shadow.
+export function turfTuft(batch, x, z, ground, flow, random, scale = 1, hue = 0.22, wet = true) {
   const range = ranger(random);
   const root = vec(x, ground - 0.02, z);
   const count = Math.floor(range(5, 9));
-  const grown = Math.ceil(count * 0.45);
+  const grown = wet ? Math.ceil(count * 0.6) : count;
+  const rush = hue < 0.2;
   for (let i = 0; i < count; i++) {
     const a = flow + range(-1.6, 1.6);
     const dir = vec(Math.cos(a), 0, Math.sin(a));
     const h = range(0.35, 1.3) * scale;
     const out = range(0.15, 0.6) * scale;
     const points = [root.clone(), root.clone().addScaledVector(dir, out * 0.3).add(vec(0, h * 0.7, 0)), root.clone().addScaledVector(dir, out).add(vec(0, h, 0))];
+    if (!wet) {
+      const color = new THREE.Color().setHSL(hue + range(-0.03, 0.03), range(0.4, 0.6), range(0.13, 0.22));
+      blade(batch, points, range(0.05, 0.1) * scale, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0 });
+      continue;
+    }
     // (The hue it was given picks the kind: reddish rush below 0.2, olive moss above.)
-    const color = tones(hue < 0.2 ? PALETTE.rush : PALETTE.turfMoss, random(), random(), random());
-    blade(batch, points, range(0.05, 0.1) * scale * 1.6, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true, cut: CUT.BRUSH });
+    const color = tones(rush ? PALETTE.rush : PALETTE.turfMoss, random(), random(), random());
+    blade(batch, points, range(0.05, 0.1) * scale * 1.6, color, root, 0.8, { rows: 3, cols: 1, ribbon: true, thin: 0.8, browning: random() < 0.3 ? range(0.2, 0.5) : 0, age: [0.9, 0.3], emit: i < grown, low: true, cut: rush ? CUT.BRUSH : CUT.NONE });
   }
 }
 

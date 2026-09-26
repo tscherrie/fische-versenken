@@ -130,7 +130,7 @@ const vPlantFade = varyingProperty("float", "vPlantFade");
 //   BEDLEAF   a leaf lying on the bed (whole; not thinned in front of the lens)
 //   FEATHER   milfoil: fine pinnae off a midrib, angled toward the tip
 //   BRUSH     threads fanning from the foot (green algae, the rush of the turf)
-//   SCALES    a moss shoot's overlapping scale leaves
+//   SCALES    a moss shoot's overlapping scale leaves, a few centimetres each
 //   NOTCH     the notched tip of a starwort leaf
 //   FRILL     a frilled margin (dulse, sugar kelp)
 //   FINGERS   a kelp blade split into straps
@@ -257,6 +257,7 @@ export function foliageMaterial() {
   material.castShadowPositionNode = strandPosition({ shadow: true });
   const thin = leafThin;
   const leafUv = uv();
+  const alongLeaf = attribute("along", "vec4").w;
   // The colour of the light a leaf passes: its own, before the film over it (set with its
   // colour below, read by the lighting).
   const passed = property("vec3", "leafPassed");
@@ -274,6 +275,8 @@ export function foliageMaterial() {
     // once: a derivative taken in a branch is garbage.)
     const du = float(0).toVar();
     du.assign(fwidth(leafUv.x));
+    const fwidthAlong = float(0).toVar();
+    fwidthAlong.assign(fwidth(alongLeaf));
     const across = abs(leafUv.x.sub(0.5)).toVar();
     const v = leafUv.y;
     // The midrib highlight fades once a leaf is only a few pixels wide, so needle leaves do
@@ -295,6 +298,13 @@ export function foliageMaterial() {
       const shade = fract(sin(strand.mul(12.9898).add(vPlantShade.z.mul(71))).mul(43758.5453));
       base.mulAssign(mix(1, shade.mul(0.45).add(0.78), smoothstep(0.12, 0.3, du.mul(7)).oneMinus()));
     });
+    // A moss shoot shows its scale leaves as it shows their edge (opacityNode): each a little
+    // lighter toward its tip, the next one's foot in its shadow -- faintly, or the shoot
+    // reads as a fern's frond.
+    If(cutMode.equal(CUT.SCALES), () => {
+      const tier = fract(alongLeaf.mul(60));
+      base.mulAssign(mix(1, tier.mul(0.14).add(0.93), smoothstep(0.2, 0.45, fwidthAlong.mul(60)).oneMinus()));
+    });
     // Leaf undersides are paler and warmer than the upper surface.
     base.mulAssign(select(faceDirection.lessThan(0), vec3(0.82, 0.76, 0.66), vec3(1)));
     // In autumn the weed dies back: browner, the old growth more than the tips.
@@ -305,10 +315,10 @@ export function foliageMaterial() {
   })();
 
   // What of a leaf is there. The cut shapes give it its species' outline out of the same few
-  // triangles. Each edge is softened over the width of a pixel (the alpha test's dither
-  // makes that a clean edge over a few frames), and once its detail is too fine for the
-  // pixels it gives way to a plain, narrower outline, so a distant feather is a slim leaf
-  // and not a paddle or a shimmer.
+  // triangles. Each edge is softened over a pixel and a half (the alpha test's dither makes
+  // that a clean edge over a few frames, and one that does not step as the eye moves), and
+  // once its detail is too fine for the pixels it gives way to a plain, narrower outline, so
+  // a distant feather is a slim leaf and not a paddle or a shimmer.
   material.opacityNode = Fn(() => {
     // (Everything the cuts share is a variable set here, derivatives first: a shared
     // expression is worked out where it is first used, and that may be inside another cut's
@@ -317,46 +327,53 @@ export function foliageMaterial() {
     du.assign(fwidth(leafUv.x));
     const dv = float(0).toVar();
     dv.assign(fwidth(leafUv.y));
-    const across = abs(leafUv.x.sub(0.5)).toVar();
+    const ds = float(0).toVar();
+    ds.assign(fwidth(alongLeaf));
     const a = float(0).toVar();
-    a.assign(across.mul(2));
+    a.assign(abs(leafUv.x.sub(0.5)).mul(2));
     const v = leafUv.y;
     const aw = float(0).toVar();
     aw.assign(du.mul(2));
+    const seed = float(0).toVar();
+    seed.assign(vPlantShade.z.mul(6.2832));
     // (1 inside the edge, 0 outside, softened over w; never over nothing, which is a NaN.)
     const inside = (edgeAt, d, w) => {
-      const half = max(w, 1e-4).mul(0.5);
+      const half = max(w, 1e-4).mul(0.8);
       return smoothstep(edgeAt.sub(half), edgeAt.add(half), d).oneMinus();
     };
     const pick = (i) => fract(sin(i.mul(12.9898).add(seed)).mul(43758.5453));
-    const seed = float(0).toVar();
-    seed.assign(vPlantShade.z.mul(6.2832));
     // Milfoil: five pinnae a side, the midrib between them. (The phases' change across a
     // pixel is worked out from the leaf coordinates', not taken again: that keeps each cut's
     // sums inside its own branch, and only the leaves that have it pay for it.)
     const featherPhase = v.mul(5).sub(a);
     const featherW = dv.mul(5).add(aw);
     const pinna = inside(float(0.2), abs(fract(featherPhase).sub(0.5)), featherW).mul(inside(v.mul(-0.35).add(1), a, aw));
-    const feather = mix(max(pinna, inside(float(0.08), a, aw)), inside(float(0.5), a, aw), smoothstep(0.35, 0.6, featherW));
+    const feather = mix(max(pinna, inside(float(0.08), a, aw)), inside(float(0.5), a, aw), smoothstep(0.3, 0.5, featherW));
     // Four threads from the foot, each its own length, tapering and wavering; far off, a
     // slim blade.
     const fan = v.mul(0.85).add(0.15);
     const brushPhase = leafUv.x.sub(0.5).div(fan).mul(4).add(sin(v.mul(9).add(seed)).mul(0.15));
-    const brushW = du.mul(4).add(across.mul(3.4).mul(dv).div(fan)).div(fan).add(dv.mul(1.35));
-    const threadLength = fract(sin(floor(brushPhase).mul(12.9898).add(seed)).mul(43758.5453));
-    const thread = inside(v.mul(-0.18).add(0.3), abs(fract(brushPhase).sub(0.5)), brushW).mul(inside(threadLength.mul(0.4).add(0.6), v, dv));
-    const brush = mix(thread, inside(v.mul(-0.45).add(0.75), a, aw), smoothstep(0.5, 0.8, brushW));
-    // Scale leaves in overlapping tiers up a moss shoot.
-    const scaleEdge = mix(float(1).sub(abs(fract(v.mul(6)).sub(0.5)).mul(2)).mul(0.45).add(0.55), float(0.8), smoothstep(0.2, 0.4, dv.mul(6)));
-    const scales = inside(scaleEdge, a, aw);
+    const brushW = du.mul(4).add(a.mul(1.7).mul(dv).div(fan)).div(fan).add(dv.mul(1.35));
+    const thread = inside(v.mul(-0.16).add(0.36), abs(fract(brushPhase).sub(0.5)), brushW).mul(inside(pick(floor(brushPhase)).mul(0.4).add(0.6), v, dv));
+    const brush = mix(thread, inside(v.mul(-0.45).add(0.75), a, aw), smoothstep(0.45, 0.7, brushW));
+    // A moss shoot's scale leaves, some sixty to the metre along it (by its length, not the
+    // blade's coordinates: a long shoot has more of them, not bigger ones), each widening
+    // toward its tip, overlapping the next, some standing out further than others: a ragged
+    // edge, not a frond's even pinnae.
+    const tier = alongLeaf.mul(60);
+    const tooth = smoothstep(0, 0.8, fract(tier)).mul(smoothstep(0.85, 1, fract(tier)).oneMinus()).mul(pick(floor(tier)).mul(0.7).add(0.3));
+    const scales = inside(mix(tooth.mul(0.2).add(0.76), float(0.86), smoothstep(0.25, 0.5, ds.mul(60))), a, aw);
     // A notch at the tip.
     const notch = float(1).sub(inside(v.sub(0.88).mul(3), a, aw));
     // A frilled margin.
-    const frillEdge = mix(sin(v.mul(43).add(seed)).mul(0.14).add(0.86), float(0.86), smoothstep(0.3, 0.6, dv.mul(43).mul(0.14)));
-    const frill = inside(frillEdge, a, aw);
-    // Straps from a third of the way up.
+    const frill = inside(mix(sin(v.mul(43).add(seed)).mul(0.14).add(0.86), float(0.86), smoothstep(0.3, 0.6, dv.mul(6))), a, aw);
+    // A kelp blade split from a third of the way up into straps, each narrowing and parting
+    // from the next toward its own rounded end.
     const fingerW = du.mul(5);
-    const fingers = mix(max(inside(float(0.38), abs(fract(leafUv.x.mul(5)).sub(0.5)), fingerW), inside(float(0.3), v, dv)), float(1), smoothstep(0.2, 0.4, fingerW));
+    const strapEnd = pick(floor(leafUv.x.mul(5))).mul(0.22).add(0.78);
+    const strapTip = saturate(float(1).sub(pow(max(v.sub(strapEnd).add(0.12), 0).div(0.12), 2))).sqrt();
+    const strapHalf = mix(0.49, 0.3, smoothstep(0.3, 1, v)).mul(strapTip);
+    const fingers = mix(max(inside(strapHalf, abs(fract(leafUv.x.mul(5)).sub(0.5)), fingerW), inside(float(0.3), v, dv)), float(1), smoothstep(0.2, 0.4, fingerW));
     // A crowfoot tress, whole but for its end, where its threads part and end one by one.
     const tressW = du.mul(6);
     const tressHalf = mix(0.62, 0.2, smoothstep(0.6, 1, v));
@@ -388,7 +405,9 @@ export function foliageMaterial() {
     const v = leafUv.y;
     const pinna = step(abs(fract(v.mul(5).sub(a)).sub(0.5)), 0.2).mul(step(a, v.mul(-0.35).add(1)));
     const feather = max(pinna, step(a, 0.08));
-    const fingers = max(step(abs(fract(leafUv.x.mul(5)).sub(0.5)), 0.38), step(v, 0.3));
+    const strapEnd = fract(sin(floor(leafUv.x.mul(5)).mul(12.9898)).mul(43758.5453)).mul(0.22).add(0.78);
+    const strapHalf = mix(0.49, 0.3, smoothstep(0.3, 1, v)).mul(step(v, strapEnd));
+    const fingers = max(step(abs(fract(leafUv.x.mul(5)).sub(0.5)), strapHalf), step(v, 0.3));
     return select(cutMode.equal(CUT.FEATHER), feather, select(cutMode.equal(CUT.FINGERS), fingers, float(1))).greaterThan(0.5);
   })();
   // The rib and veins in relief, from their height's change across the pixel.
