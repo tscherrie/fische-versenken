@@ -15,7 +15,8 @@ import { KINDS } from "./kinds.js";
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const TAU = Math.PI * 2;
-const CORPSE_SECONDS = 40;
+// How long a dead enemy stays before it goes (the look fades it out on the same beat).
+export const CORPSE_SECONDS = 40;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
@@ -345,7 +346,7 @@ export function createEnemies(scene, { random }) {
 
   // A dead enemy: it turns belly up and rises, slowly at first, to float at the surface,
   // rocking a little and drifting with the current, then it is gone.
-  function drift(e, dt, time) {
+  function drift(e, dt, time, ground) {
     e.corpse += dt;
     e.rolled = Math.min(Math.PI, e.rolled + dt * 3);
     e.speed *= Math.exp(-dt * 3);
@@ -355,8 +356,14 @@ export function createEnemies(scene, { random }) {
     locate(e.position.x, e.position.z, e.river.s, e.river);
     const floor = bed(e.river.s, e.river.u) + e.size * 0.08;
     const top = level(e.river.s) - e.size * 0.07;
-    const rise = (0.12 + 0.12 * e.size) * Math.min(1, e.corpse / 1.5);
-    e.position.y = clamp(e.position.y + rise * dt, floor, Math.max(floor, top));
+    if (e.spec.crawls) {
+      // A larva does not float: it sinks back onto the stones and lies there.
+      const under = (ground ? ground.height(e.position.x, e.position.z, floor - e.size * 0.08) : floor - e.size * 0.08) + e.size * 0.06;
+      e.position.y = Math.max(under, e.position.y - 0.3 * dt);
+    } else {
+      const rise = (0.12 + 0.12 * e.size) * Math.min(1, e.corpse / 1.5);
+      e.position.y = clamp(e.position.y + rise * dt, floor, Math.max(floor, top));
+    }
     e.gape += (0.35 - e.gape) * (1 - Math.exp(-dt * 2));
   }
 
@@ -367,7 +374,7 @@ export function createEnemies(scene, { random }) {
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
       if (e.dead) {
-        drift(e, dt, time);
+        drift(e, dt, time, hooks.ground);
         if (e.corpse > CORPSE_SECONDS || e.eaten) {
           list.splice(i, 1);
           continue;
@@ -387,8 +394,10 @@ export function createEnemies(scene, { random }) {
         e.speed += (speed - e.speed) * (1 - Math.exp(-dt * (speed > e.speed ? (e.mode === "strike" ? 14 : 3) : 2.5)));
         current(e.river.s, e.river.u, e.position.y, flow, time, true);
         e.velocity.copy(e.heading).multiplyScalar(e.speed);
-        e.velocity.x += flow.vx;
-        e.velocity.z += flow.vz;
+        // (A crawler holds on to the gravel: the current hardly moves it.)
+        const carried = e.spec.crawls ? 0.15 : 1;
+        e.velocity.x += flow.vx * carried;
+        e.velocity.z += flow.vz * carried;
         e.position.addScaledVector(e.velocity, dt);
         locate(e.position.x, e.position.z, e.river.s, e.river);
         const floor = bed(e.river.s, e.river.u);
@@ -399,9 +408,16 @@ export function createEnemies(scene, { random }) {
           locate(e.position.x, e.position.z, e.river.s, e.river);
           e.heading.multiplyScalar(-1);
         }
-        const low = floor + e.size * 0.12;
+        // A crawler walks on whatever lies there: the bed, the stones, the gravel -- until its
+        // prey is close above it: then it swims up at it (the larvae do, in jerks).
+        const low = (e.spec.crawls && hooks.ground ? hooks.ground.height(e.position.x, e.position.z, floor) + e.size * 0.08 : floor + e.size * 0.12);
         const high = Math.max(low, top - e.size * 0.1);
-        e.position.y = e.spec.crawls || (e.spec.bottom && e.mode === "lurk") ? low : clamp(e.position.y, low, high);
+        let climbing = false;
+        if (e.spec.crawls && e.target) {
+          const fp = e.target.fish.position;
+          climbing = Math.hypot(fp.x - e.position.x, fp.z - e.position.z) < 2.5 + 3 * e.size && fp.y > low;
+        }
+        e.position.y = (e.spec.crawls && !climbing) || (e.spec.bottom && e.mode === "lurk") ? low : clamp(e.position.y, low, high);
         const beat = 0.6 + (e.speed / e.size) * 1.4;
         e.phase = (e.phase + dt * TAU * beat) % TAU;
         const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;

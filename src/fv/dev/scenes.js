@@ -21,6 +21,8 @@ export const SCENES = [
   { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 100, still: true },
+  // The same without shooting back: do the larvae get to the alevin on its stone?
+  { name: "kiesbett-wehrlos", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 60, still: true, nofire: true },
   // The old king in his pool: a yearling comes in and fights him (the pilot).
   { name: "koenig", stage: "yearling", at: 690, season: "summer", hour: 13, pilot: 60 },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
@@ -180,7 +182,7 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
       look.yaw = Math.atan2(target.z - fish.position.z, target.x - fish.position.x);
       look.pitch = 0;
     }
-    combat.fire(!!near);
+    combat.fire(!!near && !scene.nofire);
     const dead = extreme.game.now.dead > 0;
     if (dead && !wasDead) deaths++;
     wasDead = dead;
@@ -190,7 +192,7 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   };
   for (let t = 0; t < scene.pilot; t += 10) {
     await salmon.run(10, steer);
-    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, alive: combat.enemies.list.filter((e) => !e.dead).length, deaths });
+    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, alive: combat.enemies.list.filter((e) => !e.dead).length, deaths, near: combat.enemies.list.filter((e) => !e.dead).slice(0, 4).map((e) => `${e.kind}:${e.mode}:${e.position.distanceTo(fish.position).toFixed(2)}:dy${(e.position.y - fish.position.y).toFixed(2)}`) });
     if (t === 20) {
       extreme.frame(1 / 60);
       await salmon.capture(`${set}/${scene.name}-1`, 1280, 720);

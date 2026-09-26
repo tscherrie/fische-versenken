@@ -17,6 +17,7 @@ import { createFx } from "./fx.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
 import { createGravel } from "./gravel.js";
+import { createGround } from "./ground.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { createProjectiles } from "./projectiles.js";
@@ -41,6 +42,7 @@ export function createCombat(game) {
   const difficulty = createDifficulty(habitat);
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
+  const ground = createGround({ terrain, pebbles: game.pebbles });
   const rules = createRules();
   const bosses = createBosses({ enemies, hud, random });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
@@ -240,7 +242,10 @@ export function createCombat(game) {
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
     gravel.update(dt, { fish, enemies, players: players.length });
     bosses.update(dt, { fish, onBeaten: (boss) => game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6) });
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
+    // (The stones for the crawlers, gathered once, only while there are crawlers about.)
+    const crawling = enemies.list.some((e) => e.spec.crawls);
+    if (crawling) ground.refresh(fish.position, 12);
+    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
     hostile.update(dt, players, {
       onPlayer(shot, player) {
         hurt(player, shot.source, outcome, shot);
