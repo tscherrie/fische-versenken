@@ -20,9 +20,9 @@ export const SCENES = [
   // shotgun open up on a parr (the tells, the bursts, the hits).
   { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
-  { name: "kiesbett", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 100, still: true },
+  { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
-  { name: "kiesbett-wehrlos", stage: "alevin", at: 24, season: "spring", hour: 11, pilot: 60, still: true, nofire: true },
+  { name: "kiesbett-wehrlos", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 60, still: true, nofire: true },
   // The old king in his pool: a yearling comes in and fights him (the pilot).
   { name: "koenig", stage: "yearling", at: 690, season: "summer", hour: 13, pilot: 60 },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
@@ -47,6 +47,9 @@ export function sceneURL(set, scene, extra = "") {
   for (const [k, v] of new URLSearchParams(location.search)) if (k.startsWith("x")) extra += `&${k}=${v}`;
   const q = new URLSearchParams({ capture: "1", seed: "7", day: "still", rain: "0", quality: "detail", fvtest: set, scene: scene.name, stage: scene.stage, at: String(scene.at), season: scene.season, hour: String(scene.hour) });
   q.set("new", "");
+  // (No ?at: a new life starts where it would in the game, in the gravel of the redd; ?at
+  // starts mid-water.)
+  if (scene.at === null) q.delete("at");
   return `${location.pathname}?${q.toString().replace("new=", "new")}${extra}`;
 }
 
