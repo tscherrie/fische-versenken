@@ -21,23 +21,32 @@ import { createGround } from "./ground.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { ARSENAL, createPickups } from "./pickups.js";
-import { createProjectiles } from "./projectiles.js";
+import { createProjectiles, createRibbons, createSmoke } from "./projectiles.js";
 import { createRules } from "./rules.js";
 import { createSfx } from "./sfx.js";
 import { createSignals } from "./signals.js";
-import { WEAPONS, createArsenal, damageScale } from "./weapons.js";
+import { WEAPONS, createArsenal, createFiring } from "./weapons.js";
 import { tameTheWild } from "./wild.js";
+
+// How far (as a tangent) from the middle of the view an enemy draws a phone's auto-fire: a
+// wider cone than with a mouse.
+const TOUCH_ASSIST = Math.tan((9 * Math.PI) / 180);
 
 export function createCombat(game) {
   const { scene, camera, canvas, habitat, salmon, fish, life, terrain, sound, settings, touchMode } = game;
   const random = randomGenerator(0x51a7e);
+  // (A stream of its own for what is only for the eye -- sparks, smoke, bubbles -- so the
+  // looks never change what the game does next.)
+  const look = randomGenerator(0x10c4);
   const light = !settings?.detail || touchMode;
   const wild = tameTheWild(game);
   const enemies = createEnemies(scene, { random });
-  const projectiles = createProjectiles({ capacity: light ? 150 : 300 });
+  const projectiles = createProjectiles({ capacity: light ? 150 : 300, scene, camera });
+  const smoke = createSmoke(scene, camera, { capacity: light ? 128 : 256 });
+  const ribbons = createRibbons(scene);
   const fx = createFx(scene, camera, { capacity: light ? 400 : 768, bubbleCapacity: light ? 240 : 480 });
   const sfx = createSfx(sound);
-  const gore = createGore(scene, camera, { random, light });
+  const gore = createGore(scene, camera, { random: look, light });
   const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const difficulty = createDifficulty(habitat);
@@ -62,17 +71,20 @@ export function createCombat(game) {
   const local = players[0];
   // What holds the triggers: the mouse buttons, the tests, and on a phone the auto-fire.
   const trigger = { back: false, belly: false, test: false, auto: false };
+  // On a phone the weapons fire themselves (auto-fire): per place, whether they do now.
+  const auto = { back: false, belly: false };
   const stones = [];
-  const muzzle = new THREE.Vector3();
-  const aimDir = new THREE.Vector3();
-  const flight = new THREE.Vector3();
   let clock = 0,
     wasDown = false;
+  // The weapons' verbs and what their shots do (weapons.js).
+  const firing = createFiring({ random, look, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, camera, players, onKill, clock: () => clock });
+  // For tests: the last few deaths of the local fish that combat caused ({ t, by }).
+  const deaths = [];
 
-  // The mouse buttons, while the pointer is caught and the fish can fight. (mousedown and
-  // mouseup come for each button, pointer events only for the first one pressed.)
-  // (On a phone there is no caught pointer: the view is swiped, and the weapons fire themselves.)
-  const canFire = () => (game.now.locked || touchMode) && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
+  // The mouse buttons, while the pointer is caught and the fish can fight (on a phone, with
+  // no pointer to catch, whenever the fish can fight). (mousedown and mouseup come for each
+  // button, pointer events only for the first one pressed.)
+  const canFire = () => (game.now.locked || !!touchMode) && !game.now.paused && game.now.dead <= 0 && !game.celebration.active;
   canvas.addEventListener("mousedown", (event) => {
     if (!canFire()) return;
     if (event.button === 0) trigger.back = true;
@@ -93,53 +105,49 @@ export function createCombat(game) {
   function held(player, place) {
     const a = player.arsenal;
     const single = !(a.back && a.belly);
-    if (trigger.test || trigger.auto) return true;
+    if (trigger.test) return true;
+    if (touchMode || trigger.auto) return auto[place];
     if (single) return trigger.back;
     return place === "back" ? trigger.back : trigger.belly;
   }
 
-  function shoot(player, place, w, id) {
+  // Auto-fire on a phone: a gun fires while the aim has an enemy in its reach (the aim's own
+  // pull onto a target near the middle of the view picks it); the katana cuts while an
+  // enemy is within its reach in front of the fish.
+  const toward = new THREE.Vector3();
+  function autoFire(player) {
     const f = player.fish;
     const L = f.length;
-    if (!models.muzzle(player, place, muzzle)) player.arsenal.mount(player.salmon, place, muzzle);
-    models.recoil(player, place);
-    const speed = w.speed(L);
-    const reach = w.reach(L);
-    aimDir.subVectors(aim.point, muzzle);
-    // Too close to aim from the weapon (or behind it): straight along the view.
-    if (aimDir.lengthSq() < 0.25 * L * L || aimDir.dot(aim.direction) < 0) aimDir.copy(aim.direction);
-    aimDir.normalize();
-    aimDir.x += (random() - 0.5) * 2 * w.spread;
-    aimDir.y += (random() - 0.5) * 2 * w.spread;
-    aimDir.z += (random() - 0.5) * 2 * w.spread;
-    aimDir.normalize();
-    flight.copy(aimDir).multiplyScalar(speed);
-    projectiles.fire({ owner: player.id, weapon: id, position: muzzle, velocity: flight, damage: w.damage * damageScale(L), radius: w.radius(L), life: reach / speed, size: w.size(L), tint: w.tint, stretch: w.stretch, s: f.river.s });
-    // The flash at the weapon (held a few frames, or the temporal blend swallows it).
-    fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: w.size(L) * 2.4, life: 0.08, r: w.tint[0] * 0.5, g: w.tint[1] * 0.5, b: w.tint[2] * 0.5 });
-    if (player.local) sfx[w.sound]?.(L);
+    const a = player.arsenal;
+    let reach = 4 * L;
+    for (const place of ["back", "belly"]) {
+      const w = WEAPONS[a[place]];
+      if (w && w.mode !== "blade") reach = Math.max(reach, w.reach(L));
+    }
+    aim.update(enemies.list, reach, touchMode ? TOUCH_ASSIST : undefined);
+    for (const place of ["back", "belly"]) {
+      const w = WEAPONS[a[place]];
+      auto[place] = false;
+      if (!w) continue;
+      if (w.mode === "blade") {
+        for (const e of enemies.list) {
+          if (e.dead) continue;
+          toward.subVectors(e.position, f.position);
+          if (toward.length() - e.size * 0.45 < 1.05 * L && toward.dot(f.heading) > 0) {
+            auto[place] = true;
+            break;
+          }
+        }
+        continue;
+      }
+      const t = aim.target;
+      auto[place] = !!t && !t.dead && t.position.distanceTo(f.position) - t.size * 0.45 < w.reach(L);
+    }
   }
 
+  // One step of a player's weapons: each verb in weapons.js.
   function fireWeapons(player, dt) {
-    const a = player.arsenal;
-    a.cool(dt);
-    if (player.down || !(canFire() || trigger.test)) return;
-    for (const place of ["back", "belly"]) {
-      const id = a[place];
-      if (!id || !held(player, place) || a.locked[id]) continue;
-      const w = WEAPONS[id];
-      while (a.cooldown[place] <= 0) {
-        a.cooldown[place] += w.interval;
-        shoot(player, place, w, id);
-        a.heat[id] += w.heat;
-        a.fired[id] = 0;
-        if (a.heat[id] >= 1) {
-          a.locked[id] = true;
-          if (player.local) sfx.overheat();
-          break;
-        }
-      }
-    }
+    firing.fire(player, dt, (place) => held(player, place), canFire() || trigger.test || trigger.auto);
   }
 
   // An enemy's strike landed on a player: a fish big enough swallows it (the base game's
@@ -153,6 +161,7 @@ export function createCombat(game) {
     const swallows = !shot && e.spec.swallows && e.size >= 2.2 * f.length;
     if (swallows && level.swallow) {
       outcome.killed = e.spec.name;
+      died(e);
       return;
     }
     // (On Tourist a fish that would swallow the salmon only bites it, hard.)
@@ -163,9 +172,16 @@ export function createCombat(game) {
       player.feltAt = clock;
       outcome.bitten = true;
     }
-    if (f.energy <= 0) outcome.killed = shot?.cause ?? e.spec.name;
+    if (f.energy <= 0) {
+      outcome.killed = shot?.cause ?? e.spec.name;
+      died(e);
+    }
   }
-  // An enemy's gun goes off: its pellets fly from its snout toward where the salmon will be.
+  function died(e) {
+    deaths.push({ t: +clock.toFixed(2), by: e.kind });
+    if (deaths.length > 16) deaths.shift();
+  }
+  // An enemy's gun goes off: its pellets fly from its muzzle toward where the salmon will be.
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
   function enemyShoots(e, dir, gun) {
@@ -183,7 +199,8 @@ export function createCombat(game) {
   }
 
   // What a sunk enemy gives back: a little growth for every kill, so fighting pays as well as
-  // hiding (plan: "Kampf nährt das Leben"); a fasting spawner gets strength instead.
+  // hiding (plan: "Kampf nährt das Leben"); a fasting spawner gets strength instead; in the
+  // gravel every larva brings hatching nearer.
   function reward(player, e) {
     const f = player.fish;
     const stage = STAGES[f.stage];
@@ -192,7 +209,7 @@ export function createCombat(game) {
     else f.progress = Math.min(1, f.progress + clamp(0.004 + 0.008 * Math.min(1, e.size / (2 * f.length)), 0.004, 0.012));
   }
 
-  function onKill(e, by, dir, weapon) {
+  function onKill(e, by, dir, weapon, info = null) {
     const player = players.find((p) => p.id === by);
     if (player) {
       player.kills++;
@@ -203,29 +220,41 @@ export function createCombat(game) {
       hud.say("Versenkt!", e.spec.title);
     }
     sfx.sunk(e.size);
-    gore.kill(e, dir, weapon);
-    fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(10 + 5 * e.size), size: 0.02 + 0.015 * e.size, spread: e.size * 0.4, random });
-    fx.burst(e.position.x, e.position.y, e.position.z, { count: 10, speed: 1.2 + e.size, size: 0.05 + 0.03 * e.size, life: 0.4, r: 7, g: 2.4, b: 0.8, random });
+    // What it leaves in the water is the splatter's (gore.js); here only the air it had.
+    gore.kill(e, dir, weapon, info);
+    fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(4 + 2 * e.size), size: 0.01 + 0.008 * e.size, spread: e.size * 0.3, random: look });
   }
 
-  // A small sunk fish can be eaten where it lies.
+  // A small sunk fish can be eaten where it lies, and so can a small one stunned belly-up,
+  // and the chunks a burst one left (gore.eat).
   function eatCorpses(player) {
     const f = player.fish;
     if (player.down) return;
     for (const e of enemies.list) {
-      if (!e.dead || e.eaten || e.size > 1.1 * f.length) continue;
+      if (e.eaten || e.size > 1.1 * f.length) continue;
+      if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
+        if (!e.dead) {
+          // (Swallowed alive: a kill, but nothing is left to splatter.)
+          enemies.hit(e, e.hp + 1, null, player.id);
+          player.kills++;
+        }
         e.eaten = true;
         player.salmon.eat(35 * e.size, e.kind);
-        fx.fizz(e.position.x, e.position.y, e.position.z, { count: 5, size: 0.015 + 0.01 * e.size, spread: e.size * 0.3, random });
+        fx.fizz(e.position.x, e.position.y, e.position.z, { count: 5, size: 0.015 + 0.01 * e.size, spread: e.size * 0.3, random: look });
       }
     }
+    const bits = gore.eat?.(f.mouth, 0.3 * f.length + 0.1) ?? 0;
+    if (bits > 0) player.salmon.eat(bits, "flesh");
   }
 
   function step(dt, outcome) {
     if (dt <= 0) return;
     clock += dt;
-    if (clock > 4) game.hud.tip("fv-fire", "<b>Feuer frei!</b> Die linke Maustaste schießt mit deiner Waffe, die Leertaste bleibt Spurt, Biss und Sprung. Alles, was kein Lachs ist, will dich fressen.", 11);
+    if (clock > 4) {
+      if (touchMode) game.hud.tip("fv-fire", "<b>Feuer frei!</b> Deine Waffe feuert von selbst, sobald ein Feind im Visier und in Reichweite ist. Alles, was kein Lachs ist, will dich fressen.", 11);
+      else game.hud.tip("fv-fire", "<b>Feuer frei!</b> Die linke Maustaste schießt mit deiner Waffe, die Leertaste bleibt Spurt, Biss und Sprung. Alles, was kein Lachs ist, will dich fressen.", 11);
+    }
     local.down = game.now.dead > 0;
     // A death: the enemies fall back and no new ones come for a while, so the sibling that
     // takes over has a moment to find its feet.
@@ -235,23 +264,22 @@ export function createCombat(game) {
       for (const id of [a.back, a.belly]) if (id && id !== "piu") pickups.revenge(local, id, fish.position);
       a.back = "piu";
       a.belly = null;
-      for (const e of enemies.list) if (!e.dead) {
-        e.mode = "recover";
-        e.t = -4;
-      }
+      for (const e of enemies.list)
+        if (!e.dead) {
+          e.mode = "recover";
+          e.t = -4;
+        }
       director.hold(10);
     }
     wasDown = local.down;
     rules.step(dt, local, enemies);
     wild.step();
     const L = fish.length;
-    const reach = (WEAPONS[local.arsenal.back] ?? WEAPONS.piu).reach(L);
-    if (touchMode) {
-      // Auto-fire: whenever an enemy is in reach near the middle of the view (a wider cone
-      // than with a mouse), every weapon fires at it.
-      aim.update(enemies.list, reach, Math.tan((9 * Math.PI) / 180));
-      trigger.auto = !!aim.target && !local.down;
-    } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, reach);
+    const w = WEAPONS[local.arsenal.back] ?? WEAPONS[local.arsenal.belly] ?? WEAPONS.piu;
+    if ((touchMode || trigger.auto) && !trigger.test) {
+      if (canFire() || trigger.auto) autoFire(local);
+      else auto.back = auto.belly = false;
+    } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, Math.max(w.reach(L), 4 * L));
     fireWeapons(local, dt);
     enemies.hpScale = difficulty.level.hp;
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
@@ -265,7 +293,7 @@ export function createCombat(game) {
     });
     // A new stage of life: the new stage's weapon sinks down in a capsule.
     if (!local.down && fish.stage > (local.stageSeen ?? fish.stage)) {
-      for (const [id, w] of Object.entries(ARSENAL)) if (w.stage === fish.stage && !w.boss && !w.secret) pickups.deliver(local, id);
+      for (const [id, spec] of Object.entries(ARSENAL)) if (spec.stage === fish.stage && !spec.boss && !spec.secret) pickups.deliver(local, id);
     }
     local.stageSeen = fish.stage;
     pickups.update(dt, {
@@ -281,75 +309,54 @@ export function createCombat(game) {
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12);
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
+    // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
+    firing.after(dt);
     hostile.update(dt, players, {
       onPlayer(shot, player) {
         hurt(player, shot.source, outcome, shot);
-        fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 4, speed: 0.6, size: shot.size * 0.8, life: 0.12, r: 6, g: 1.2, b: 0.6, random });
-        gore.hit?.({ position: player.fish.position, heading: player.fish.heading, size: player.fish.length, kind: "salmon", dead: false }, shot.position, shot.velocity.clone().normalize(), shot.weapon);
+        gore.hit?.({ position: player.fish.position, heading: player.fish.heading, size: player.fish.length, kind: "salmon", dead: false, spec: {} }, shot.position, shot.velocity.clone().normalize(), shot.weapon);
       },
       onGround(shot) {
-        fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random });
+        fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
       },
     });
     signals.whiffs(outcome);
     if (projectiles.live.length) terrain.collidersNear(fish.position.x, fish.position.z, WEAPONS.piu.reach(L) + 4, stones);
     else stones.length = 0;
-    projectiles.update(dt, {
-      enemies: enemies.list,
-      stones,
-      onEnemy(shot, e) {
-        flight.copy(shot.velocity).normalize();
-        const sunk = enemies.hit(e, shot.damage, flight, shot.owner);
-        gore.hit(e, shot.position, flight, shot.weapon);
-        fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 5, speed: 0.6 + fish.length, size: shot.size * 0.9, life: 0.16, r: shot.tint[0] * 0.7, g: shot.tint[1] * 0.9, b: shot.tint[2], random });
-        if (shot.owner === local.id) {
-          sfx.hit();
-          if (!sunk) hud.hit(false);
-        }
-        if (sunk) onKill(e, shot.owner, flight, shot.weapon);
-      },
-      onGround(shot) {
-        fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 3, size: shot.size * 0.5, spread: shot.size, rise: 0.6, random });
-        fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 3, speed: 0.4, size: shot.size * 0.7, life: 0.12, r: 2, g: 1.4, b: 0.8, random });
-        if (shot.owner === local.id) sfx.ground();
-      },
-      onStone(shot) {
-        fx.burst(shot.position.x, shot.position.y, shot.position.z, { count: 4, speed: 0.6, size: shot.size * 0.7, life: 0.14, r: 3, g: 2, b: 1, random });
-        if (shot.owner === local.id) sfx.ground();
-      },
-    });
+    projectiles.update(dt, { enemies: enemies.list, stones, onEnemy: firing.onEnemy, onGround: firing.onGround, onStone: firing.onStone, onBounce: firing.onBounce, onExpire: firing.onExpire });
+    // What the shots left: the grenades' trails, one splatter call a shell.
+    firing.trails(dt);
+    firing.flush();
     eatCorpses(local);
     rules.after(local);
     fx.update(dt);
+    smoke.update(dt);
     gore.update(dt, enemies.list);
   }
 
-  // The picture of this frame: the shots in flight, the weapon's own light, the sparks.
+  // The picture of this frame: the shots in flight, the weapons, the sparks, the capsules.
   function frame(dt) {
     const shown = !game.now.paused || trigger.test;
     hud.update(dt, shown ? local.arsenal : null);
     hud.bars(enemies.list, camera, game.now.time);
     fx.begin();
-    for (const p of projectiles.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
-    // (A spent bullet, sinking, is only a faint glint until it gets a look of its own.)
+    models.update(players);
+    // (The enemies' own weapons, strapped on the same way, once the models draw them.)
+    models.enemies?.(enemies.list);
+    // The shots in flight, the grenades' bodies, the weapons' own lights.
+    firing.draw(local);
+    projectiles.draw();
+    // The enemies' rounds; a spent one, sinking, is only a faint glint until it gets a look
+    // of its own.
     for (const p of hostile.live) {
       if (p.rested) continue;
       const k = p.spent ? 0.06 : 1;
       fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
     }
-    models.update(players);
     for (const item of pickups.items) if (item.state === "idle") fx.add(item.x, item.y + Math.sin(item.age * 2) * 0.05, item.z, item.size * 0.5, 2.2, 2.4, 2.8, 1);
-    // (The enemies' own weapons, strapped on the same way, once the models draw them.)
-    models.enemies?.(enemies.list);
-    // A weapon that is hot glows at the muzzle.
-    const a = local.arsenal;
-    const w = WEAPONS[a.back];
-    const hot = Math.min(1, a.heat[a.back] ?? 0);
-    if (w?.glow && hot > 0.05 && !local.down && !fish.captive) {
-      if (!models.muzzle(local, "back", muzzle)) a.mount(salmon, "back", muzzle);
-      fx.add(muzzle.x, muzzle.y, muzzle.z, w.size(fish.length) * (0.35 + 0.4 * hot), w.glow[0] * hot * 2, w.glow[1] * hot * 2, w.glow[2] * hot, 1);
-    }
     fx.end();
+    smoke.frame();
+    sfx.update?.();
     gore.frame();
   }
 
@@ -358,6 +365,9 @@ export function createCombat(game) {
     enemies,
     projectiles,
     hostile,
+    smoke,
+    firing,
+    deaths,
     director,
     bosses,
     pickups,
@@ -369,6 +379,11 @@ export function createCombat(game) {
     // For tests and automation (no pointer lock there): hold the trigger down or let go.
     fire(on) {
       trigger.test = !!on;
+    },
+    // For tests: the phone's auto-fire, on a computer.
+    autoFire(on) {
+      trigger.auto = !!on;
+      if (!on) auto.back = auto.belly = false;
     },
   };
 }

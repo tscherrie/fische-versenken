@@ -159,7 +159,8 @@ export function createPickups({ weapons, random = Math.random }) {
           const old = f.stage >= TWO_FROM ? a[placeOf] : a.back ?? a.belly;
           if (f.stage < TWO_FROM) a.belly = null;
           a[placeOf] = item.weapon;
-          a.heat[item.weapon] ??= 0;
+          if (a.ensure) a.ensure(item.weapon);
+          else a.heat[item.weapon] ??= 0;
           item.state = "taken";
           if (item.slot !== undefined) slots[item.slot].taken.add(item.band);
           // What it carried waits in a capsule of its own (locked for it a moment, unless it

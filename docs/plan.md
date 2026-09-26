@@ -44,33 +44,58 @@ Nach Bossen gibt es Atempausen; Sprünge und Balz bleiben kampffrei.
 
 ## 3. Waffen
 
-Der Schaden wächst mit der Körperlänge, eine frühe Waffe bleibt also brauchbar. Meist gibt es Hitze statt Munition, damit man nicht ständig auf den Piu-Piu zurückfällt. * = erste spielbare Fassung.
+Der Schaden wächst mit der Körperlänge, eine frühe Waffe bleibt also brauchbar. Alle Waffen sind echt und ernst gemeint, mit richtigem Splatter. Der Witz ist der Gegensatz zum schönen, ruhigen Fischleben und die Übertreibung: Mit jeder Stufe wird die Waffe auch im Verhältnis zum Fisch größer, vom Laser mit 0,4 Körperlängen bis zum Nodachi mit 1,3. * = erste spielbare Fassung (M1).
 
-| Stufe | Waffe | Gefühl | Platz | Effekt / Klang |
+| Stufe | Waffe | Gefühl | Platz | Splatter / Klang |
 |---|---|---|---|---|
-| Brut | Piu-Piu-Laser* | Dauerfeuer, Start | Rücken Mitte: Leuchtperle | rote Bolzen, „piu“ |
-| Brut | Blubberkanone* | Blasen fangen Kleinzeug | Bauch: Schneckenhaus | schillernde Blase, „Plopp!“ |
-| Brut/Sömmerling | Schilfrohr-Flinte* | Streuschuss, kurz | Rücken links und rechts: zwei Halme | Blasenstoß, „fump“ |
-| Jährling/Parr | Katana* | Hieb, Sprint-Schnitt | Rücken Mitte: Scheide | weißer Bogen, „shing“ |
-| Parr | Sägeblatt-Werfer* | prallt von Steinen ab | Rücken rechts: Drehsäge | Surren, „klink“ |
-| Parr | Tesla-Flosse* | Kettenblitz gegen Rudel | Rücken Mitte: Spule an der Rückenflosse | Zickzack, Knistern |
-| Smolt → Meer | Bauchtorpedos* | zielsuchend, 2, auf See 4 | Bauch | Blasenspur, tiefer Bass |
-| Smolt/Meer | Wasserbomben* | Minen nach hinten | Bauch: Fässchen | Ticken, Bumm |
-| Meer | Nordlicht-Strahl* | Strahl, nur in Polarlichtnächten | Rücken Mitte: Prisma | grün-violettes Band |
-| Laichlachs | Nodachi | Rundumhieb | Rücken Mitte, auf dem Buckel | tiefes Schwirren |
-| Laichlachs | Geysir-Werfer | Dampfkegel gegen Läuse | Bauch: Kessel | Zischen |
-| Laichlachs | Die Große Welle | Wasserwand, 3 Ladungen | Rücken links und rechts; liegt in der Grotte hinter dem Lachsfall | Gischt wie am Fall |
+| Dottersackbrut (ab Schlupf) | Kompaktlaser* | präzise rote Pulse, Hitze statt Munition, bleibt ein Leben lang brauchbar | Rücken Mitte, auf der Schiene | Dampfperlen, rote Wölkchen, Larven platzen gelbgrün / scharfes „tsiu“ |
+| Brütling | Abgesägte Doppelflinte* | zwei Riesenknalle aus nächster Nähe, dann klappt sie auf und lädt nach | Rücken rechts | Kleinzeug zerplatzt in Brocken, der Rest fliegt weg, Hülsen sinken / tiefes „BUMM“, Klacken |
+| Sömmerling | Revolver-Granatwerfer* | Granaten, die das Wasser schnell bremst: kurzer Bogen, prallen von Steinen in Verstecke | Rücken rechts | Kiesring, Fische fliegen in Stücken auseinander / hohles „tunk“, dumpfes „WUMM“ |
+| Jährling (beim alten König) | Katana* | schnelle Hiebe vor der Schnauze, Sprint-Schnitt mit der Leertaste, Konter gegen zustoßende Räuber | Rücken links, Griff nach vorn | zwei Hälften mit roten Bändern / „shiing“, nasses „schlk“ |
+| Parr | Flammenwerfer* | brüllender Feuerstrahl unter Wasser, genau wie in der Luft; Brennende stecken die Nachbarn an | Rücken Mitte: zwei Tanks wie Taucherflaschen, Strahlrohr rechts | verkohlte Fische, Rauch, Dampfblasen / „FWUUSCH“, Knistern |
+| Smolt | Minigun | Motor heult auf, dann eine Wand aus Blei gegen Schwärme; bremst beim Feuern | Rücken rechts, Munitionskiste links, Gurt über den Rücken | roter Nebel, Schuppen, Messinghülsen regnen / „BRRRRT“ |
+| Smolt | Bauchtorpedos | zielsuchend, großer Knall; 2 Rohre, ab dem Postsmolt 4 | Bauch | Stoßring, Blasensäule, betäubte Fische treiben rücklings / Sonar-Ping, „WUMMS“ |
+| Postsmolt | Zwillings-Raketenwerfer | Salven mit Rauchspur, abwechselnd aus zwei Kapseln | Rücken links und rechts | Druckring, rote Wolke, Brocken fliegen / Zischen, „KRAWUMM“ |
+| Postsmolt | Seeminen | hinter sich abwerfen: Wer folgt, schwimmt hinein; Kettenreaktion | Bauch: Gestell mit drei Hörnerminen | Blitz, Wassersäule / Kettenrasseln, Ping, „BUMM“ |
+| Grilse | Panzerbüchse .50 | halten zum Ruhigstellen, loslassen: ein Schuss durch eine ganze Heringsreihe | Rücken Mitte, Lauf wie ein Narwalzahn | Blutstrahl aus jedem Fisch der Linie, Blasenkanal / „KA-DUMM“ |
+| Grilse | Lichtbogenwerfer | Blitze springen von Fisch zu Fisch durch den Schwarm | Bauch: liegende Teslaspule, Elektroden unter dem Kinn | Fische zucken, platzen, treiben gekocht auf / Knistern, Knallen |
+| Meerlachs | Partikelstrahler | cyanfarbener Strahl, den man durch den Schwarm zieht; je länger auf einem Ziel, desto heißer | Rücken Mitte | Hälften mit glühenden Rändern, kochende Blasen / tiefes Summen |
+| Meerlachs | Granatharpune | spießt eine Heringsreihe auf oder fesselt den Seehund; dann explodiert der Kopf, und die Winde holt die Reste zum Maul | Bauch, Harpune unter dem Kinn | Fische am Schaft, rote Leine / „TUMM“, Seilsirren, Ratsche |
+| Meerlachs, geheim | Schiffskanone | Lunte glimmen lassen: Eine Eisenkugel pflügt durch die Horde und rollt über den Kies weiter | Rücken rechts; liegt im Wrack, für Laichlachse in der Grotte hinter dem Lachsfall | Gasse aus rotem Nebel, Pulverdampf / Zischen, riesiges „BUMM“, Rumpeln |
+| Laichlachs | Nodachi | ein Schwert fast so lang wie der Fisch kreist einmal um ihn herum; halten: Rotor | Rücken links, Scheide bis hinter die Schwanzflosse | Ring aus Hälften, roter Kringel / schweres „wuumm“ |
+| Laichlachs | Kettensäge | hochdrehen und in die Horde rammen: ein Sägefisch mit Zweitakter | Bauch, Schwert unter dem Kinn | Dauerstrahl aus rotem Nebel und Brocken / Zweitakt-Kreischen |
 
-Geheimwaffen für später: Wrack-Kanone, Mini-Harpune, Frost-Strahl.
+**Regeln.**
+- Schussbahnen wie im Wasser: Kugeln, Schrot, Granaten und Kanonenkugeln verlieren schnell an Tempo, treffen nur auf kurze Distanz und sinken dann ab. Strahlen und Blitze fliegen gerade, Raketen und Torpedos haben einen Antrieb und ziehen Blasen.
+- Energie- und Motorwaffen werden heiß.
+- Feuerwaffen haben Magazine, die sich von selbst nachladen. Keine Waffe wird leer, und Munition gibt es nicht zu sammeln.
+- Nahkampf hat nur Abklingzeiten.
+- „Wasser!“ gibt es nur bei Panzerbüchse, Harpune und Kanone.
 
-**Zwei Waffenplätze: Rücken und Bauch.** Jede Waffe hat ihren Platz: auf dem Rücken (links, rechts oder in der Mitte, je nach Waffe) oder am Bauch. Bis zum Smolt trägt man eine Waffe, und eine neue ersetzt sie; sie feuert mit der linken Maustaste. Ab dem Smolt trägt man zwei: die Rückenwaffe auf der linken, die Bauchwaffe auf der rechten Maustaste. Eine gefundene Waffe ersetzt die Waffe auf ihrem Platz.
+**Lieferung.**
+- Der Laser ist ab dem Schlupf dabei.
+- Bei jedem Stufenwechsel sinkt eine Kapsel mit der neuen Waffe der Stufe. Hat die Stufe zwei neue Waffen, kommt die zweite in den normalen Angeboten.
+- Die Smolt-Kapsel bringt Minigun und Torpedos zusammen, damit die rechte Maustaste sofort etwas tut.
+- Das Katana hütet der alte König. Die Jährlings-Kapsel würfelt deshalb aus dem bisherigen Vorrat.
+- Bis zum Smolt gibt es nur Rückenwaffen.
 
-**Waffenkapseln:** eine silberne Blase mit drehendem Modell, einem Ring in der Stufenfarbe und einer Bläschensäule.
-- Etwa 52 Plätze liegen fest am Fluss, bei jedem Spieler an derselben Stelle. 30 % davon liegen versteckt im Strömungsschatten eines Steins; im Quellgebiet sind es mindestens 5.
-- Auf See, wo es keine Steine gibt, stecken die Kapseln in Treibgut, im Wrack, an der Lachsfarm und mitten im Köderball.
-- Etwa alle 60–90 s kommt ein Angebot.
-- Hineinschwimmen tauscht die Waffe, aber nicht im Sprint, nicht im Maul eines Räubers und nicht in einer Arenawelle.
-- Die alte Waffe bleibt liegen: Innerhalb von 5 s kann man den Tausch zurücknehmen, und Mitspieler können sie aufheben.
+**Gute Paare ab dem Smolt:**
+- Minigun + Torpedos: Mai-Flut, Wehrstau-Hecht
+- Raketen + Minen: Seehund an der Mündung
+- Panzerbüchse + Lichtbogen: Heringsschwärme
+- Partikelstrahler + Harpune: den Seehund fesseln, dann brennen
+- Nodachi + Kettensäge: Heimweg, Bär
+- Schiffskanone + Minen: Laichbett
+
+**Aus der alten Tabelle entfallen:** Blubberkanone und Schilfrohr-Flinte (jetzt Doppelflinte), Sägeblatt-Werfer (seine Idee lebt in den Granaten weiter, die von Steinen abprallen), Tesla-Flosse (jetzt Lichtbogenwerfer), Wasserbomben (jetzt Seeminen), Nordlicht-Strahl (jetzt Partikelstrahler), Geysir-Werfer, Die Große Welle (an ihrem Platz in der Grotte liegt jetzt die Schiffskanone), Mini-Harpune (jetzt Granatharpune), Frost-Strahl.
+
+**Das Geschirr.** Jede Waffe ist festgeschnallt, nichts schwebt.
+- Zwei Gurte aus Gurtband laufen um den Körper: der Brustgurt direkt hinter den Brustflossen und unter ihnen hindurch, der Bauchgurt kurz vor der Rückenflosse.
+- Darauf sitzt eine olivgrüne Sattelplatte mit einer Schiene für die Waffen in der Mitte und je zwei Stahlauslegern links und rechts.
+- Ab dem Smolt hängt unter dem Bauch eine Stahlschiene für die Bauchwaffe.
+- Die Dottersackbrut trägt nur einen orangefarbenen Spanngurt um Körper und Dottersack, mit einem Klemmblock für den Laser. Das Neugeborene ist an seine Waffe gezurrt wie Fracht, und der Gurt wird enger, während der Dotter schwindet. Der Brütling bekommt dann das richtige Geschirr.
+- Alles sitzt vor der Rückenflosse, wo sich der Körper beim Schwimmen kaum biegt, und bleibt deshalb starr. Beim Laichlachs wächst es mit dem Buckel mit.
+- Im Koop hat jeder Spieler seine Gurtfarbe: Schwarz, Coyote, Ranger-Grün, Wolfsgrau.
 
 ## 4. Gegner und Wellen
 
@@ -96,6 +121,36 @@ Lachse sind nie Ziel, auch die Rivalen nicht; die zwicken hier nicht mehr. Vöge
 **Verbündete:** Beim Smolt-Zug und auf der Heimwanderung schießen die Schwarmfische mit. Zuerst nehmen sie Gegner ins Visier, die gerade zum Stoß ansetzen.
 
 **Koop-Skalierung:** Gegner ×(1 + 0,7·(n−1)) bei n Spielern im Raum, höchstens 120 in einer Gegend. Das gilt auch, wenn jemand tot oder weit weg ist: allein ist man einfach schwächer. Boss-Lebenspunkte ×(1 + 0,75·(n−1)). Gegner greifen den nächsten Spieler an, nie gebündelt den Schwächsten.
+
+## 4a. Die Waffen der Gegner (Vorschlag)
+
+Jede Gegnerart trägt eine feste Waffe, festgeschnallt wie beim Lachs. Nahkämpfer holen sichtbar aus; Fernkämpfer zielen kurz (der Moment zum Ausweichen) und schießen Kugeln, die das Wasser bremst.
+
+| Gegner | Waffe | Art |
+|---|---|---|
+| Libellenlarve | Springmesser | Nahkampf |
+| Gelbrandkäferlarve | Nagelpistole | Fernkampf, kurz |
+| Groppe | Abgesägte Schrotflinte (schon im Spiel) | Fernkampf, kurz |
+| Junge Forelle | Kampfmesser (schon im Spiel) | Nahkampf |
+| Bachforelle | Maschinenpistole (schon im Spiel) | Fernkampf |
+| Der alte König (Boss) | Minigun (schon im Spiel) | Fernkampf |
+| Eisvogel | Stoßdolch am Schnabel | Nahkampf, Sturzflug |
+| Gänsesäger | Revolver | Fernkampf |
+| Graureiher | Harpunengewehr | Fernkampf, schwer und langsam |
+| Elritzen (Schwarm) | Rasierklingen | Nahkampf |
+| Äsche | Armbrust | Fernkampf, präzise |
+| Flussbarsch (Rudel) | Pistole | Fernkampf |
+| Hecht | Elefantenbüchse | Fernkampf, ein schwerer Schuss aus dem Hinterhalt |
+| Otter | Machete | Nahkampf |
+| Aal | Elektroschocker | Nahkampf, lähmt kurz |
+| Stichlinge (Schwarm) | Wurfsterne | Fernkampf |
+| Qualle | Seemine | treibt, explodiert bei Berührung |
+| Dorsch | Pumpgun | Fernkampf, kurz |
+| Seehund (Boss) | Raketenwerfer | Fernkampf |
+| Heringe (Schwarm) | Wurfmesser | Fernkampf |
+| Makrelen (Schwarm) | Sturmgewehr | Fernkampf |
+| Basstölpel | Fliegerbomben | Sturzflug von oben |
+| Bär am Lachsfall (Boss) | Kettensäge | Nahkampf |
 
 ## 5. Koop
 
