@@ -395,7 +395,9 @@ export function paletteAt(palette, age, target = new THREE.Color()) {
 }
 
 // Each blade is a curved, cupped surface. It bends across its face unless it rides on a
-// parent strand, in which case it inherits the parent's motion at the attachment.
+// parent strand, in which case it inherits the parent's motion at the attachment. Returns
+// its curve, its length and its frame at t ({ tangent, side, normal }), for what grows on it
+// to ride along (or nothing, for a blade not grown).
 export function blade(
   batch,
   points,
@@ -435,14 +437,17 @@ export function blade(
   const start = batch.positions.length / 3;
   const brown = new THREE.Color("#6b5a2a");
   const code = packThin(thin, cut, low);
-  for (let i = 0; i <= rows; i++) {
-    const t = i / rows;
-    const center = curve.getPoint(t);
+  const frame = (t) => {
     const tangent = curve.getTangent(t);
     const theta = twist + turn * t;
     const side = vec(Math.cos(theta), 0, Math.sin(theta));
     side.addScaledVector(tangent, -side.dot(tangent)).normalize();
-    const normal = new THREE.Vector3().crossVectors(side, tangent).normalize();
+    return { tangent, side, normal: new THREE.Vector3().crossVectors(side, tangent).normalize() };
+  };
+  for (let i = 0; i <= rows; i++) {
+    const t = i / rows;
+    const center = curve.getPoint(t);
+    const { tangent, side, normal } = frame(t);
     const envelope = ribbon
       ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
       : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
@@ -471,6 +476,7 @@ export function blade(
       }
     }
   }
+  return { curve, length, frame };
 }
 
 // taper: how much of its radius a stem has lost at its tip; rows: rings along it (more
