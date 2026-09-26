@@ -1,8 +1,8 @@
-# Fische versenken
+# Salmon Survival Extreme
 
 Salmon Survival with weapons that are fun, and co-op for up to four friends. The same river, the same life -- hatch in the gravel of the source, grow up in the brook, go down to the sea with the smolts, come home to spawn -- the same graphics (it is built on [Salmon Survival Next](https://github.com/tscherrie/salmon-survival-next) and keeps taking its updates), only now everything that is not a salmon comes for you, and you have something to answer with: a little pew-pew laser for the fry, bigger guns with every stage, torpedoes, a katana on your back, and whatever else is fun, found along the way and behind stones. Work in progress: the combat and the co-op are being built.
 
-**Play it in the browser:** https://fische-versenken.vercel.app
+**Play it in the browser:** https://salmon-survival-extreme.vercel.app
 
 The calm original: [Salmon Survival](https://salmon-survival.vercel.app).
 
@@ -24,7 +24,7 @@ Written with Claude Opus 5.5.
 
 ## Contribute, give feedback
 
-Found a bug, have an idea, want to add a fish, a plant or a translation? Open an [issue](https://github.com/tscherrie/fische-versenken/issues) or a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a bug, have an idea, want to add a fish, a plant or a translation? Open an [issue](https://github.com/tscherrie/salmon-survival-extreme/issues) or a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Run it yourself
 
