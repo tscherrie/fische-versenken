@@ -564,8 +564,8 @@ function builder() {
 // detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
 // small hunters): fewer rings along the body and round it, simpler eyes and fins. `far`
 // builds the least a fish can be and still read as one at a few dozen pixels: a shell of
-// twelve rings by eight, the tail and the dorsal fin as flat vanes in the same mesh (the
-// eye is painted on), about 230 triangles.
+// twelve rings by eight and the tail as a flat vane in the same mesh (the eye is painted
+// on), 216 triangles.
 export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
   const rows = far ? 12 : Math.max(24, Math.round(72 * detail)),
     columns = far ? 8 : Math.max(14, 2 * Math.round(20 * detail));
@@ -777,10 +777,12 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
           s = Math.sin(theta);
         const x = eye.x + rho * eye.r * c,
           y = eye.y + rho * eye.r * s;
-        // The normal from the slope of the surface (worked out numerically).
-        const e = eye.r * 0.02;
-        const fx = (corneaZ(Math.hypot(rho * c + e / eye.r, rho * s), Math.atan2(rho * s, rho * c + e / eye.r)) - corneaZ(Math.hypot(rho * c - e / eye.r, rho * s), Math.atan2(rho * s, rho * c - e / eye.r))) / (2 * e);
-        const fy = (corneaZ(Math.hypot(rho * c, rho * s + e / eye.r), Math.atan2(rho * s + e / eye.r, rho * c)) - corneaZ(Math.hypot(rho * c, rho * s - e / eye.r), Math.atan2(rho * s - e / eye.r, rho * c))) / (2 * e);
+        // The normal from the slope of the surface (worked out numerically, in steps of a
+        // fiftieth of the eye's radius).
+        const at = (qx, qy) => corneaZ(Math.hypot(qx, qy), Math.atan2(qy, qx));
+        const h = 0.02;
+        const fx = (at(rho * c + h, rho * s) - at(rho * c - h, rho * s)) / (2 * h * eye.r);
+        const fy = (at(rho * c, rho * s + h) - at(rho * c, rho * s - h)) / (2 * h * eye.r);
         const inv = 1 / Math.hypot(fx, fy, 1);
         eyes.vertex([x, y, side * corneaZ(rho, theta)], [-fx * inv, -fy * inv, side * inv], [k / segments, rho], 7);
         if (r <= rings && k < segments) {
@@ -869,7 +871,7 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
     fan(1, base, tip);
   }
   if (far) {
-    // The far fish's two vanes go in with its body: one opaque draw.
+    // The far fish's tail goes in with its body: one opaque draw.
     const finGeometry = fins.finish(true);
     return { body: mergeParts([bodyGeometry, finGeometry]), fins: null, plan };
   }
@@ -1151,8 +1153,6 @@ export function createFishMaterials(coat, plan, { uniforms = null, far = false }
   return { skin, fins, uniforms: u, plan };
 }
 
-// The shading of a fish, wired to its mesh once the mesh exists (the instances are placed
-// by the shader itself, after the fish is reshaped and bent).
 // A fish's vertex stage: the rest shape changed (the spawner's hump and hooked jaw, the
 // alevin's shrinking yolk, the mouth), bent by the swimming wave, placed by the instance's
 // own matrix; and what it hands the fragment stage.
@@ -1240,6 +1240,8 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
   return { position, part, vSkinPoint, vJaw, vMouthOpen, vFishScale, vNormal };
 }
 
+// The shading of a fish, wired to its mesh once the mesh exists (the instances are placed
+// by the shader itself, after the fish is reshaped and bent).
 function shadeFish(materials, body, membranes) {
   const u = materials.uniforms;
   ownInstanceMatrix(membranes);
