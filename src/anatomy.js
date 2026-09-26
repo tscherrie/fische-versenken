@@ -641,13 +641,15 @@ export function eyeFrameOf(plan) {
 // detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
 // small hunters): fewer rings along the body and round it, simpler eyes and fins. `far`
 // builds the least a fish can be and still read as one at a few dozen pixels: a shell of
-// twelve rings by eight and the tail as a flat vane in the same mesh (the eye is painted
-// on), 216 triangles.
+// twelve rings by eight, and the tail and the dorsal fin as flat vanes in the same mesh
+// (the eye is painted on), 240 triangles.
 export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
   const rows = far ? 12 : Math.max(24, Math.round(72 * detail)),
     columns = far ? 8 : Math.max(14, 2 * Math.round(20 * detail));
+  // (The eye's full round of segments only where it is seen close: the player's fish and
+  // the big hunters; a crowd's fish is drawn near at a few dozen pixels.)
   const eyeRings = Math.max(4, Math.round(10 * detail)),
-    eyeSegments = Math.max(12, Math.round(40 * detail));
+    eyeSegments = detail >= 0.9 ? 40 : Math.max(12, Math.round(24 * detail));
   let finColumns = Math.max(8, Math.round(16 * detail)),
     finSteps = Math.max(4, Math.round(7 * detail));
   const plan = BODIES[kind];
@@ -898,6 +900,10 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
     return line;
   };
   const tipLine = (points) => points.map(([x, y]) => [x, y, 0]);
+  if (far) {
+    finColumns = 4;
+    finSteps = 1;
+  }
   // Caudal: from the hypural plate out to two lobes and the fork between.
   if (plan.caudal) {
     const d = plan.caudal.depth;
@@ -922,18 +928,16 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
       [lx + 0.03, ly * 0.95, 0],
       [hypural - 0.02, ly * 0.55, 0],
     ];
-    if (far) {
-      finColumns = 4;
-      finSteps = 1;
-    }
     fan(1, base, tip);
   }
-  if (far) {
-    // The far fish's tail goes in with its body: one opaque draw.
-    const finGeometry = fins.finish(true);
-    return { body: mergeParts([bodyGeometry, finGeometry]), fins: null, plan };
-  }
   if (plan.dorsal) fan(2, median(plan.dorsal.base[0], plan.dorsal.base[1], true), tipLine(plan.dorsal.tip));
+  if (far) {
+    // The far fish's tail and dorsal fin go in with its body: one opaque draw. Each vane
+    // has a face either way (the material leaves out back faces, so the closed body's
+    // hidden half costs nothing).
+    const finGeometry = fins.finish(true);
+    return { body: mergeParts([bodyGeometry, finGeometry, turned(finGeometry)]), fins: null, plan };
+  }
   if (plan.anal) fan(3, median(plan.anal.base[0], plan.anal.base[1], false), tipLine(plan.anal.tip));
   if (plan.adipose) fan(12, median(plan.adipose.base[0], plan.adipose.base[1], true, 3), tipLine(plan.adipose.tip));
   for (const side of plan.pectoral ? [-1, 1] : []) {
@@ -972,6 +976,16 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
   // Eyes go with the opaque body.
   const merged = mergeParts([bodyGeometry, eyeGeometry]);
   return { body: merged, fins: finGeometry, plan };
+}
+
+// The same faces turned to look the other way.
+function turned(geometry) {
+  const copy = geometry.clone();
+  const normals = copy.attributes.normal.array;
+  for (let k = 0; k < normals.length; k++) normals[k] = -normals[k];
+  const index = copy.index.array;
+  for (let k = 0; k < index.length; k += 3) [index[k + 1], index[k + 2]] = [index[k + 2], index[k + 1]];
+  return copy;
 }
 
 function mergeParts(list) {
@@ -1896,8 +1910,9 @@ function shadeFarFish(materials, mesh) {
       skin.assign(mix(skin, vec3(0.01), smoothstep(0.65, 0.45, eye)));
       skin.assign(mix(skin, skin.mul(0.6).add(vec3(0.2, 0.14, 0.11)), u.coat_translucent.mul(0.4)));
     }).Else(() => {
-      // (A clear fin shows the water through it: from afar it is mostly the body's colour.)
-      skin.assign(mix(mix(u.coat_flank, u.coat_fin.mul(1.15).add(0.02), 0.5), vec3(0.03, 0.03, 0.035), smoothstep(0.7, 0.95, fishUV.y).mul(u.coat_finDark).mul(0.7)));
+      // (A clear fin shows the water through it, darker than the flank beside it: from
+      // afar the fin's own colour over a shade between the back and the flank.)
+      skin.assign(mix(mix(mix(u.coat_back, u.coat_flank, 0.35), u.coat_fin.mul(1.15).add(0.02), 0.5), vec3(0.03, 0.03, 0.035), smoothstep(0.7, 0.95, fishUV.y).mul(u.coat_finDark).mul(0.7)));
     });
     return skin;
   })();
@@ -1919,14 +1934,24 @@ function shadeFarFish(materials, mesh) {
 
 // Where the crowds of fish are looked at from, for their distance detail and to leave out
 // the ones out of sight: the game's camera, the canvas it draws on (for its height in
-// pixels) and the scene (for how far one sees through its water). Set once by the game.
-const fishView = { camera: null, canvas: null, scene: null };
-export function setFishView(camera, canvas, scene) {
-  Object.assign(fishView, { camera, canvas, scene });
+// pixels), the scene (for how far one sees through its water) and the sun's shadow camera
+// (a fish out of view may still cast a shadow into it). Set once by the game.
+const fishView = { camera: null, canvas: null, scene: null, shadow: null };
+export function setFishView(camera, canvas, scene, shadow = null) {
+  Object.assign(fishView, { camera, canvas, scene, shadow });
 }
 const lodFrustum = new THREE.Frustum(),
+  shadowFrustum = new THREE.Frustum(),
   lodMatrix = new THREE.Matrix4(),
   lodSphere = new THREE.Sphere();
+// The crowds with a distance detail, each with its split into near, far and unseen.
+const lodCrowds = new Set();
+// The crowds are moved (finish()) before the camera is placed for the frame: once it is,
+// just before drawing, the game has them split again, so a turn or a cut of the camera
+// never leaves out fish that are in view.
+export function refreshFishView() {
+  for (const split of lodCrowds) split();
+}
 
 // A fish mesh (instanced) of a kind in a coat, with the swimming attributes wired up.
 //
@@ -1939,7 +1964,8 @@ const lodFrustum = new THREE.Frustum(),
 // the animals out of sight -- outside the view, or farther off than one sees through the
 // water -- and draws those small on screen (under about 48 pixels long, 64 on the lighter
 // graphics) as far fish: the lightest body and plain shading, in a second mesh with buffers
-// of its own, without shadows. At sea that is most of the fish there are.
+// of its own, without shadows. At sea that is most of the fish there are. (The split is
+// made again once the camera is placed for the frame: refreshFishView.)
 export function createFishMesh(scene, kind, coat, count, { name = kind, castShadow = true, uniforms = null, cacheKey = kind, detail = 1, lod = false } = {}) {
   const geometry = makeFish(kind, { detail });
   const swim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
@@ -1980,6 +2006,9 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
     mesh.receiveShadow = true;
     far = { mesh, swim: farSwim, finMouth: farFinMouth, near: new Uint8Array(count) };
   }
+  // (With the distance detail, finish() gathers the frame's fish here, so the split can be
+  // made again from them when the camera has moved.)
+  const staging = far ? { matrices: new Float32Array(count * 16), swim: new Float32Array(count * 4), finMouth: new Float32Array(count * 2), slots: new Uint16Array(count), n: 0, drawn: -1 } : null;
   for (const mesh of far ? [body, membranes, far.mesh] : [body, membranes]) {
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1993,7 +2022,7 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
       attribute.needsUpdate = true;
     }
   };
-  return {
+  const crowd = {
     body,
     membranes,
     far: far?.mesh ?? null,
@@ -2007,73 +2036,123 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
       matrices.fill(0);
     },
     finish() {
-      // What is seen from where (last frame's camera: a frame late is no matter here).
-      const camera = far ? fishView.camera : null;
-      let reach = Infinity,
-        perUnit = 0,
-        small = 0;
-      if (camera) {
-        lodFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-        // (Through the water: at this distance next to nothing of a fish gets through.)
-        const density = fishView.scene?.fog?.density ?? 0;
-        if (density > 0) reach = 3.5 / density;
-        perUnit = (fishView.canvas?.clientHeight || 900) / (2 * Math.tan((camera.fov * Math.PI) / 360));
-        small = fishQuality.fine ? 48 : 64;
+      let w = 0;
+      if (!far) {
+        for (let i = 0; i < count; i++) {
+          const o = i * 16;
+          if (matrices[o] === 0 && matrices[o + 1] === 0 && matrices[o + 2] === 0) continue;
+          if (w !== i) {
+            matrices.copyWithin(w * 16, o, o + 16);
+            swim.array.copyWithin(w * 4, i * 4, i * 4 + 4);
+            finMouth.array.copyWithin(w * 2, i * 2, i * 2 + 2);
+          }
+          w++;
+        }
+        body.count = membranes.count = w;
+        body.visible = membranes.visible = w > 0;
+        upload(
+          [
+            [body.instanceMatrix, 16],
+            [swim, 4],
+            [finMouth, 2],
+          ],
+          w,
+        );
+        return;
       }
-      const farMatrices = far?.mesh.instanceMatrix.array;
-      let w = 0,
-        f = 0;
       for (let i = 0; i < count; i++) {
         const o = i * 16;
         if (matrices[o] === 0 && matrices[o + 1] === 0 && matrices[o + 2] === 0) continue;
-        if (camera) {
-          const length = Math.hypot(matrices[o], matrices[o + 1], matrices[o + 2]) * MODEL_LENGTH;
-          lodSphere.center.set(matrices[o + 12], matrices[o + 13], matrices[o + 14]);
-          lodSphere.radius = length * 0.66;
-          const distance = lodSphere.center.distanceTo(camera.position);
-          if (distance - lodSphere.radius > reach || !lodFrustum.intersectsSphere(lodSphere)) continue;
-          // Its length on screen, in pixels; a little either way of the line it stays as it
-          // was, so a fish hovering there does not flip back and forth.
-          const pixels = (length / Math.max(distance, 1e-3)) * perUnit;
-          const near = far.near[i] ? pixels > small * 0.9 : pixels > small * 1.1;
-          far.near[i] = near ? 1 : 0;
-          if (!near) {
-            farMatrices.set(matrices.subarray(o, o + 16), f * 16);
-            far.swim.array.set(swim.array.subarray(i * 4, i * 4 + 4), f * 4);
-            far.finMouth.array.set(finMouth.array.subarray(i * 2, i * 2 + 2), f * 2);
-            f++;
-            continue;
-          }
-        }
-        if (w !== i) {
-          matrices.copyWithin(w * 16, o, o + 16);
-          swim.array.copyWithin(w * 4, i * 4, i * 4 + 4);
-          finMouth.array.copyWithin(w * 2, i * 2, i * 2 + 2);
-        }
-        w++;
+        staging.matrices.set(matrices.subarray(o, o + 16), w * 16);
+        staging.swim.set(swim.array.subarray(i * 4, i * 4 + 4), w * 4);
+        staging.finMouth.set(finMouth.array.subarray(i * 2, i * 2 + 2), w * 2);
+        staging.slots[w++] = i;
       }
-      body.count = membranes.count = w;
-      body.visible = membranes.visible = w > 0;
-      upload(
-        [
-          [body.instanceMatrix, 16],
-          [swim, 4],
-          [finMouth, 2],
-        ],
-        w,
-      );
-      if (far) {
-        far.mesh.count = f;
-        far.mesh.visible = f > 0;
-        upload(
-          [
-            [far.mesh.instanceMatrix, 16],
-            [far.swim, 4],
-            [far.finMouth, 2],
-          ],
-          f,
-        );
-      }
+      staging.n = w;
+      staging.drawn = -1;
+      // (Shown while any of the crowd is about; which of them are drawn, and by which mesh,
+      // is only the counts -- a mesh with none to draw costs nothing -- so the split made
+      // again before drawing never undoes a mesh hidden on purpose.)
+      body.visible = membranes.visible = far.mesh.visible = w > 0;
+      split();
     },
   };
+
+  // The frame's fish into the near mesh, the far one, or neither (out of view, or farther
+  // off than one sees through the water; a shadow caster out of view is kept while it is
+  // inside the sun's shadow box).
+  function split() {
+    if (staging.n === 0 && staging.drawn === 0) return;
+    const camera = fishView.camera;
+    let reach = Infinity,
+      perUnit = 0,
+      small = 0,
+      shadowed = false;
+    if (camera) {
+      camera.updateMatrixWorld();
+      lodFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      // (Through the water: at this distance next to nothing of a fish gets through.)
+      const density = fishView.scene?.fog?.density ?? 0;
+      if (density > 0) reach = 3.5 / density;
+      perUnit = (fishView.canvas?.clientHeight || 900) / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      small = fishQuality.fine ? 48 : 64;
+      const shadow = fishView.shadow;
+      shadowed = body.castShadow && !!shadow;
+      if (shadowed) shadowFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(shadow.projectionMatrix, shadow.matrixWorldInverse));
+    }
+    const farMatrices = far.mesh.instanceMatrix.array;
+    let w = 0,
+      f = 0;
+    for (let k = 0; k < staging.n; k++) {
+      const o = k * 16;
+      const i = staging.slots[k];
+      let near = true;
+      if (camera) {
+        const length = Math.hypot(staging.matrices[o], staging.matrices[o + 1], staging.matrices[o + 2]) * MODEL_LENGTH;
+        lodSphere.center.set(staging.matrices[o + 12], staging.matrices[o + 13], staging.matrices[o + 14]);
+        lodSphere.radius = length * 0.66;
+        const distance = lodSphere.center.distanceTo(camera.position);
+        if (distance - lodSphere.radius > reach) continue;
+        const seen = lodFrustum.intersectsSphere(lodSphere);
+        if (!seen && !(shadowed && shadowFrustum.intersectsSphere(lodSphere))) continue;
+        // Its length on screen, in pixels; a little either way of the line it stays as it
+        // was, so a fish hovering there does not flip back and forth.
+        const pixels = (length / Math.max(distance, 1e-3)) * perUnit;
+        near = far.near[i] ? pixels > small * 0.9 : pixels > small * 1.1;
+        far.near[i] = near ? 1 : 0;
+      }
+      if (near) {
+        matrices.set(staging.matrices.subarray(o, o + 16), w * 16);
+        swim.array.set(staging.swim.subarray(k * 4, k * 4 + 4), w * 4);
+        finMouth.array.set(staging.finMouth.subarray(k * 2, k * 2 + 2), w * 2);
+        w++;
+      } else {
+        farMatrices.set(staging.matrices.subarray(o, o + 16), f * 16);
+        far.swim.array.set(staging.swim.subarray(k * 4, k * 4 + 4), f * 4);
+        far.finMouth.array.set(staging.finMouth.subarray(k * 2, k * 2 + 2), f * 2);
+        f++;
+      }
+    }
+    staging.drawn = staging.n;
+    body.count = membranes.count = w;
+    far.mesh.count = f;
+    upload(
+      [
+        [body.instanceMatrix, 16],
+        [swim, 4],
+        [finMouth, 2],
+      ],
+      w,
+    );
+    upload(
+      [
+        [far.mesh.instanceMatrix, 16],
+        [far.swim, 4],
+        [far.finMouth, 2],
+      ],
+      f,
+    );
+  }
+  if (far) lodCrowds.add(split);
+  return crowd;
 }
