@@ -1294,16 +1294,18 @@ function swimmingFish(u, mesh, { steps = 8 } = {}) {
       });
       If(u.coat_kype.greaterThan(0), () => {
         // The spawning male's hooked jaw (the kype): the snout ahead of the eye lengthens,
-        // the lower jaw more than the upper; its tip curls up in front of the upper jaw and
-        // thickens into a knob, and the upper jaw's tip bends down over it.
+        // the lower jaw more than the upper; its last few millimetres hook sharply up in
+        // front of the upper jaw's tip, which bends down a little over it. (Curled over a
+        // short length, and thickened only a little: a long, full curl reads as a pout.)
         const k = u.coat_kype;
         const snout = smoothstep(u.uEye.x.add(u.uEye.z), 0.35, rest.x);
         const tip = smoothstep(0.31, 0.35, rest.x);
+        const hook = smoothstep(0.328, 0.35, rest.x);
         const lip = mix(u.uMouth.y, u.uMouth.y.mul(0.3), rest.x.sub(u.uMouth.x).div(max(float(0.35).sub(u.uMouth.x), 0.01)).clamp(0, 1));
-        p.x.addAssign(k.mul(below.mul(0.012).add(0.018)).mul(snout));
-        p.y.addAssign(p.y.sub(lip).min(0).mul(k).mul(tip).mul(below).mul(1.2));
-        p.y.addAssign(k.mul(tip.mul(tip).mul(below).mul(0.02).sub(smoothstep(0.33, 0.35, rest.x).mul(below.oneMinus()).mul(0.006))));
-        p.z.addAssign(sign(p.z).mul(k).mul(tip).mul(below).mul(0.003));
+        p.x.addAssign(k.mul(below.mul(0.014).add(0.018)).mul(snout));
+        p.y.addAssign(p.y.sub(lip).min(0).mul(k).mul(tip).mul(below).mul(0.4));
+        p.y.addAssign(k.mul(hook.mul(hook).mul(below).mul(0.03).sub(smoothstep(0.33, 0.35, rest.x).mul(below.oneMinus()).mul(0.005))));
+        p.z.addAssign(sign(p.z).mul(k).mul(tip).mul(below).mul(0.002));
       });
     });
     const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim, steps);
@@ -1412,7 +1414,8 @@ function shadeFish(materials, body, membranes) {
       // The gill cover's free edge: bowed back toward the tail at mid-height, running up to
       // the nape and curving forward under the throat. The head is everything ahead of it.
       const xo = float(0).toVar();
-      xo.assign(u.uGill.sub(0.006).add(pow(max(band, 0.2).sub(0.52).div(0.36), 2).mul(0.03)));
+      const bow = max(band, 0.2).sub(0.52).div(0.36);
+      xo.assign(u.uGill.sub(0.006).add(bow.mul(bow).mul(0.03)));
       const head = float(0).toVar();
       head.assign(smoothstep(xo.sub(0.003), xo.add(0.003), x));
       const headSoft = float(0).toVar();
@@ -1589,34 +1592,42 @@ function shadeFish(materials, body, membranes) {
           length(vec2(x.sub(jawEnd), y.sub(gapeY.add(endHalf).add(0.0003)))).sub(endHalf),
           abs(y.sub(jawMid)).sub(jawHalf),
         );
+        // (Drawn as bone under skin is: a faintly darker plate, its upper margin a fine
+        // groove that fades out toward the rear end -- no raised rim, which lit from above
+        // reads as a lip or a glass rod lying on the jaw.)
         const jawSpan = smoothstep(0.349, 0.34, x).mul(bone);
         const plate = smoothstep(0.0006, -0.0006, maxD).mul(jawSpan);
-        const outline = gauss(maxD, line(0.0011)).mul(jawSpan).mul(ink(0.0011));
-        headRelief.addAssign(plate.mul(0.00025).sub(outline.mul(0.00015)));
-        skin.mulAssign(outline.mul(0.12).oneMinus());
-        const gape = gauss(y.sub(gapeY), line(0.0009)).mul(smoothstep(jawEnd.sub(0.002), jawEnd.add(0.003), x)).mul(ink(0.0009));
-        skin.assign(mix(skin, vec3(0.03, 0.022, 0.02), gape.mul(0.6).mul(u.coat_fish.mul(0.7).add(0.3))));
-        // A spawner's gums and teeth show pale along its gape.
+        const upperEdge = smoothstep(jawMid.sub(jawHalf.mul(0.5)), jawMid.add(jawHalf.mul(0.5)), y);
+        const fadeEnd = smoothstep(jawEnd.sub(0.001), jawEnd.add(u.uEye.z.mul(0.8)), x);
+        const outline = gauss(maxD, line(0.0009)).mul(jawSpan).mul(ink(0.0009)).mul(upperEdge).mul(fadeEnd);
+        headRelief.subAssign(outline.mul(0.00005));
+        skin.mulAssign(plate.mul(0.07).add(outline.mul(0.1)).oneMinus());
+        // The gape: a thin dark line, fading out before the corner of the mouth.
+        const gape = gauss(y.sub(gapeY), line(0.0007)).mul(smoothstep(jawEnd.add(0.001), jawEnd.add(0.008), x)).mul(ink(0.0007));
+        skin.assign(mix(skin, vec3(0.03, 0.022, 0.02), gape.mul(0.45).mul(u.coat_fish.mul(0.7).add(0.3))));
+        // A spawner's teeth show pale along its gape, only with the mouth open.
         const teeth = gauss(y.sub(gapeY).add(0.0013), line(0.0007)).mul(smoothstep(jawEnd, jawEnd.add(0.01), x)).mul(ink(0.0007));
-        skin.assign(mix(skin, vec3(0.55, 0.5, 0.42), teeth.mul(u.coat_spawn).mul(0.5)));
-        // The eye sits in a socket: a groove round it and the bony rim of the orbit beyond,
-        // the skin shaded where it meets the cornea. Two small nostrils ahead of it.
-        const eyeD = length(vec2(x.sub(u.uEye.x), y.sub(u.uEye.y).mul(1.05))).div(u.uEye.z);
-        headRelief.addAssign(gauss(eyeD.sub(1.1), 0.12).mul(-0.5).add(gauss(eyeD.sub(1.45), 0.2).mul(0.2)).mul(u.uEye.z).mul(0.05));
-        skin.mulAssign(gauss(eyeD.sub(1.05), 0.12).mul(0.35).mul(u.coat_fish).oneMinus());
+        skin.assign(mix(skin, vec3(0.55, 0.5, 0.42), teeth.mul(u.coat_spawn).mul(smoothstep(0.15, 0.5, vMouthOpen)).mul(0.5)));
+        // The eye sits in a socket: a groove round it and, faintly, the bony rim of the orbit
+        // beyond, the skin shaded where it meets the cornea. Two small nostrils ahead of it:
+        // dark pits, shaded only (a relief this small lights up as a ring, a bubble).
+        const eyeD = eyeDistance(u, vSkinPoint);
+        headRelief.addAssign(gauss(eyeD.sub(1.1), 0.12).mul(-0.35).add(gauss(eyeD.sub(1.45), 0.2).mul(0.06)).mul(u.uEye.z).mul(0.05));
+        skin.mulAssign(gauss(eyeD.sub(1.05), 0.12).mul(0.3).mul(u.coat_fish).oneMinus());
         const nostril = max(
-          smoothstep(0.17, 0.11, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(1.6))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.35))))).div(u.uEye.z)),
-          smoothstep(0.15, 0.09, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(2.1))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.3))))).div(u.uEye.z)),
+          smoothstep(0.15, 0.07, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(1.6))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.35))))).div(u.uEye.z)),
+          smoothstep(0.13, 0.06, length(vec2(x.sub(u.uEye.x.add(u.uEye.z.mul(2.1))), y.sub(u.uEye.y.add(u.uEye.z.mul(0.3))))).div(u.uEye.z)),
         ).mul(u.coat_fish);
-        skin.mulAssign(nostril.mul(0.4).oneMinus());
-        headRelief.subAssign(nostril.mul(u.uEye.z).mul(0.008));
+        skin.mulAssign(nostril.mul(0.55).oneMinus());
         gRelief.assign(headRelief.mul(u.coat_fish).mul(smoothstep(0.35, 0.8, px.div(0.0015)).oneMinus().mul(0.7).add(0.3)));
       });
       // Inside the open mouth: the seam of the lips pulled apart shows the dark red throat.
+      // (The kype pulls the seam open at the front as well, the lower jaw reaching past
+      // the upper: dark there too, not a pale stretched edge.)
       const inside = smoothstep(0.02, 0.09, vJaw.x)
         .mul(smoothstep(0.91, 0.98, vJaw.x).oneMinus())
         .mul(smoothstep(0.1, 0.6, vJaw.y))
-        .mul(smoothstep(0.06, 0.25, vMouthOpen));
+        .mul(max(smoothstep(0.06, 0.25, vMouthOpen), min(1, u.coat_kype.mul(2)).mul(smoothstep(0.3, 0.34, x))));
       const throat = smoothstep(0.1, 0.45, vJaw.x).mul(smoothstep(0.55, 0.9, vJaw.x).oneMinus());
       skin.assign(mix(skin, mix(vec3(0.075, 0.022, 0.022), vec3(0.012, 0.005, 0.006), throat), inside));
       // How silver: the guanine flank, patchy where the scales lie at different angles; a
