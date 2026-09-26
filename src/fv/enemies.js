@@ -4,8 +4,8 @@
 // the base game's own fish bodies, one instanced crowd per kind, created before the first
 // frame so their materials are compiled with everything else.
 //
-// A beaten enemy rolls onto its back and sinks ("versenkt"), drifts a while on the bed and
-// then goes; a small one can be eaten there.
+// A beaten enemy rolls onto its back and drifts up, belly first, as dead fish do -- limp,
+// not swimming; it drifts on the surface with the current a while and then goes. A small one can be eaten there.
 
 import * as THREE from "three";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
@@ -15,7 +15,7 @@ import { KINDS } from "./kinds.js";
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const TAU = Math.PI * 2;
-const CORPSE_SECONDS = 28;
+const CORPSE_SECONDS = 40;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
@@ -263,19 +263,21 @@ export function createEnemies(scene, { random }) {
     return speed;
   }
 
-  // A sunk enemy: on its back, drifting down to the bed, then gone.
+  // A dead enemy: it turns belly up and rises, slowly at first, to float at the surface,
+  // rocking a little and drifting with the current, then it is gone.
   function drift(e, dt, time) {
     e.corpse += dt;
-    e.rolled = Math.min(Math.PI, e.rolled + dt * 4);
+    e.rolled = Math.min(Math.PI, e.rolled + dt * 3);
     e.speed *= Math.exp(-dt * 3);
     current(e.river.s, e.river.u, e.position.y, flow, time, true);
-    e.position.x += (flow.vx * 0.6 + e.heading.x * e.speed) * dt;
-    e.position.z += (flow.vz * 0.6 + e.heading.z * e.speed) * dt;
+    e.position.x += (flow.vx * 0.8 + e.heading.x * e.speed) * dt;
+    e.position.z += (flow.vz * 0.8 + e.heading.z * e.speed) * dt;
     locate(e.position.x, e.position.z, e.river.s, e.river);
-    const floor = bed(e.river.s, e.river.u) + e.size * 0.06;
-    e.position.y = Math.max(floor, e.position.y - (0.04 + 0.08 * e.size) * dt);
-    e.phase += dt * 0.6;
-    e.gape += (0.5 - e.gape) * (1 - Math.exp(-dt * 2));
+    const floor = bed(e.river.s, e.river.u) + e.size * 0.08;
+    const top = level(e.river.s) - e.size * 0.07;
+    const rise = (0.12 + 0.12 * e.size) * Math.min(1, e.corpse / 1.5);
+    e.position.y = clamp(e.position.y + rise * dt, floor, Math.max(floor, top));
+    e.gape += (0.35 - e.gape) * (1 - Math.exp(-dt * 2));
   }
 
   function update(dt, time, players, hurt) {
@@ -318,7 +320,8 @@ export function createEnemies(scene, { random }) {
         const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" ? 0.35 : 0.08;
         e.gape += (wantGape - e.gape) * (1 - Math.exp(-dt * 12));
       }
-      e.finPhase = (e.finPhase + dt * TAU * 1.4) % TAU;
+      // (A dead fish's fins hang still.)
+      if (!e.dead) e.finPhase = (e.finPhase + dt * TAU * 1.4) % TAU;
     }
     separate(dt);
     draw();
@@ -355,13 +358,13 @@ export function createEnemies(scene, { random }) {
       axisY.crossVectors(axisZ, e.heading).normalize();
       basis.makeBasis(e.heading, axisY, axisZ);
       quaternion.setFromRotationMatrix(basis);
-      if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled));
+      if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled + (e.dead ? 0.12 * Math.sin(e.corpse * 1.7 + e.id) : 0)));
       const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
       const k = (e.size / MODEL_LENGTH) * fade;
       matrix.compose(e.position, quaternion, scale.set(k, k, k));
       crowd.body.setMatrixAt(slot, matrix);
       const coiled = e.mode === "coil";
-      const amplitude = e.dead ? 0.05 : coiled ? 0.95 : 0.3 + Math.min(0.5, (e.speed / e.size) * 0.4);
+      const amplitude = e.dead ? 0 : coiled ? 0.95 : 0.3 + Math.min(0.5, (e.speed / e.size) * 0.4);
       crowd.swim.setXYZW(slot, e.phase, amplitude, 0, e.mode === "lurk" ? 0.5 : 0.1);
       crowd.fin.setX(slot, e.finPhase);
       crowd.mouth.setX(slot, e.gape);
@@ -386,6 +389,8 @@ export function createEnemies(scene, { random }) {
     e.dead = true;
     e.mode = "dead";
     e.corpse = 0;
+    // Dead, it drifts: no more swimming of its own, only what the shot gave it.
+    e.speed = Math.min(e.speed, 0.5);
     return true;
   }
 
