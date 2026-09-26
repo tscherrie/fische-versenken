@@ -873,6 +873,7 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
     const finGeometry = fins.finish(true);
     return { body: mergeParts([bodyGeometry, finGeometry]), fins: null, plan };
   }
+  if (plan.dorsal) fan(2, median(plan.dorsal.base[0], plan.dorsal.base[1], true), tipLine(plan.dorsal.tip));
   if (plan.anal) fan(3, median(plan.anal.base[0], plan.anal.base[1], false), tipLine(plan.anal.tip));
   if (plan.adipose) fan(12, median(plan.adipose.base[0], plan.adipose.base[1], true, 3), tipLine(plan.adipose.tip));
   for (const side of plan.pectoral ? [-1, 1] : []) {
@@ -889,7 +890,8 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
       [x - length * 0.9, y - spread * 0.7, side * (length * 0.5)],
       [x - length * 0.45, y - spread * 0.9, side * (length * 0.32)],
     ];
-    fan(side > 0 ? 4 : 5, base, tip, { sway: side * 0.002 });
+    // (Bowed and a little twisted, as a fan of rays is, not a flat board.)
+    fan(side > 0 ? 4 : 5, base, tip, { sway: side * 0.006, roll: side * 0.005 });
     if (plan.pelvic) {
       const p = plan.pelvic;
       const pb = [
@@ -1628,10 +1630,12 @@ function shadeFish(materials, body, membranes) {
             .mul(smoothstep(0.3, 1, rayWidth.mul(2)).oneMinus())
             .mul(0.8),
         );
-        const membrane = u.coat_fin.mul(1.15).add(0.02);
+        // (The membrane a little warm near the body, where it is thicker; thin and clearer
+        // toward the rim, about half seen through there.)
+        const membrane = u.coat_fin.mul(1.15).add(0.02).add(vec3(0.025, 0.012, 0).mul(span.oneMinus()).mul(u.coat_fish));
         const rayColor = u.coat_fin.mul(0.55);
         skin.assign(mix(membrane, rayColor, ray).mul(span.mul(0.3).add(0.85)));
-        gAlpha.assign(mix(0.68, 0.97, ray).mul(mix(1, 0.86, span)));
+        gAlpha.assign(mix(0.68, 0.97, ray).mul(mix(1, 0.72, smoothstep(0.45, 1, span))));
         gEnv.assign(0.35);
         gMetal.assign(0.05);
         gRough.assign(0.4);
