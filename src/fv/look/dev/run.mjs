@@ -1,6 +1,8 @@
 // Run the look scenes (src/fv/dev/scenes-look.js) one by one, each in a Chrome of its own
 // without a window, on the real graphics card -- on WebGPU, or with --webgl on the WebGL 2
-// fallback -- and keep everything the page says on its console:
+// fallback -- and keep everything the page says on its console. (Any of Extreme's other scenes
+// can be named with --only as well, to see it on WebGL 2 or another quality: fv-test.mjs only
+// loads them on WebGPU at detail.)
 //
 //   node src/fv/look/dev/run.mjs <set> [--only larven-nah,kapsel-nah] [--webgl] [--quality eco]
 //                                [--port 8172] [--cdp 8173]
@@ -36,7 +38,8 @@ const port = Number(option("port") || 8172);
 const cdpPort = Number(option("cdp") || 8173);
 const only = option("only")?.split(",");
 const { LOOK_SCENES } = await import(join(root, "src/fv/dev/scenes-look.js"));
-const list = only ? LOOK_SCENES.filter((s) => only.includes(s.name)) : LOOK_SCENES;
+const { SCENES } = await import(join(root, "src/fv/dev/scenes.js"));
+const list = only ? SCENES.filter((s) => only.includes(s.name)) : LOOK_SCENES;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Is a server on the port, and is it this tree's? (null: nothing there; false: someone else's.)

@@ -26,6 +26,9 @@ LOOK_SCENES.push(
   { name: "larven-maske", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // Dead, half and wholly on the back.
   { name: "larven-tot", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+  // Tilted on the stones' slopes as the enemy system tilts them (beside the same pose level),
+  // drawn up and striking on a slope, and swimming up to the alevin.
+  { name: "larven-hang", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // The game's camera behind the alevin, larvae at 1 to 3.5 units, with and without them.
   { name: "larven-distanz", look: true, models: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // Crawling in motion, one draw a frame.
@@ -34,6 +37,8 @@ LOOK_SCENES.push(
   { name: "larven-kiesbett", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // The same, only the game's camera, with and without the larvae and where each one is.
   { name: "larven-redd", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+  // And without shooting back: the larvae come up to the alevin.
+  { name: "larven-redd-wehrlos", look: true, models: true, manual: true, nofire: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
   // Weapon capsules in the brook: idle, taken (the burst), one behind a stone.
   { name: "kapsel-nah", look: true, models: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // Capsules as the parr meets them, in motion, late in a long game, and taken.

@@ -6,6 +6,7 @@
 import { attribute, normalView, vec3 } from "three/tsl";
 import { createCapsules } from "../capsule.js";
 import { REST, createLarvae } from "../larvae.js";
+import { createGround } from "../../ground.js";
 
 const nextTask = () => new Promise((r) => setTimeout(r, 0));
 const query = new URLSearchParams(location.search);
@@ -114,6 +115,29 @@ function restOn(salmon) {
     p.y = top + size * (dead ? REST.dead : REST.foot);
     return p;
   };
+}
+
+// The pilot of the live scenes, as fv-test's (src/fv/dev/scenes.js) steers its gravel-bed
+// scenes, so their pictures compare: the alevin holds on with S, turns toward the nearest
+// living enemy in reach and fires at it; with none, it looks down the river, level. Then the
+// models are drawn (`draw`).
+function pilot(salmon, combat, draw, fire = true) {
+  const { course, fish, look, held } = salmon;
+  held.add("KeyS");
+  const reach = 12 + 10 * fish.length;
+  let near = null;
+  for (const e of combat.enemies.list) if (!e.dead && e.position.distanceTo(fish.position) < reach && (!near || e.position.distanceTo(fish.position) < near.position.distanceTo(fish.position))) near = e;
+  if (near) {
+    const d = near.position.clone().sub(fish.position);
+    look.yaw = Math.atan2(d.z, d.x);
+    look.pitch = Math.max(-0.7, Math.min(0.7, Math.atan2(d.y, Math.hypot(d.x, d.z))));
+  } else {
+    const target = course.place(fish.river.s + 6, fish.river.u * 0.8, {});
+    look.yaw = Math.atan2(target.z - fish.position.z, target.x - fish.position.x);
+    look.pitch = 0;
+  }
+  combat.fire(!!near && fire);
+  draw();
 }
 
 // A larva record as the enemy system keeps one (only what larvae.js reads).
@@ -232,18 +256,7 @@ const SCENES = {
     const larvae = createLarvae(scene, { capacity: 24, light });
     for (const kind of ["dragonflyLarva", "beetleLarva"]) combat.enemies.drawnBy?.(kind);
     extreme.testing = true;
-    const steer = () => {
-      held.add("KeyS");
-      const live = combat.enemies.list.filter((e) => !e.dead);
-      if (live.length) {
-        const near = live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a));
-        const d = near.position.clone().sub(fish.position);
-        look.yaw = Math.atan2(d.z, d.x);
-        look.pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(d.y, Math.hypot(d.x, d.z))));
-      }
-      combat.fire(live.length > 0 && live.some((e) => e.position.distanceTo(fish.position) < 3));
-      larvae.draw(combat.enemies.list);
-    };
+    const steer = () => pilot(salmon, combat, () => larvae.draw(combat.enemies.list));
     const draw = () => larvae.draw(combat.enemies.list);
     const counts = () => {
       const c = {};
@@ -667,6 +680,167 @@ Object.assign(SCENES, {
     }
   },
 
+  // On the slopes of the redd's stones, and swimming up: each larva placed and tilted as the
+  // enemy system does it (fv/ground.js: the ground under its middle and under its head), seen
+  // from the side beside the same pose left level; then drawn up and striking on the slope; then
+  // swimming up to the alevin, the beetle larva rowing and the dragonfly larva with its legs laid
+  // back, their shadows left on the ground below.
+  async "larven-hang"(ctx, record) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE, course, terrain, pebbles } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    const { ahead, left, up } = frameOf(salmon);
+    await salmon.run(0.2);
+    const ground = createGround({ terrain, pebbles });
+    ground.refresh(fish.position, 6);
+    const spot = {};
+    const heightAt = (x, z) => {
+      course.locate(x, z, fish.river.s, spot);
+      return ground.height(x, z, course.bed(spot.s, spot.u));
+    };
+    const list = [];
+    // (Each pose a new id: the models then take its tilt and its walking or swimming at once,
+    // not eased from the pose before.)
+    let id = 10;
+    const draw = () => larvae.draw(list);
+    // A larva walking at (x, z) along (hx, hz), where enemies.js would put it and tilt it.
+    const walker = (kind, size, x, z, hx, hz, more = {}) => {
+      const reach = 0.4 * size;
+      const low = heightAt(x, z) + 0.08 * size;
+      const head = heightAt(x + hx * reach, z + hz * reach) + 0.08 * size;
+      const e = larva(THREE, kind, new THREE.Vector3(x, low, z), new THREE.Vector3(hx, 0, hz), size, { id: id++, grounded: true, climbing: false, tilt: Math.atan2(head - low, reach), phase: 0.9, ...more });
+      return e;
+    };
+    // The steepest even slope near the fish for a larva `size` long, facing up it (sign 1) or
+    // down it (-1): the ground rising about as much from its tail to its middle as from its
+    // middle to its head (a stone's flank, not the edge of a pebble), off the alevin's stone.
+    const slope = (size, sign) => {
+      const reach = 0.4 * size;
+      let best = null;
+      for (let i = -22; i <= 22; i++)
+        for (let j = -22; j <= 22; j++) {
+          const x = fish.position.x + i * 0.06,
+            z = fish.position.z + j * 0.06;
+          if (Math.hypot(x - fish.position.x, z - fish.position.z) < 0.4) continue;
+          const mid = heightAt(x, z);
+          for (let a = 0; a < 12; a++) {
+            const hx = Math.cos((a * Math.PI) / 6),
+              hz = Math.sin((a * Math.PI) / 6);
+            const front = heightAt(x + hx * reach, z + hz * reach) - mid;
+            const back = mid - heightAt(x - hx * reach, z - hz * reach);
+            const tilt = Math.atan2(front, reach) * sign;
+            if (tilt < 0.15 || tilt > 0.6 || Math.abs(front - back) > 0.3 * Math.abs(front)) continue;
+            if (!best || tilt > best.tilt) best = { x, z, hx, hz, tilt };
+          }
+        }
+      return best;
+    };
+    // From the side, a little above it, on whichever side has more water under the eye (not
+    // inside the stone it climbs).
+    const side = (e, distance = 1.25, height = 0.2) => {
+      const across = up.clone().cross(new THREE.Vector3(e.heading.x, 0, e.heading.z)).normalize();
+      const at = e.position.clone().addScaledVector(new THREE.Vector3(e.heading.x, 0, e.heading.z).normalize(), 0.1 * e.size);
+      let eye = null,
+        room = -Infinity;
+      for (const sign of [1, -1]) {
+        const p = at.clone().addScaledVector(across, sign * distance * e.size).addScaledVector(up, height * e.size);
+        const clear = p.y - heightAt(p.x, p.z);
+        if (clear > room) [eye, room] = [p, clear];
+      }
+      salmon.view(eye.toArray(), at.toArray(), 0.004);
+    };
+    for (const [kind, size, sign, tag] of [
+      ["beetleLarva", 0.55, 1, "kaefer-bergauf"],
+      ["dragonflyLarva", 0.42, 1, "libelle-bergauf"],
+      ["beetleLarva", 0.55, -1, "kaefer-bergab"],
+      ["dragonflyLarva", 0.42, -1, "libelle-bergab"],
+    ]) {
+      const s = slope(size, sign);
+      record.push({ tag, slope: s && { tilt: +(s.tilt * sign).toFixed(3) } });
+      if (!s) continue;
+      list.length = 0;
+      const e = walker(kind, size, s.x, s.z, s.hx, s.hz);
+      list.push(e);
+      side(e);
+      await picture(ctx, tag, draw);
+      // The same, level (as the models stood before they were tilted).
+      list[0] = { ...e, id: id++, grounded: undefined, climbing: undefined, tilt: 0 };
+      await picture(ctx, `${tag}-flach`, draw);
+      if (sign > 0) {
+        // Drawn up and striking on the way up the slope: the rear comes on top of the tilt.
+        list[0] = { ...e, id: id++, mode: "coil", t: 0.3, gape: 0.35 };
+        await picture(ctx, `${tag}-coil`, draw);
+        list[0] = { ...e, id: id++, mode: "strike", t: 0.1, gape: 1, phase: 1.1 };
+        await picture(ctx, `${tag}-strike`, draw);
+      }
+    }
+
+    // Swimming up: each walks a moment on the gravel ahead of the alevin (so its shadow knows
+    // the ground), then swims up toward the fish, heading at it and tilted by that: first a
+    // little off the gravel (its shadow still under it), then most of the way up, where the
+    // player's camera finds it.
+    list.length = 0;
+    const climbers = [];
+    for (const [kind, size, across] of [
+      ["beetleLarva", 0.55, 0.5],
+      ["dragonflyLarva", 0.42, -0.5],
+    ]) {
+      const x = fish.position.x + ahead.x * 1.3 + left.x * across,
+        z = fish.position.z + ahead.z * 1.3 + left.z * across;
+      const e = walker(kind, size, x, z, -ahead.x, -ahead.z, { phase: 1.7 });
+      e.floor = e.position.y;
+      list.push(e);
+      climbers.push(e);
+    }
+    for (let i = 0; i < 3; i++) larvae.draw(list, 1 / 30);
+    const climb = (share) => {
+      for (const e of climbers) {
+        e.position.y = e.floor + share * (fish.position.y - e.floor);
+        const to = fish.position.clone().sub(e.position).normalize();
+        e.heading.copy(to);
+        Object.assign(e, { grounded: false, climbing: true, tilt: Math.asin(to.y) });
+      }
+      // (A second of swimming: the legs have gone over to it.)
+      for (let i = 0; i < 30; i++) {
+        for (const e of climbers) e.phase += (Math.PI * 2 * 2.5) / 30;
+        larvae.draw(list, 1 / 30);
+      }
+    };
+    climb(0.15);
+    record.push({
+      fishAbove: +(fish.position.y - heightAt(fish.position.x, fish.position.z)).toFixed(3),
+      low: climbers.map((e) => ({ kind: e.kind, tilt: +e.tilt.toFixed(3), above: +(e.position.y - e.floor).toFixed(3) })),
+    });
+    for (const [e, tag] of [
+      [climbers[0], "kaefer-schwimmt"],
+      [climbers[1], "libelle-schwimmt"],
+    ]) {
+      side(e, 1.5, 0.05);
+      await picture(ctx, tag, draw);
+    }
+    // From aside and a little below them, their shadows on the gravel they left.
+    const c = climbers[0].position.clone().add(climbers[1].position).multiplyScalar(0.5);
+    const d = c.clone().sub(fish.position);
+    const across = up.clone().cross(new THREE.Vector3(d.x, 0, d.z)).normalize();
+    const floor = Math.min(...climbers.map((e) => e.floor));
+    const low = c.clone().addScaledVector(across, 1.8);
+    low.y = c.y;
+    salmon.view(low.toArray(), [c.x, (c.y + floor) / 2, c.z], 0.01);
+    await picture(ctx, "schwimmen-seite", draw);
+    // Most of the way up, as the player sees them: the game's camera turned toward them as the
+    // scenes' pilot turns it.
+    climb(0.7);
+    record.push({ high: climbers.map((e) => ({ kind: e.kind, tilt: +e.tilt.toFixed(3), above: +(e.position.y - e.floor).toFixed(3) })) });
+    const m = climbers[0].position.clone().add(climbers[1].position).multiplyScalar(0.5).sub(fish.position);
+    const pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(m.y, Math.hypot(m.x, m.z))));
+    const { eye, aim } = gameEye(salmon, fish.position, Math.atan2(m.z, m.x), pitch, fish.length);
+    salmon.view(eye.toArray(), aim.toArray(), 0.01);
+    await picture(ctx, "schwimmen-spiel", draw);
+    // (Where the fish, the larvae and the ground under them land in that picture.)
+    const under = (p) => new THREE.Vector3(p.x, heightAt(p.x, p.z), p.z);
+    record.push({ spiel: { fish: project(salmon, fish.position), fishGround: project(salmon, under(fish.position)), larvae: climbers.map((e) => project(salmon, e.position)), larvaeGround: climbers.map((e) => project(salmon, under(e.position))) } });
+  },
+
   // What the player sees: the game's camera behind the alevin, larvae crawling toward it at
   // 1, 2 and 3.5 units, on the pebbles and (bed) on the bed alone; each picture also without
   // the larvae, for the difference they make.
@@ -744,53 +918,50 @@ Object.assign(SCENES, {
   },
 
   // The live redd with the game's own camera (the pilot steering), each larva's place in the
-  // picture written down, and the picture taken again without them.
+  // picture written down, and the picture taken again without them. The pictures come a few
+  // seconds after each wave arrives (the pilot soon shoots it away), or, with the scene's
+  // `nofire`, as the larvae reach the alevin.
   async "larven-redd"(ctx, record) {
-    const { salmon, extreme } = ctx;
-    const { fish, scene, look, held } = salmon;
-    const combat = extreme.combat;
-    const larvae = createLarvae(scene, { capacity: 24, light });
-    for (const kind of ["dragonflyLarva", "beetleLarva"]) combat.enemies.drawnBy?.(kind);
-    extreme.testing = true;
-    const steer = () => {
-      held.add("KeyS");
-      const live = combat.enemies.list.filter((e) => !e.dead);
-      if (live.length) {
-        const near = live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a));
-        const d = near.position.clone().sub(fish.position);
-        look.yaw = Math.atan2(d.z, d.x);
-        look.pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(d.y, Math.hypot(d.x, d.z))));
-      }
-      combat.fire(live.length > 0 && live.some((e) => e.position.distanceTo(fish.position) < 3));
-      larvae.draw(combat.enemies.list);
-    };
-    const draw = () => larvae.draw(combat.enemies.list);
-    let last = 0;
-    for (const [t, name] of [
-      [12, "1"],
-      [40, "2"],
-      [66, "3"],
-    ]) {
-      await salmon.run(t - last, steer);
-      last = t;
-      await picture(ctx, name, draw);
-      const cam = salmon.camera.position.clone();
-      record.push({
-        t,
-        fish: fish.position.toArray().map((v) => +v.toFixed(2)),
-        pitch: +look.pitch.toFixed(2),
-        larvae: combat.enemies.list
-          .filter((e) => e.spec?.render === "larva")
-          .map((e) => ({ kind: e.kind, mode: e.mode, dead: e.dead, size: +e.size.toFixed(2), dFish: +e.position.distanceTo(fish.position).toFixed(2), dCam: +e.position.distanceTo(cam).toFixed(2), dy: +(e.position.y - fish.position.y).toFixed(2), px: project(salmon, e.position) })),
-      });
-      for (const m of larvae.meshes) m.visible = false;
-      await picture(ctx, `${name}-ohne`, draw);
-      for (const m of larvae.meshes) m.visible = true;
-    }
-    held.delete("KeyS");
-    combat.fire(false);
+    await reddScene(ctx, record);
   },
+  async "larven-redd-wehrlos"(ctx, record) {
+    await reddScene(ctx, record);
+  },
+});
 
+async function reddScene(ctx, record) {
+  const { salmon, extreme } = ctx;
+  const { fish, scene, look, held } = salmon;
+  const combat = extreme.combat;
+  const larvae = createLarvae(scene, { capacity: 24, light });
+  for (const kind of ["dragonflyLarva", "beetleLarva"]) combat.enemies.drawnBy?.(kind);
+  extreme.testing = true;
+  const steer = () => pilot(salmon, combat, () => larvae.draw(combat.enemies.list), !ctx.scene.nofire);
+  const draw = () => larvae.draw(combat.enemies.list);
+  let last = 0;
+  for (const [t, name] of (ctx.scene.nofire ? [15, 35, 60] : [8, 31, 58]).map((t, i) => [t, String(i + 1)])) {
+    await salmon.run(t - last, steer);
+    last = t;
+    await picture(ctx, name, draw);
+    const cam = salmon.camera.position.clone();
+    record.push({
+      t,
+      fish: fish.position.toArray().map((v) => +v.toFixed(2)),
+      fishOverBed: +(fish.position.y - salmon.course.bed(fish.river.s, fish.river.u)).toFixed(2),
+      pitch: +look.pitch.toFixed(2),
+      larvae: combat.enemies.list
+        .filter((e) => e.spec?.render === "larva")
+        .map((e) => ({ kind: e.kind, mode: e.mode, dead: e.dead, climbing: e.climbing, tilt: e.tilt === undefined ? undefined : +e.tilt.toFixed(2), size: +e.size.toFixed(2), dFish: +e.position.distanceTo(fish.position).toFixed(2), dCam: +e.position.distanceTo(cam).toFixed(2), dy: +(e.position.y - fish.position.y).toFixed(2), px: project(salmon, e.position) })),
+    });
+    for (const m of larvae.meshes) m.visible = false;
+    await picture(ctx, `${name}-ohne`, draw);
+    for (const m of larvae.meshes) m.visible = true;
+  }
+  held.delete("KeyS");
+  combat.fire(false);
+}
+
+Object.assign(SCENES, {
   // Capsules as the parr meets them: the game's camera, capsules 3, 6 and 10 lengths ahead
   // (the size pickups.js gives them), in motion, and one taken as the fish swims through it.
   async "kapsel-spiel"(ctx, record) {
