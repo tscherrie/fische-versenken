@@ -7,23 +7,35 @@
 // Browsers allow sound only after a click, a tap or a key, so it starts then; T turns it
 // off and on. Off, hidden, or paused for long, the sound device is let go (a phone's battery).
 //
-// Everything goes through one master (the volume, off, the hush of a pause) and a
-// compressor, in four groups:
-//   water    what sounds in the water: the beds, bubbles, eddies, what the fish does
+// Everything goes through one master (the volume, off, the hush of a pause), a compressor
+// and a limiter that keeps the peaks under full scale, in five groups:
+//   water    what sounds in the water: the beds (through their own `ambience` bus, which the
+//            heartbeat ducks), bubbles, eddies, what the fish does, hunters coming
 //   surface  what sounds at the surface: splashes, rain on it, the white water of a fall
 //   air      what sounds in the air: the air itself, calls, thunder, the angler's reel
+//   body     the fish's own body: its heart, its gills, its jaws
 //   ui       the bells of a new stage of life or a badge
-// How far under the ear is (`submerged`, 0..1, eased over about a tenth of a second) opens
-// one and closes the others. The crossing itself (breaking out, going back in) is heard
-// as it is, neither in the water nor out of it.
+// All but the bells go through `world` first, which the white veil of spawning closes (a
+// bell can still ring into the silence). How far under the ear is (`submerged`, 0..1,
+// eased over about a tenth of a second) opens one and closes the others. The crossing
+// itself (breaking out, going back in) is heard as it is, neither in the water nor out of it.
 //
 // The noise and the short sounds heard often (bubbles, splashes, knocks) are made ahead as
 // plain samples, a slice at a time while the game loads, and played back as they are: a
-// source and a level each, instead of a tangle of oscillators and filters every time.
+// source and a level each, instead of a tangle of oscillators and filters every time
+// (src/sound-make.js; the cues -- what the fish does, hunters, stingers -- in
+// src/sound-cues.js; the world's small sounds in src/sound-world.js). Each is turned into
+// a buffer once and its plain copy let go; one not made yet when it is wanted (a tap while
+// the game still loads) is not heard yet. What sounds now and then under water (bubbles,
+// gravel, a flood's clatter, ice singing, a ship, the heart) is scheduled by update() from
+// the world round the fish; the rest is played when it happens. The loops heard only now
+// and then (the gills, a ship, the scent of home, rain's pings) run only while they are.
+
+import { RATE, random, pick, makeBurst, KNOCKS, makeBlup, makeSplash, makeSwallow, createWorkshop, makeAll, step, stepSize } from "./sound-make.js";
+import { makeCues } from "./sound-cues.js";
+import { makeWorld } from "./sound-world.js";
 
 const STORAGE_KEY = "habitat-sound";
-// Everything is made at this rate; where the device runs at another the browser converts.
-const RATE = 48000;
 // The master level, with sound on and nothing hushing it.
 const LEVEL = 0.32;
 // The ear crossing the surface (s): quick, but not a click.
@@ -33,19 +45,30 @@ const EASE = 0.12;
 const STEER = 0.05;
 // Above this (Hz) the surface takes the edge off what comes through it.
 const DIM = 800;
+// At most this many one-shots at once; the river's own small sounds (bubbles, ticks) stop
+// coming at the lower number, so that a cue is never the one left out.
+const VOICES = 64;
+const AMBIENT_VOICES = 32;
 // How loud each part is, relative to the others (set by ear and by tools/sound-check.mjs).
 const MIX = {
   rush: 0.37,
   rumble: 0.23,
-  flow: 0.85,
-  burble: 0.37,
+  flow: 1.0,
+  burble: 0.42,
   roar: 0.6,
   roarLow: 0.37,
-  wash: 0.4,
-  washMid: 0.6,
+  wash: 0.5,
+  washMid: 1.15,
   gurgle: 0.8,
+  gravel: 0.25,
   rain: 0.4,
-  rainUnder: 0.65,
+  rainUnder: 0.4,
+  // (Rain on the surface as heard from under it: this much of it through the muffle; the
+  // pings carry the rest.)
+  rainDip: 0.55,
+  pings: 0.6,
+  clatter: 1.1,
+  chirp: 0.35,
   air: 0.5,
   whiteWater: 0.5,
   bubble: 0.6,
@@ -59,357 +82,61 @@ const MIX = {
   blup: 0.7,
   knock: 1.0,
   rise: 1.0,
-  call: 0.32,
   otter: 0.38,
   thunder: 2.2,
+  whump: 0.4,
+  trail: 0.7,
+  jaws: 0.75,
+  denied: 0.55,
+  thud: 0.6,
+  gasp: 0.25,
+  gills: 0.09,
+  charge: 1.0,
+  tick: 0.6,
+  cleared: 0.1,
+  swell: 0.6,
+  pulse: 0.3,
+  coil: 0.4,
+  snap: 0.8,
+  moan: 0.25,
+  heart: 0.5,
+  fanfare: 0.55,
+  chime: 0.55,
+  victory: 0.2,
+  growth: 0.6,
+  hatch: 0.35,
+  pad: 0.05,
+  ending: 0.6,
+  storm: 0.8,
+  churn: 1.4,
+  home: 0.6,
+  homeGurgle: 0.8,
+  slap: 0.5,
+  creak: 0.25,
+  plops: 0.6,
+  counter: 0.6,
+  ship: 0.35,
+  grunt: 1.3,
+  gulp: 0.8,
+  crack: 0.7,
 };
-
-// ---- Made ahead: samples in plain arrays (no audio context needed yet).
-
-const random = (a, b) => a + Math.random() * (b - a);
-const pick = (list) => list[Math.floor(Math.random() * list.length)];
-
-// A two-pole filter run over samples here (the same shapes as the Web Audio ones), and
-// scaled so that white noise comes out of it at about the same strength whatever its band.
-function biquad(type, frequency, q = 0.7) {
-  let b0 = 0,
-    b1 = 0,
-    b2 = 0,
-    a1 = 0,
-    a2 = 0,
-    x1 = 0,
-    x2 = 0,
-    y1 = 0,
-    y2 = 0,
-    norm = 1;
-  const f = {
-    set(frequency, q) {
-      const w = (2 * Math.PI * Math.min(frequency, RATE * 0.45)) / RATE;
-      const cos = Math.cos(w);
-      const alpha = Math.sin(w) / (2 * q);
-      const a0 = 1 + alpha;
-      if (type === "bandpass") {
-        b0 = alpha / a0;
-        b1 = 0;
-        b2 = -alpha / a0;
-        norm = 1 / Math.sqrt(Math.min(1, frequency / q / (RATE / 2)));
-      } else if (type === "lowpass") {
-        b0 = b2 = (1 - cos) / 2 / a0;
-        b1 = (1 - cos) / a0;
-        norm = 1 / Math.sqrt(Math.min(1, frequency / (RATE / 2)));
-      } else {
-        b0 = b2 = (1 + cos) / 2 / a0;
-        b1 = -(1 + cos) / a0;
-        norm = 1;
-      }
-      a1 = (-2 * cos) / a0;
-      a2 = (1 - alpha) / a0;
-      return f;
-    },
-    run(x) {
-      const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-      x2 = x1;
-      x1 = x;
-      y2 = y1;
-      y1 = y;
-      return y * norm;
-    },
-  };
-  return f.set(frequency, q);
-}
-// White noise of about unit strength.
-const white = () => (Math.random() * 2 - 1) * 1.7;
-
-// Adds a ringing mode: a sine that dies away, its pitch sagging by `sag` as it goes.
-function ring(data, at, frequency, tau, amp, sag = 1) {
-  const start = Math.floor(at * RATE);
-  const n = Math.min(data.length - start, Math.ceil(tau * 7 * RATE));
-  let phase = 0;
-  for (let i = 0; i < n; i++) {
-    const t = i / RATE;
-    const f = sag === 1 ? frequency : frequency * Math.pow(sag, Math.min(1, t / (tau * 3)));
-    phase += (2 * Math.PI * f) / RATE;
-    data[start + i] += amp * Math.min(1, t / 0.0015) * Math.exp(-t / tau) * Math.sin(phase);
-  }
-}
-// Adds noise in a band that rises in `attack` and dies away with `tau`; the band can sweep
-// from `frequency` to `to` over `sweep` seconds.
-function hiss(data, at, type, frequency, q, tau, amp, attack = 0.001, to = frequency, sweep = 0) {
-  const f = biquad(type, frequency, q);
-  const start = Math.floor(at * RATE);
-  const n = Math.min(data.length - start, Math.ceil((attack + tau * 7) * RATE));
-  for (let i = 0; i < n; i++) {
-    const t = i / RATE;
-    if (sweep && (i & 31) === 0) f.set(frequency * Math.pow(to / frequency, Math.min(1, t / sweep)), q);
-    const e = t < attack ? t / attack : Math.exp(-(t - attack) / tau);
-    data[start + i] += amp * e * f.run(white());
-  }
-}
-// Adds one bubble: a sine rising in pitch as the bubble rings (it shrinks towards the
-// surface), gone in a tenth of a second. `pan` -1..1 into a pair of channels, or mono.
-function bubbleInto(left, right, at, pitch, amp, pan = 0) {
-  const grow = random(1.3, 1.9);
-  const decay = random(0.05, 0.11);
-  const start = Math.floor(at * RATE);
-  const n = Math.min(left.length - start, Math.ceil((decay + 0.01) * RATE));
-  const k = Math.log(0.0005) / (decay - 0.004);
-  const x = ((pan + 1) / 2) * (Math.PI / 2);
-  const gl = right ? Math.cos(x) : 1,
-    gr = Math.sin(x);
-  let phase = 0;
-  for (let i = 0; i < n; i++) {
-    const t = i / RATE;
-    phase += (2 * Math.PI * pitch * Math.pow(grow, Math.min(1, t / 0.06))) / RATE;
-    const v = amp * Math.sin(phase) * (t < 0.004 ? t / 0.004 : Math.exp(k * (t - 0.004)));
-    left[start + i] += v * gl;
-    if (right) right[start + i] += v * gr;
-  }
-}
-// Drops of water falling back: tiny, high ticks scattered over a while.
-function drops(data, from, to, count, amp) {
-  for (let i = 0; i < count; i++) ring(data, random(from, to), random(2200, 5200), random(0.002, 0.005), amp * random(0.4, 1));
-}
-
-// Noise for the beds: `seconds` long, two channels, its end faded into its start so it
-// loops without a seam. Yields now and then so the work can be spread out.
-function* noise(kind, seconds, out) {
-  const length = Math.floor(RATE * seconds);
-  for (let channel = 0; channel < 2; channel++) {
-    const data = new Float32Array(length);
-    let brown = 0,
-      running = 0;
-    const rows = new Float32Array(8);
-    for (let i = 0; i < length; i++) {
-      const w = Math.random() * 2 - 1;
-      if (kind === "brown") {
-        brown = (brown + 0.02 * w) / 1.02;
-        data[i] = brown * 3.5;
-      } else if (kind === "white") data[i] = w * 0.5;
-      else {
-        const k = i === 0 ? 0 : Math.min(7, Math.log2(i & -i) | 0);
-        running -= rows[k];
-        rows[k] = Math.random() * 2 - 1;
-        running += rows[k];
-        data[i] = (running + w) / 9;
-      }
-      if ((i & 16383) === 16383) yield;
-    }
-    const fade = Math.floor(RATE * 0.25);
-    for (let i = 0; i < fade; i++) {
-      const t = i / fade;
-      data[length - fade + i] = data[length - fade + i] * (1 - t) + data[i] * t;
-    }
-    out.push(data);
-  }
-}
-
-// ---- The short sounds.
-
-const mono = (seconds) => new Float32Array(Math.ceil(seconds * RATE));
-// A bubble on its own, somewhere left or right.
-function makeBubble() {
-  const left = mono(0.13),
-    right = mono(0.13);
-  bubbleInto(left, right, 0, random(350, 1250), 1, random(-0.8, 0.8));
-  return [left, right];
-}
-// A cloud of bubbles: `count` of them over `spread` seconds, `low` lowering them all.
-function makeBurst(count, spread, low) {
-  const left = mono(spread + 0.16),
-    right = mono(spread + 0.16);
-  for (let i = 0; i < count; i++) bubbleInto(left, right, Math.random() * spread, random(350, 1250) * low, random(0.5, 1), random(-0.8, 0.8));
-  return [left, right];
-}
-const KNOCKS = ["body", "rock", "wood", "net", "hook"];
-// Knocks, each a few modes ringing and a click: a blow to the body (a dull knock, 200-300
-// Hz, that a phone can still play), stone, wood (the mill's paddles, a branch), the net's
-// mesh rasping over the scales, a hook's tick.
-function makeKnock(kind) {
-  const d = mono(0.45);
-  if (kind === "rock") {
-    ring(d, 0, random(560, 700), 0.018, 0.7);
-    ring(d, 0, random(1300, 1600), 0.01, 0.45);
-    ring(d, 0, random(2600, 3200), 0.006, 0.25);
-    ring(d, 0, random(110, 140), 0.035, 0.6);
-    hiss(d, 0, "bandpass", 3400, 1, 0.003, 0.35);
-  } else if (kind === "wood") {
-    ring(d, 0, random(170, 190), 0.07, 0.75);
-    ring(d, 0, random(405, 435), 0.04, 0.55);
-    ring(d, 0, random(900, 1000), 0.012, 0.18);
-    hiss(d, 0, "bandpass", 1600, 1, 0.005, 0.3);
-  } else if (kind === "net") {
-    // The strands catch and slip in quick grains: noise chopped at 30-45 a second.
-    const high = biquad("bandpass", random(2000, 2600), 1.4),
-      mid = biquad("bandpass", 750, 1);
-    const rate = random(30, 45);
-    let phase = 0;
-    for (let i = 0; i < 0.34 * RATE; i++) {
-      const t = i / RATE;
-      phase += (2 * Math.PI * rate * random(0.7, 1.3)) / RATE;
-      const grain = Math.pow(0.5 + 0.5 * Math.sin(phase), 6);
-      const e = Math.min(1, t / 0.02) * Math.min(1, (0.34 - t) / 0.12);
-      d[i] += e * grain * (0.3 * high.run(white()) + 0.2 * mid.run(white()));
-    }
-    ring(d, 0, random(190, 230), 0.04, 0.55);
-  } else if (kind === "hook") {
-    hiss(d, 0, "bandpass", 4200, 2, 0.002, 0.45);
-    ring(d, 0, random(2700, 3000), 0.035, 0.14);
-    ring(d, 0, random(4400, 4900), 0.02, 0.08);
-    ring(d, 0.004, random(240, 280), 0.035, 0.8);
-  } else {
-    const f = random(210, 290);
-    ring(d, 0, f, 0.05, 0.8, 0.85);
-    ring(d, 0, f * random(2.2, 2.5), 0.02, 0.3);
-    ring(d, 0, random(80, 100), 0.07, 0.45, 0.6);
-    hiss(d, 0, "bandpass", random(2200, 3000), 1.2, 0.004, 0.25);
-  }
-  return [d];
-}
-// A nip: a small, sharp tick in the middle of the ear's range (1.2-2.5 kHz, where a phone
-// plays it), and a bubble.
-function makeNip() {
-  const d = mono(0.2);
-  hiss(d, 0, "bandpass", random(1600, 2100), 1.8, 0.006, 0.55);
-  ring(d, 0, random(1300, 1500), 0.012, 0.35, 0.85);
-  bubbleInto(d, null, 0.03, random(420, 1500), 0.2);
-  return [d];
-}
-// Breaking out: the water tearing open, a rising "shhp" (0.8 to 6 kHz in about 120 ms),
-// and drops falling off after.
-function makeBreach() {
-  const d = mono(0.4);
-  hiss(d, 0, "bandpass", random(750, 850), 1.1, 0.06, 0.6, 0.025, random(5500, 6500), 0.12);
-  drops(d, 0.06, 0.32, 6, 0.12);
-  return [d];
-}
-// Going back in, heard as the water closes: a short "blup" (a sine falling) and a cloud of
-// bubbles; lower for a bigger fish.
-function makeBlup(size) {
-  const f = 700 / (1 + 0.3 * size);
-  const burst = makeBurst(8 + Math.round(2 * Math.min(size, 5)), 0.35, 0.85 / (1 + 0.12 * size));
-  // (The bubbles quieter than the blup itself.)
-  const n = burst[0].length;
-  const d = new Float32Array(n);
-  ring(d, 0, f, 0.045, 0.8, 0.35);
-  hiss(d, 0, "lowpass", 420, 0.7, 0.04, 0.25, 0.004);
-  for (let i = 0; i < n; i++) {
-    burst[0][i] = 0.3 * burst[0][i] + d[i];
-    burst[1][i] = 0.3 * burst[1][i] + d[i];
-  }
-  return burst;
-}
-// A splash, the size of what hits the water (`size` in the game's lengths): a crack, then
-// the fizz of the spray in a band that is lower the bigger it is (about 1400/(1 + 0.35 L)
-// Hz) and longer (0.25 + 0.1 L s); a big body goes in with a plunge (a falling thud, 120
-// to 60 Hz) under it; then drops falling back.
-function makeSplash(size) {
-  const centre = 1400 / (1 + 0.35 * size);
-  const length = 0.25 + 0.1 * size;
-  const left = mono(length + 0.25),
-    right = mono(length + 0.25);
-  hiss(left, 0, "bandpass", Math.min(5200, centre * 2.8), 1.2, 0.005, 0.35);
-  right.set(left);
-  hiss(left, 0.003, "bandpass", centre, 0.9, length / 5, 0.5, 0.012);
-  hiss(right, 0.003, "bandpass", centre * 1.07, 0.9, length / 5, 0.5, 0.012);
-  const plunge = Math.min(1, Math.max(0, (size - 0.8) / 3));
-  if (plunge > 0) {
-    const body = mono(0.5);
-    ring(body, 0.01, 120, 0.09, 0.9 * plunge, 0.5);
-    hiss(body, 0.005, "lowpass", 320, 0.7, 0.06, 0.4 * plunge, 0.008);
-    for (let i = 0; i < body.length && i < left.length; i++) {
-      left[i] += body[i];
-      right[i] += body[i];
-    }
-  }
-  drops(left, length * 0.3, length * 1.1, 3 + Math.round(size), 0.08);
-  drops(right, length * 0.3, length * 1.1, 3 + Math.round(size), 0.08);
-  return [left, right];
-}
-// Something swallowed: the tick of the jaws closing and a soft, hollow gulp dropping in
-// pitch; a big mouthful lets a bubble out of the gills.
-function makeSwallow(size) {
-  const d = mono(0.3 + 0.12 * size);
-  hiss(d, 0, "bandpass", 1000 - 400 * size, 1.4, 0.004, (0.05 + 0.1 * size) * 0.3);
-  const f0 = 480 - 260 * size;
-  const glide = 0.08 + 0.1 * size;
-  const decay = 0.13 + 0.12 * size;
-  const k = Math.log(0.0005) / (decay - 0.015);
-  let phase = 0;
-  const start = Math.floor(0.01 * RATE);
-  for (let i = 0; start + i < d.length; i++) {
-    const t = i / RATE;
-    phase += (2 * Math.PI * f0 * Math.pow(0.4, Math.min(1, t / glide))) / RATE;
-    const e = t < 0.015 ? t / 0.015 : Math.exp(k * (t - 0.015));
-    d[start + i] += (0.16 + 0.14 * size) * e * (Math.sin(phase) + 0.35 * Math.sin(2 * phase));
-  }
-  if (size > 0.4) bubbleInto(d, null, 0.18, random(300, 1100) * 0.9, 0.04);
-  return [d];
-}
-// Another fish taking a fly off the surface: a soft sip and a low bubble.
-function makeRise() {
-  const d = mono(0.3);
-  hiss(d, 0, "bandpass", random(620, 780), 0.8, 0.04, 0.5, 0.01);
-  bubbleInto(d, null, 0.04, random(350, 1250) * 0.55, 0.4);
-  return [d];
-}
-// The reel's ratchet: four quick ticks, come down the line into the water.
-function makeReel() {
-  const d = mono(0.18);
-  for (let k = 0; k < 4; k++) {
-    hiss(d, k * 0.035, "bandpass", random(2400, 3000), 1.4, 0.003, 0.5);
-    ring(d, k * 0.035, random(1150, 1300), 0.01, 0.6);
-  }
-  return [d];
-}
-
-// Work done ahead, a slice at a time, so that neither the loading nor the first click
-// stalls on it; whatever is left when the sound is wanted is finished then and there.
-function createWorkshop() {
-  const jobs = [];
-  let timer = null;
-  function slice() {
-    timer = null;
-    const until = performance.now() + 4;
-    while (jobs.length && performance.now() < until) if (jobs[0].next().done) jobs.shift();
-    if (jobs.length) timer = setTimeout(slice, 0);
-  }
-  return {
-    add(job) {
-      jobs.push(job);
-      if (!timer) timer = setTimeout(slice, 0);
-    },
-    finish() {
-      while (jobs.length) if (jobs[0].next().done) jobs.shift();
-    },
-  };
-}
-function* makeAll(raw) {
-  for (const [kind, seconds] of [
-    ["brown", 9],
-    ["pink", 9],
-    ["white", 4],
-  ]) {
-    const channels = [];
-    yield* noise(kind, seconds, channels);
-    raw[kind] = [channels];
-  }
-  const many = (count, make) => Array.from({ length: count }, make);
-  raw.bubble = many(24, makeBubble);
-  yield;
-  for (const kind of KNOCKS) {
-    raw[kind] = many(3, () => makeKnock(kind));
-    yield;
-  }
-  raw.nip = many(4, makeNip);
-  raw.breach = many(3, makeBreach);
-  raw.rise = many(3, makeRise);
-  raw.reel = many(2, makeReel);
-}
-
-// Sizes come in steps, each a sixth larger than the last; a step's sound is played a
-// little faster or slower to land exactly on the size asked for.
-const step = (size) => Math.max(0, Math.round(Math.log(Math.max(size, 0.2) / 0.2) / Math.log(1.18)));
-const stepSize = (k) => 0.2 * Math.pow(1.18, k);
+// The leap's sweet spot (main.js: a leap released above this on the swing clears the fall).
+const SWEET = 0.82;
+// The hunters' voices: the sample, the group it sounds in, how loud, and how much louder
+// under water -- by about what the surface takes from it at its pitch, so that a warning is
+// still heard (a kingfisher's whistle loses most, a bear's huff hardly anything). Fish and
+// the otter under water have none: the swell of pressure is their voice.
+// (`cool` names its cooldown: the goosanders of a drive noticing the fish all at once call
+// as one.)
+const CALLS = {
+  kingfisher: { bank: "kingfisher", bus: "air", loud: 0.4, under: 7.5, cool: "call:kingfisher" },
+  heron: { bank: "heron", bus: "air", loud: 0.55, under: 2.5, cool: "call:heron" },
+  merganser: { bank: "merganser", bus: "air", loud: 0.8, under: 2, cool: "call:merganser" },
+  drive: { bank: "merganser", bus: "air", loud: 0.8, under: 2, cool: "call:merganser" },
+  seal: { bank: "sealWhoosh", bus: "water", loud: 0.8, under: 0, cool: "call:seal" },
+  bear: { bank: "bear", bus: "air", loud: 0.8, under: 1, cool: "call:bear" },
+};
+const BIRDS = ["kingfisher", "heron", "merganser", "drive"];
 
 export function createSound() {
   let enabled = true;
@@ -426,27 +153,87 @@ export function createSound() {
     clock = 0,
     nextGurgle = 0,
     nextBubble = 0,
+    nextGravel = 0,
+    nextClatter = 0,
+    nextChirp = 0,
+    nextSlap = 0,
+    nextGrunt = 0,
+    // A ship's pass at sea: when it began, how long it takes, which way, when the next.
+    shipFrom = -1e9,
+    shipFor = 30,
+    shipWay = 1,
+    shipNext = 0,
+    nextCreak = 0,
     nextSteer = 0,
     lastSwallow = 0,
     submerged = 1,
     crossing = NaN,
     clearTone = 7000,
-    live = 0;
+    // The heart: beating until then (by the frame clock), how fast, when the next beat is;
+    // strength running low (since when it last beat for it, at what strength last frame).
+    heartUntil = -1,
+    weak = false,
+    weakAt = -1e9,
+    lastEnergy = 1,
+    // Spawning: when the heart began to calm (by the frame clock).
+    calmFrom = -1e9,
+    bpm = 64,
+    nextBeat = 0,
+    beating = false,
+    // A strike about to come, as the warnings last had it; and while the heart beats, the
+    // pulse of the hunter nearest to striking, played with each beat (see warn()).
+    warnDanger = false,
+    pulseLoud = 0,
+    pulsePan = 0,
+    // The leap's charge: its tone while the meter swings, and where the swing last was.
+    chargeTone = null,
+    chargeLevel = null,
+    chargeAt = 0,
+    chargeWritten = -1,
+    // The voices sounding now (one-shots of any kind), the most at once, the nodes made
+    // since the start and the bytes of sample memory held (for stats and the checks).
+    live = 0,
+    peakLive = 0,
+    made = 0,
+    bytes = 0;
   // What keeps it quiet (a pause, the logbook, death, a hidden page): each its own reason,
   // so that one ending does not end the others.
   const hushes = new Set();
+  // What the ear knows of each hunter (by the game's own object for it).
+  const heard = new WeakMap();
   const raw = {};
   const banks = {};
   const sized = new Map();
   const workshop = createWorkshop();
   workshop.add(makeAll(raw));
+  workshop.add(makeCues(raw));
+  workshop.add(makeWorld(raw));
 
-  const toBuffer = (channels) => {
-    const buffer = context.createBuffer(channels.length, channels[0].length, RATE);
+  // (At half the rate for what has nothing much high in it: see half() in sound-make.js.)
+  const toBuffer = (channels, rate = channels.rate ?? RATE) => {
+    const buffer = context.createBuffer(channels.length, channels[0].length, rate);
     channels.forEach((data, c) => buffer.getChannelData(c).set(data));
+    bytes += channels.length * channels[0].length * 4;
     return buffer;
   };
-  const bank = (name) => (banks[name] ??= raw[name].map(toBuffer));
+  // A sample's buffers, made from its plain arrays the first time it is asked for (the
+  // arrays let go then); null while it is still being made.
+  function bank(name) {
+    if (banks[name]) return banks[name];
+    const arrays = raw[name];
+    if (!arrays) return null;
+    delete raw[name];
+    return (banks[name] = arrays.map((channels) => toBuffer(channels)));
+  }
+  // One of its versions at random (null while it is being made).
+  function any(name) {
+    const list = bank(name);
+    return list ? pick(list) : null;
+  }
+  // All of them turned into buffers at once, when the last is made.
+  function bankAll() {
+    for (const name in raw) bank(name);
+  }
   // A sound that depends on a size, made the first few times it is asked for and then
   // reused (a few versions of each, so no two in a row are quite the same).
   function variant(key, make, count = 3) {
@@ -456,16 +243,50 @@ export function createSound() {
     return pick(list);
   }
 
-  function loop(buffer) {
+  // When each cue last sounded (by the audio clock): one that comes again within its own
+  // few seconds is let pass. Keys are short fixed strings, so asking allocates nothing.
+  const cooled = new Map();
+  function coolOk(key, seconds) {
+    const now = context.currentTime;
+    if (now - (cooled.get(key) ?? -1e9) < seconds) return false;
+    cooled.set(key, now);
+    return true;
+  }
+
+  // A sample looping for good (`from` where its loop starts: the beds' noise is faded
+  // into its first quarter second, the newer loops need no such start).
+  function loop(buffer, from = 0.25) {
     const source = context.createBufferSource();
+    made++;
     source.buffer = buffer;
     source.loop = true;
-    source.loopStart = 0.25;
+    source.loopStart = from;
     source.loopEnd = buffer.duration;
     source.start(0, Math.random() * buffer.duration * 0.8);
     return source;
   }
+  // A loop heard only now and then (the gills, a ship, the scent of home, rain's pings),
+  // into `gain`: started when it is first wanted and stopped again once it has been silent
+  // for `idle` seconds (by then its level has eased all the way down), so that in between
+  // it costs nothing.
+  // (`rate` its speed, which may drift: then written only when it has moved.)
+  const sometimes = (name, gain, idle = 4) => ({ name, gain, idle, source: null, wantedAt: -1e9, rate: 1 });
+  function need(l, on, rate = 1) {
+    if (on) {
+      l.wantedAt = clock;
+      if (l.source && Math.abs(rate - l.rate) > 0.002) l.source.playbackRate.setTargetAtTime((l.rate = rate), context.currentTime, 0.3);
+      if (l.source || !bank(l.name)) return;
+      l.source = loop(bank(l.name)[0], 0);
+      l.source.playbackRate.value = l.rate = rate;
+      l.source.connect(l.gain);
+    } else if (l.source && clock - l.wantedAt > l.idle) {
+      l.source.stop();
+      l.source.disconnect();
+      l.source = null;
+    }
+  }
   const filter = (type, frequency, q = 0.7) => {
+    made++;
     const f = context.createBiquadFilter();
     f.type = type;
     f.frequency.value = frequency;
@@ -473,6 +294,7 @@ export function createSound() {
     return f;
   };
   const amp = (value) => {
+    made++;
     const g = context.createGain();
     g.gain.value = value;
     return g;
@@ -492,9 +314,10 @@ export function createSound() {
     f.connect(top);
     return [f, top];
   }
-  // A value the bed steers, written only when it has moved enough to be heard.
+  // A value the bed steers, written only when it has moved enough to be heard, easing
+  // there with time constant `tau` (s).
   const knob = (param, tolerance = 0.02, floor = 0.002) => ({ param, last: NaN, tolerance, floor });
-  function steer(k, value, tau, now) {
+  function steer(k, value, now, tau) {
     if (Math.abs(value - k.last) <= Math.max(k.floor, Math.abs(k.last) * k.tolerance)) return;
     k.last = value;
     k.param.setTargetAtTime(value, now, tau);
@@ -508,24 +331,47 @@ export function createSound() {
     } catch {
       context = new Context();
     }
-    workshop.finish();
+    // (The beds' noise must be there now -- white is the last of it made. The rest goes on
+    // being made a slice at a time, and whatever is not made yet is not heard yet: a tap
+    // while the game is still loading does not wait for all of it.)
+    workshop.finish(() => raw.white || banks.white);
     // Taken back up if the system stopped it (a phone call on iOS, another app's sound).
     context.onstatechange = () => {
       if (!asleep && enabled && !hushes.size && !document.hidden && context.state !== "running" && context.state !== "closed") context.resume().catch(() => {});
     };
     master = amp(0);
+    made += 2;
     const compressor = context.createDynamicsCompressor();
     compressor.threshold.value = -22;
     compressor.ratio.value = 3;
-    master.connect(compressor).connect(context.destination);
+    // The limiter: hard and fast over the last few decibels, so that nothing clips however
+    // much comes at once. (A browser's compressor adds back what it takes at full scale --
+    // about 2.9 dB for this one -- so the trim before it takes that off again first, and
+    // everything under its threshold passes as it was. Its ceiling is about -2 dBFS; what
+    // gets past it before it catches up stays under -1.)
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -5;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.08;
+    master.connect(compressor).connect(amp(0.72)).connect(limiter).connect(context.destination);
+    // Everything but the bells: closed by the white veil of spawning.
+    const world = amp(1);
+    world.connect(master);
     const [brown] = bank("brown");
     const [pink] = bank("pink");
 
-    // The groups. Water: clear under water; from above only a dull, low murmur of it.
+    // The groups. Water: clear under water; from above only a dull, low murmur of it. What
+    // must keep its brightness (rain pinging on the surface overhead) joins after its top.
     const water = amp(1);
     const waterTone = filter("lowpass", 7000, -3);
+    const waterBright = amp(1);
     const waterDuck = amp(1);
-    water.connect(waterTone).connect(waterDuck).connect(master);
+    water.connect(waterTone).connect(waterBright).connect(waterDuck).connect(world);
+    // The beds and the river's small sounds, on a bus of their own (the heartbeat ducks it).
+    const ambience = amp(1);
+    ambience.connect(water);
     // Surface and air: bright in the air; under water through the surface's muffle.
     const surface = amp(1);
     const air = amp(1);
@@ -533,33 +379,49 @@ export function createSound() {
     surface.connect(through);
     air.connect(through);
     const dry = amp(0);
-    through.connect(dry).connect(master);
+    through.connect(dry).connect(world);
     const [dim, dimTop] = muffle();
     const wet = amp(1);
     through.connect(dim);
-    dimTop.connect(wet).connect(master);
+    dimTop.connect(wet).connect(world);
+    // The fish's own body: the same in the water and out of it; its gills while it is winded.
+    const body = amp(1);
+    body.connect(world);
+    const gillsGain = amp(0);
+    gillsGain.connect(body);
+    // A ship passing far off at sea now and then (see update()): its drone, placed.
+    const shipGain = amp(0);
+    const shipPan = panner(0);
+    (shipPan ? shipGain.connect(shipPan) : shipGain).connect(ambience);
+    // The scent of home, for a spawner on its way back (see update(): `home`): its chord,
+    // and the same a fourth up, the two giving way to each other slowly.
+    const homeGain = amp(0);
+    const homeUpGain = amp(0);
+    homeGain.connect(water);
+    homeUpGain.connect(water);
     const ui = amp(MIX.ui);
     ui.connect(master);
 
     // The rush: the river's deep, broad voice, felt as much as heard.
     const rushFilter = filter("lowpass", 420, 0.6);
     const rushGain = amp(0);
-    loop(brown).connect(rushFilter).connect(rushGain).connect(water);
+    loop(brown).connect(rushFilter).connect(rushGain).connect(ambience);
     const rumbleGain = amp(0);
-    loop(brown).connect(filter("lowpass", 90, 0.9)).connect(rumbleGain).connect(water);
+    const rumbleFilter = filter("lowpass", 90, 0.9);
+    loop(brown).connect(rumbleFilter).connect(rumbleGain).connect(ambience);
     // The flow over it: the water moving past stones, a band in the low middle (where a
     // phone's small speaker still plays), and a burble above that, both slowly swelling.
     const flowBand = filter("bandpass", 480, 0.9);
     const flowGain = amp(0);
-    loop(pink).connect(flowBand).connect(flowGain).connect(water);
+    loop(pink).connect(flowBand).connect(flowGain).connect(ambience);
     const burbleBand = filter("bandpass", 820, 1.6);
     const burbleGain = amp(0);
-    loop(pink).connect(burbleBand).connect(burbleGain).connect(water);
+    loop(pink).connect(burbleBand).connect(burbleGain).connect(ambience);
     // The roar of falling and breaking water under it: broad, mid-low, churning.
     const roarGain = amp(0);
-    loop(pink).connect(filter("bandpass", 420, 0.6)).connect(roarGain).connect(water);
+    loop(pink).connect(filter("bandpass", 420, 0.6)).connect(roarGain).connect(ambience);
     const roarLowGain = amp(0);
-    loop(brown).connect(filter("lowpass", 160, 0.8)).connect(roarLowGain).connect(water);
+    loop(brown).connect(filter("lowpass", 160, 0.8)).connect(roarLowGain).connect(ambience);
     // The same white water at the surface: bright and hissing in the air.
     const whiteWaterGain = amp(0);
     loop(pink).connect(filter("bandpass", 1300, 0.5)).connect(whiteWaterGain).connect(surface);
@@ -567,10 +429,10 @@ export function createSound() {
     const washFilter = filter("lowpass", 300, 0.5);
     const washGain = amp(0);
     const washSource = loop(pink);
-    washSource.connect(washFilter).connect(washGain).connect(water);
-    const washMid = filter("bandpass", 380, 0.8);
+    washSource.connect(washFilter).connect(washGain).connect(ambience);
+    const washMid = filter("bandpass", 330, 1.3);
     const washMidGain = amp(0);
-    washSource.connect(washMid).connect(washMidGain).connect(water);
+    washSource.connect(washMid).connect(washMidGain).connect(ambience);
     // The air, for leaps: the river as it sounds from above it, babbling and splashing over
     // the stones, and the open hiss of the world above the water.
     const airGain = amp(0);
@@ -584,28 +446,46 @@ export function createSound() {
       const band = filter("bandpass", 220 + i * 140, 6 + i);
       const level = amp(0);
       const pan = context.createStereoPanner ? context.createStereoPanner() : null;
+      if (pan) made++;
       if (pan) pan.pan.value = (i / 4) * 1.4 - 0.7;
       source.connect(band).connect(level);
-      if (pan) level.connect(pan).connect(water);
-      else level.connect(water);
-      gurgles.push({ band, level, base: 220 + i * 140 });
+      if (pan) level.connect(pan).connect(ambience);
+      else level.connect(ambience);
+      gurgles.push({ band, level });
     }
-    // Rain on the surface; and under it, the patter of the drops come down through the
-    // water, a fine hiss of its own.
+    // Rain on the surface (from under it only a part of it, dulled: the pings below carry
+    // the rest); and under it, the patter of the drops come down through the water, a fine
+    // hiss of its own.
     const rainGain = amp(0);
-    loop(pink).connect(filter("highpass", 700, 0.5)).connect(filter("lowpass", 3200, 0.5)).connect(rainGain).connect(surface);
+    const rainDip = amp(1);
+    loop(pink).connect(filter("highpass", 700, 0.5)).connect(filter("lowpass", 3200, 0.5)).connect(rainGain).connect(rainDip).connect(surface);
     const rainUnderGain = amp(0);
-    loop(pink).connect(filter("bandpass", 1500, 0.8)).connect(rainUnderGain).connect(water);
+    loop(pink).connect(filter("bandpass", 1500, 0.8)).connect(rainUnderGain).connect(ambience);
+    // Heard from below, each drop pings on the surface overhead: too high for the water's
+    // top (it would take them), so they join after it -- and only while the ear is under.
+    // (The same drops twice over, the second a little quicker and higher: together they
+    // never come round the same.)
+    const pingsGain = amp(0);
+    const pingsQuickGain = amp(0);
+    const pingsUnder = amp(1);
+    pingsGain.connect(pingsUnder);
+    pingsQuickGain.connect(pingsUnder);
+    pingsUnder.connect(waterBright);
     nodes = {
+      world,
       water,
+      waterBright,
+      ambience,
       surface,
       air,
+      body,
       ui,
       gurgles,
       knobs: {
         rush: knob(rushGain.gain),
         rushTone: knob(rushFilter.frequency, 0.015, 1),
         rumble: knob(rumbleGain.gain),
+        rumbleTone: knob(rumbleFilter.frequency, 0.015, 1),
         flow: knob(flowGain.gain),
         flowTone: knob(flowBand.frequency, 0.015, 1),
         burble: knob(burbleGain.gain),
@@ -619,31 +499,80 @@ export function createSound() {
         air: knob(airGain.gain),
         rain: knob(rainGain.gain),
         rainUnder: knob(rainUnderGain.gain),
+        pings: knob(pingsGain.gain),
+        pingsQuick: knob(pingsQuickGain.gain),
         waterTone: knob(waterTone.frequency, 0.015, 1),
+        gills: knob(gillsGain.gain),
+        home: knob(homeGain.gain),
+        homeUp: knob(homeUpGain.gain),
+        ship: knob(shipGain.gain),
+        shipPan: shipPan ? knob(shipPan.pan, 0.02, 0.01) : null,
+        ambience: knob(ambience.gain),
       },
       // Moved only when the ear crosses the surface, at the pace of the crossing.
-      crossing: { waterDuck: waterDuck.gain, dry: dry.gain, wet: wet.gain, airOpen: airOpen.gain, surface: surface.gain, air: air.gain },
+      crossing: { pingsUnder: pingsUnder.gain, rainDip: rainDip.gain, waterDuck: waterDuck.gain, dry: dry.gain, wet: wet.gain, airOpen: airOpen.gain, surface: surface.gain, air: air.gain },
+      // The loops heard only now and then.
+      sometimes: {
+        gills: sometimes("gills", gillsGain, 2),
+        ship: sometimes("ship", shipGain, 3),
+        home: sometimes("home", homeGain, 9),
+        homeUp: sometimes("home", homeUpGain, 9),
+        pings: sometimes("pings", pingsGain, 7),
+        pingsQuick: sometimes("pings", pingsQuickGain, 7),
+      },
     };
-    for (const name of ["bubble", ...KNOCKS, "nip", "breach", "rise", "reel"]) bank(name);
     bank("white");
-    bank("brown");
+    workshop.whenDone(bankAll);
     return true;
   }
 
-  // A made sound played once: its source and its level, two nodes, nothing to schedule.
-  function play(buffer, bus, loudness, at = context.currentTime + 0.01, rate = 1) {
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = rate;
-    const gain = amp(loudness);
-    source.connect(gain).connect(bus);
-    source.start(at);
+  // A sound played once, kept count of while it sounds; when it ends its last node (the
+  // one on the bus) is let go, and the rest with it.
+  function voice(source, last) {
     live++;
+    if (live > peakLive) peakLive = live;
     source.onended = () => {
       live--;
-      gain.disconnect();
+      last.disconnect();
     };
     return source;
+  }
+  // Too many at once: the river's small sounds give way first, then everything new.
+  const crowded = (ambient = false) => live >= (ambient ? AMBIENT_VOICES : VOICES);
+  const oscillator = (type = "sine") => {
+    made++;
+    const o = context.createOscillator();
+    o.type = type;
+    return o;
+  };
+  const bufferSource = (buffer) => {
+    made++;
+    const b = context.createBufferSource();
+    b.buffer = buffer;
+    return b;
+  };
+  // Left (-1) to right (1); where a browser has no panner, in the middle.
+  const panner = (value) => {
+    if (!context.createStereoPanner) return null;
+    made++;
+    const p = context.createStereoPanner();
+    p.pan.value = value;
+    return p;
+  };
+  // A made sound played once: its source and its level, two nodes (three placed left or
+  // right), nothing to schedule. `ambient` for the river's own small sounds, which give way
+  // first when too much is sounding.
+  function play(buffer, bus, loudness, at = context.currentTime + 0.01, rate = 1, pan = 0, ambient = false) {
+    if (!buffer || crowded(ambient)) return null;
+    const source = bufferSource(buffer);
+    source.playbackRate.value = rate;
+    const gain = amp(loudness);
+    source.connect(gain);
+    const p = pan ? panner(pan) : null;
+    const last = p ? gain.connect(p) : gain;
+    last.connect(bus);
+    source.start(at);
+    return voice(source, last);
   }
   const bubbles = (count, spread, low, loudness, at) => {
     const n = Math.max(2, Math.round(count / 3) * 3);
@@ -653,16 +582,17 @@ export function createSound() {
   // A click: a few milliseconds of noise in a band, as of jaws or a bill closing (for the
   // sounds too rare to be worth making ahead).
   function click(at, loudness, frequency, length, bus) {
-    const source = context.createBufferSource();
-    source.buffer = bank("white")[0];
+    if (crowded() || !bank("white")) return;
+    const source = bufferSource(bank("white")[0]);
     const band = filter("bandpass", frequency, 1.4);
-    const env = context.createGain();
+    const env = amp(0);
     env.gain.setValueAtTime(0, at);
     env.gain.linearRampToValueAtTime(loudness, at + 0.002);
     env.gain.exponentialRampToValueAtTime(0.0005, at + length);
     source.connect(band).connect(env).connect(bus);
     source.start(at, Math.random() * 2);
     source.stop(at + length + 0.02);
+    voice(source, env);
   }
 
   // On, off and hushed: the master level follows, and the device is let go when nothing is
@@ -714,6 +644,8 @@ export function createSound() {
     crossing = value;
     const c = nodes.crossing;
     c.waterDuck.setTargetAtTime(MIX.duck + (1 - MIX.duck) * value, now, EASE);
+    c.pingsUnder.setTargetAtTime(value, now, EASE);
+    c.rainDip.setTargetAtTime(1 - (1 - MIX.rainDip) * value, now, EASE);
     c.dry.setTargetAtTime(1 - value, now, EASE);
     c.wet.setTargetAtTime(value, now, EASE);
     c.airOpen.setTargetAtTime(1 - value, now, EASE);
@@ -726,13 +658,38 @@ export function createSound() {
   // from above only its low murmur.
   const waterTone = () => Math.exp(Math.log(700) + (Math.log(clearTone) - Math.log(700)) * crossing);
 
+  function startShip(seconds) {
+    shipFrom = clock;
+    shipFor = seconds;
+    shipWay = Math.random() < 0.5 ? -1 : 1;
+  }
+  function sayCall(kind, pan) {
+    const c = CALLS[kind];
+    if (!c) return;
+    play(any(c.bank), nodes[c.bus], c.loud * (1 + c.under * submerged), undefined, random(0.95, 1.05), pan);
+    // A seal now and then moans as well, far off through the water.
+    if (kind === "seal" && Math.random() < 0.35 && coolOk("moan", 40)) play(any("sealMoan"), nodes.water, MIX.moan, context.currentTime + random(0.8, 1.6), random(0.9, 1.1), -0.5 * pan);
+  }
+  // A strike that missed: the jaws (a bill) shutting on nothing, where the hunter is.
+  function missed(kind, pan) {
+    play(any("jaws"), nodes.water, MIX.snap, undefined, BIRDS.includes(kind) ? random(1.1, 1.2) : random(0.55, 0.65), pan);
+    // (And a heron croaks at it.)
+    if (kind === "heron" && coolOk("heron", 5)) sayCall("heron", pan);
+  }
+
   return {
+    // For the sound check: what is rare, now.
+    debug: {
+      chirp: () => ready() && play(any("chirp"), nodes.ambience, MIX.chirp, undefined, 1, 0, true),
+      grunt: () => ready() && play(any("grunt"), nodes.ambience, MIX.grunt, undefined, 1, 0, true),
+      ship: (seconds = 30) => startShip(seconds),
+    },
     get enabled() {
       return enabled;
     },
     // What it is doing (for the diagnostics): the device's state and the sounds playing.
     get stats() {
-      return { state: context?.state ?? "none", time: context?.currentTime ?? 0, live, asleep, level, hushes: [...hushes], sleepIn: (sleepAt - performance.now()) / 1000 };
+      return { state: context?.state ?? "none", time: context?.currentTime ?? 0, live, peakLive, nodes: made, bytes, making: workshop.left, madeMs: workshop.spent, unbanked: Object.keys(raw).length, heart: beating, ambience: nodes?.knobs.ambience.last ?? 1, world: nodes?.world.gain.value ?? 1, asleep, level, hushes: [...hushes], sleepIn: (sleepAt - performance.now()) / 1000 };
     },
     // For extensions (src/mods.js): the context and the groups to play into, while the
     // sound is on and running, else null. What plays into a group goes through the master,
@@ -783,39 +740,24 @@ export function createSound() {
       if (!ready()) return;
       const at = context.currentTime + 0.02;
       if (kind === "fish") {
-        const source = context.createBufferSource();
-        source.buffer = bank("white")[0];
-        const low = filter("lowpass", 520, 0.7);
-        const env = context.createGain();
-        env.gain.setValueAtTime(0, at);
-        env.gain.linearRampToValueAtTime(0.7, at + 0.12);
-        env.gain.exponentialRampToValueAtTime(0.0005, at + 0.5);
-        source.connect(low).connect(env).connect(nodes.water);
-        source.start(at, Math.random() * 2);
-        source.stop(at + 0.55);
-        const osc = context.createOscillator();
-        const gulp = context.createGain();
-        osc.frequency.setValueAtTime(170, at + 0.2);
-        osc.frequency.exponentialRampToValueAtTime(46, at + 0.7);
-        gulp.gain.setValueAtTime(0, at + 0.2);
-        gulp.gain.linearRampToValueAtTime(1.0, at + 0.24);
-        gulp.gain.exponentialRampToValueAtTime(0.0005, at + 0.85);
-        osc.connect(gulp).connect(nodes.water);
-        osc.start(at + 0.19);
-        osc.stop(at + 0.9);
-        for (let k = 0; k < 3; k++) click(at + 0.62 + k * 0.09, 0.5 - k * 0.12, 800, 0.05, nodes.water);
+        play(any("gulp"), nodes.water, MIX.gulp, at, random(0.95, 1.05));
+        // (Its jaws shutting on it: heard on a phone too.)
+        play(any("jaws"), nodes.water, MIX.snap * 1.2, at + 0.62, random(0.55, 0.62));
         bubbles(8, 0.6, 0.6, 0.7, at + 0.3);
       } else {
-        click(at, 0.55, 2600, 0.025, nodes.surface);
+        // (The bill's clack: the jaws' snap, higher.)
+        play(any("jaws"), nodes.surface, MIX.snap, at, random(1.05, 1.15));
         play(variant(`splash:${step(3)}`, () => makeSplash(stepSize(step(3)))), nodes.surface, MIX.splash * 0.9, at);
         bubbles(10, 0.4, 0.8, 0.8, at + 0.05);
       }
     },
     // A knock of some kind: "body" (a blow in a fight, a hunter's bite), "rock", "wood" (the
-    // mill wheel, a branch), "net", "hook". `strength` 0..1.5.
+    // mill wheel, a branch), "net", "hook", "ice" (up against a floe). `strength` 0..1.5.
     thump(kind = "body", strength = 1) {
       if (!ready()) return;
-      play(pick(bank(KNOCKS.includes(kind) ? kind : "body")), nodes.water, MIX.knock * Math.min(1.5, strength), undefined, random(0.93, 1.07));
+      // (Pressed up under a floe, the knock would come every frame.)
+      if (kind === "ice" && !coolOk("floe", 0.7)) return;
+      play(any(KNOCKS.includes(kind) ? kind : "body"), nodes.water, MIX.knock * Math.min(1.5, strength), undefined, random(0.93, 1.07));
     },
     // A splash of something `size` long (in the game's lengths) hitting the water, `strength`
     // 0..1.6: the spray at the surface, and its bubbles under it.
@@ -831,83 +773,27 @@ export function createSound() {
     // Breaking out of the water in a leap (or thrown out over a fall).
     leap(size = 1) {
       if (!ready()) return;
-      play(pick(bank("breach")), master, MIX.breach * (0.7 + 0.1 * Math.min(size, 5)), undefined, random(0.92, 1.08) / (1 + 0.04 * size));
+      play(any("breach"), nodes.world, MIX.breach * (0.7 + 0.1 * Math.min(size, 5)), undefined, random(0.92, 1.08) / (1 + 0.04 * size));
     },
     // Back in: the water closing over the fish.
     dive(size = 1) {
       if (!ready()) return;
       const k = step(size);
-      play(variant(`blup:${k}`, () => makeBlup(stepSize(k)), 2), master, MIX.blup, undefined, random(0.92, 1.08));
+      play(variant(`blup:${k}`, () => makeBlup(stepSize(k)), 2), nodes.world, MIX.blup, undefined, random(0.92, 1.08));
     },
-    // A call from above the water: the kingfisher's thin, piercing whistle.
-    call(kind = "kingfisher") {
+    // A hunter's call: "kingfisher" (its thin, piercing whistle), "heron" (a harsh croak),
+    // "merganser" (a rattling krrr), "seal" (a whoosh through the water, now and then a moan),
+    // "bear" (huffs and a growl); `pan` where it is, left (-1) to right (1).
+    call(kind = "kingfisher", pan = 0) {
       if (!ready()) return;
-      const at = context.currentTime + 0.02;
-      // (Under water it comes through the surface dulled, and it is a warning: played louder
-      // by about what the surface takes from it at its pitch, it is still heard.)
-      const loud = MIX.call * (1 + 7.5 * submerged);
-      for (let k = 0; k < 2; k++) {
-        const osc = context.createOscillator();
-        const env = context.createGain();
-        const t0 = at + k * 0.16;
-        osc.frequency.setValueAtTime(3600, t0);
-        osc.frequency.exponentialRampToValueAtTime(4300, t0 + 0.09);
-        env.gain.setValueAtTime(0, t0);
-        env.gain.linearRampToValueAtTime(loud, t0 + 0.01);
-        env.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.12);
-        osc.connect(env).connect(nodes.air);
-        osc.start(t0);
-        osc.stop(t0 + 0.14);
-      }
-      void kind;
+      sayCall(kind, pan);
     },
     // A new stage of life: a soft swell and a rising run of bell tones, bright and clear,
     // with a flurry of bubbles.
     fanfare() {
       if (!ready()) return;
       const at = context.currentTime + 0.05;
-      const bus = amp(0.55);
-      bus.connect(nodes.ui);
-      // The swell under it.
-      const swell = context.createBufferSource();
-      swell.buffer = bank("white")[0];
-      const band = filter("bandpass", 600, 0.7);
-      const swellGain = amp(0);
-      swellGain.gain.setValueAtTime(0, at);
-      swellGain.gain.linearRampToValueAtTime(0.12, at + 0.5);
-      swellGain.gain.exponentialRampToValueAtTime(0.0005, at + 2.6);
-      band.frequency.setValueAtTime(300, at);
-      band.frequency.exponentialRampToValueAtTime(1800, at + 1.6);
-      swell.connect(band).connect(swellGain).connect(bus);
-      swell.start(at, Math.random() * 2);
-      swell.stop(at + 2.8);
-      // The bells: a major arpeggio up an octave and a half, the last held.
-      const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
-      notes.forEach((f, i) => {
-        const t0 = at + 0.12 + i * 0.13;
-        const hold = i === notes.length - 1 ? 2.2 : 0.9;
-        let out = bus;
-        if (context.createStereoPanner) {
-          out = context.createStereoPanner();
-          out.pan.value = (i / (notes.length - 1)) * 0.8 - 0.4;
-          out.connect(bus);
-        }
-        for (const [ratio, level] of [
-          [1, 0.16],
-          [2.01, 0.05],
-          [3.02, 0.018],
-        ]) {
-          const osc = context.createOscillator();
-          const env = context.createGain();
-          osc.frequency.value = f * ratio;
-          env.gain.setValueAtTime(0, t0);
-          env.gain.linearRampToValueAtTime(level, t0 + 0.012);
-          env.gain.exponentialRampToValueAtTime(0.0003, t0 + hold);
-          osc.connect(env).connect(out);
-          osc.start(t0);
-          osc.stop(t0 + hold + 0.05);
-        }
-      });
+      play(any("fanfare"), nodes.ui, MIX.fanfare, at);
       bubbles(14, 1.4, 1.2, 0.8, at + 0.2);
     },
     // A badge: two or three quick bell tones up (three and brighter for a gold one), and a
@@ -915,39 +801,72 @@ export function createSound() {
     chime(tier = "bronze") {
       if (!ready()) return;
       const at = context.currentTime + 0.03;
-      const bus = amp(0.4);
-      bus.connect(nodes.ui);
-      const notes = tier === "gold" ? [783.99, 1046.5, 1567.98] : tier === "silver" ? [659.25, 987.77] : [587.33, 880];
-      notes.forEach((f, i) => {
-        const t0 = at + i * 0.09;
-        const hold = i === notes.length - 1 ? 1.1 : 0.45;
-        for (const [ratio, level] of [
-          [1, 0.12],
-          [2.01, 0.035],
-        ]) {
-          const osc = context.createOscillator();
-          const env = context.createGain();
-          osc.frequency.value = f * ratio;
-          env.gain.setValueAtTime(0, t0);
-          env.gain.linearRampToValueAtTime(level, t0 + 0.01);
-          env.gain.exponentialRampToValueAtTime(0.0003, t0 + hold);
-          osc.connect(env).connect(bus);
-          osc.start(t0);
-          osc.stop(t0 + hold + 0.05);
-        }
-      });
+      play(any(`chime-${tier === "gold" || tier === "silver" ? tier : "bronze"}`), nodes.ui, MIX.chime, at, random(0.995, 1.005));
       bubbles(5, 0.5, 1.1, 0.6, at + 0.1);
     },
-    // Thunder: when it is close a crack first, then the rumble rolling away in a few
-    // swells. Under water the crack is dulled and the rumble comes through. `near` 0..1.
-    thunder(near = 0.5) {
+    // A hunter beaten: a drum and a rising fifth, and bubbles -- its own, not the fanfare.
+    victory() {
       if (!ready()) return;
-      const at = context.currentTime + 0.02;
-      if (near > 0.6) click(at, 1.2 * near, 2400, 0.06, nodes.air);
-      const source = context.createBufferSource();
-      source.buffer = bank("brown")[0];
+      const at = context.currentTime + 0.03;
+      play(any("victory"), nodes.ui, MIX.victory, at);
+      bubbles(8, 0.6, 1, 0.7, at + 0.05);
+    },
+    // Grown a good step within a stage: two soft notes up (not more often than every 20 s).
+    growth() {
+      if (!ready() || !coolOk("growth", 20)) return;
+      play(any("growth"), nodes.ui, MIX.growth);
+    },
+    // Spawning: a warm chord swelling (A major, each voice a little out of tune with the
+    // others), and the heart slowing from 90 to 40 over four seconds.
+    spawn() {
+      if (!ready()) return;
+      const at = context.currentTime + 0.05;
+      const tone = filter("lowpass", 1200, 0.5);
+      const level = amp(0);
+      tone.connect(level).connect(nodes.body);
+      level.gain.setValueAtTime(0, at);
+      level.gain.linearRampToValueAtTime(MIX.pad, at + 1.5);
+      level.gain.setTargetAtTime(0, at + 5.5, 1);
+      [220, 277.18, 329.63, 440].forEach((f, i) => {
+        const o = oscillator(i % 2 ? "sine" : "triangle");
+        o.frequency.value = f;
+        o.detune.value = random(-3, 3);
+        o.connect(tone);
+        o.start(at);
+        o.stop(at + 10);
+        voice(o, i === 3 ? level : o);
+      });
+      calmFrom = clock;
+    },
+    // The white veil of spawning: everything but the bells goes quiet under it (on), and
+    // comes back after (off). Every new life takes it off.
+    veil(on) {
+      if (!context || !nodes) return;
+      const now = context.currentTime;
+      nodes.world.gain.cancelScheduledValues(now);
+      nodes.world.gain.setTargetAtTime(on ? 0 : 1, now, on ? 0.35 : 0.8);
+      if (!on) calmFrom = -1e9;
+    },
+    // A new generation hatched in the gravel: one clear bell.
+    hatch() {
+      if (!ready()) return;
+      play(any("hatch"), nodes.ui, MIX.hatch, context.currentTime + 0.3);
+    },
+    // A death with no captor to be heard (worn out, starved, the angler's, the net's): a low
+    // swell closing over it, rising for a second and dying away over two (made ahead:
+    // makeEnding in src/sound-cues.js).
+    ending() {
+      if (!ready() || !coolOk("ending", 5)) return;
+      play(any("ending"), nodes.body, MIX.ending, context.currentTime + 0.05, random(0.96, 1.04));
+    },
+    // Thunder: the rumble rolling away in a few swells (the crack comes with the flash, see
+    // lightning()). Under water it comes through dulled. `near` 0..1; `delay` s from now.
+    thunder(near = 0.5, delay = 0) {
+      if (!ready()) return;
+      const at = context.currentTime + 0.02 + delay;
+      const source = bufferSource(bank("brown")[0]);
       const low = filter("lowpass", 200 + 500 * near, 0.6);
-      const env = context.createGain();
+      const env = amp(0);
       const length = 2.6 + 2.6 * (1 - near);
       const peak = MIX.thunder * (0.35 + 0.65 * near);
       env.gain.setValueAtTime(0, at);
@@ -957,39 +876,65 @@ export function createSound() {
       source.connect(low).connect(env).connect(nodes.air);
       source.start(at, Math.random() * 3);
       source.stop(at + length + 0.1);
+      voice(source, env);
+    },
+    // A storm coming up: the wind and the rain on the way swelling for five seconds, rushing
+    // brighter, and the first thunder far off. (Some of it churns in the water as well:
+    // through the surface alone it would hardly be heard under it.)
+    storm() {
+      if (!ready() || !coolOk("storm", 30)) return;
+      const at = context.currentTime + 0.05;
+      const source = bufferSource(bank("white")[0]);
+      source.loop = true;
+      const tone = filter("lowpass", 150, 0.6);
+      const swell = amp(0);
+      tone.frequency.setValueAtTime(150, at);
+      tone.frequency.exponentialRampToValueAtTime(700, at + 5);
+      swell.gain.setValueAtTime(0, at);
+      swell.gain.linearRampToValueAtTime(MIX.storm, at + 5);
+      swell.gain.linearRampToValueAtTime(0, at + 7);
+      source.connect(tone).connect(swell).connect(nodes.air);
+      const churn = amp(MIX.churn);
+      swell.connect(churn).connect(nodes.water);
+      source.start(at, Math.random() * 3);
+      source.stop(at + 7.1);
+      voice(source, swell);
+      source.addEventListener("ended", () => churn.disconnect());
+      this.thunder(0.15, 4);
+    },
+    // The flash: when it strikes near (`near` 0..1), a hard crack at once, the air tearing.
+    lightning(near = 0.5) {
+      if (!ready() || near <= 0.5) return;
+      // (Under water dulled, and played louder by most of what the surface takes from it:
+      // a little less loud than in the air, as everything from above is.)
+      play(any("crack"), nodes.air, MIX.crack * near * (1 + 3 * submerged), undefined, random(0.9, 1.1));
+    },
+    // Bread thrown from the bridge, landing `distance` away: a few small plops.
+    plops(distance = 10) {
+      if (!ready() || distance > 45) return;
+      play(any("plops"), nodes.surface, MIX.plops * (1 + 2 * submerged) * (1 - distance / 45), undefined, random(0.9, 1.1));
+    },
+    // The fish counter at the weir taking the fish's picture: a relay's click, a whirr.
+    counter() {
+      if (!ready()) return;
+      play(any("counter"), nodes.surface, MIX.counter, undefined, random(0.97, 1.03));
     },
     // Otters at play: quick, high chirps and squeaks.
     otter() {
       if (!ready()) return;
-      const at = context.currentTime + 0.02;
-      const n = 2 + Math.floor(Math.random() * 4);
-      for (let k = 0; k < n; k++) {
-        const osc = context.createOscillator();
-        const env = context.createGain();
-        const t0 = at + k * (0.09 + Math.random() * 0.08);
-        const f = 1800 + Math.random() * 1400;
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(f, t0);
-        osc.frequency.exponentialRampToValueAtTime(f * (0.55 + Math.random() * 0.3), t0 + 0.07);
-        env.gain.setValueAtTime(0, t0);
-        env.gain.linearRampToValueAtTime(MIX.otter * (1 + 4 * submerged), t0 + 0.008);
-        env.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.09);
-        osc.connect(env).connect(nodes.air);
-        osc.start(t0);
-        osc.stop(t0 + 0.11);
-      }
+      play(any("otter"), nodes.air, MIX.otter * (1 + 4 * submerged), undefined, random(0.95, 1.05));
     },
     // A fishing line: the reel's ratchet ticking as it is pulled in, or the line snapping.
     reel() {
       if (!ready()) return;
-      play(pick(bank("reel")), nodes.surface, 2.2, undefined, random(0.95, 1.05));
+      play(any("reel"), nodes.surface, 2.2, undefined, random(0.95, 1.05));
     },
     snap() {
       if (!ready()) return;
       const at = context.currentTime + 0.01;
       click(at, 1.2, 2600, 0.03, nodes.surface);
-      const osc = context.createOscillator();
-      const env = context.createGain();
+      const osc = oscillator();
+      const env = amp(0);
       osc.frequency.setValueAtTime(900, at);
       osc.frequency.exponentialRampToValueAtTime(260, at + 0.25);
       env.gain.setValueAtTime(0, at);
@@ -998,11 +943,158 @@ export function createSound() {
       osc.connect(env).connect(nodes.surface);
       osc.start(at);
       osc.stop(at + 0.32);
+      voice(osc, env);
     },
     // A nip from another young fish: a small sharp tick and a bubble.
     nip() {
       if (!ready()) return;
-      play(pick(bank("nip")), nodes.water, MIX.nip, undefined, random(0.92, 1.08));
+      play(any("nip"), nodes.water, MIX.nip, undefined, random(0.92, 1.08));
+    },
+    // The hunters after the fish, as the warning arrows have them (main.js warnings()): each
+    // { level, coiled, coil, kind, key, pan, near } -- level 0.4 it has noticed the fish, 0.6
+    // it stalks it, 0.8 it chases it, 1 it strikes (coiled: about to, `coil` s from now);
+    // `key` the hunter itself, `pan` where it is, left to right, `near` 0..1. Noticed: a swell
+    // of pressure from where it is (and a bird's, a seal's or the bear's call). The one
+    // nearest to striking pulses, faster the nearer, thinning out when it keeps at it for a
+    // while (a pike lying in wait can watch the fish for minutes); while the heart beats, the
+    // pulses go with its beats (two beats at once would blur each other). Coiled, it ticks,
+    // faster and higher, the last tick where the strike comes -- the cue to dodge. (A strike
+    // that misses: whiff().)
+    warn(list) {
+      if (!context || !nodes) return;
+      const on = ready();
+      const now = context.currentTime;
+      let danger = false,
+        pulsed = false;
+      pulseLoud = 0;
+      for (let i = 0; i < list.length; i++) {
+        const th = list[i];
+        if (!th.key) continue;
+        let h = heard.get(th.key);
+        if (!h) heard.set(th.key, (h = { level: 0, coiled: false, seenAt: -1e9, steadyFrom: 0, swellAt: -1e9, pulseAt: 0, callAt: -1e9, pan: 0 }));
+        // (Back after a moment away -- off to recover from a strike, behind a stone -- it is
+        // the same hunt: only a hunter gone for three seconds is noticed anew.)
+        const was = now - h.seenAt < 3 ? h.level : 0;
+        const coiledBefore = now - h.seenAt < 0.5 && h.coiled;
+        h.seenAt = now;
+        if (Math.abs(th.level - was) >= 0.1) h.steadyFrom = now;
+        h.pan = i < 4 ? Math.max(-0.9, Math.min(0.9, th.pan ?? 0)) : 0;
+        const near = th.near ?? 0.5;
+        if (th.coiled || th.level >= 1) danger = true;
+        if (on) {
+          if (was < 0.4 && th.level >= 0.4) {
+            if (now - h.swellAt > 6 && coolOk("swell", 0.8)) {
+              h.swellAt = now;
+              play(any("swell"), nodes.water, MIX.swell * (0.25 + 0.35 * near), now + 0.01, random(0.92, 1.08), h.pan);
+            }
+            const c = CALLS[th.kind];
+            if (c && th.kind !== "kingfisher" && now - h.callAt > 20 && coolOk(c.cool, 1.5)) {
+              h.callAt = now;
+              sayCall(th.kind, h.pan);
+            }
+          }
+          if (th.coiled && !coiledBefore) {
+            // (Its seven ticks take 0.32 s; played quicker or slower, and later, to end
+            // where the coil does -- a bullhead's 0.18 s, a pike's 0.4, a bear's paw raised.)
+            const left = th.coil > 0 ? th.coil : 0.32;
+            const rate = Math.min(1.7, Math.max(0.85, 0.32 / left));
+            play(any("coil"), nodes.water, MIX.coil, now + 0.005 + Math.max(0, left - 0.32 / rate), rate * random(0.98, 1.02), h.pan);
+          }
+          // (A rival at the redd is after the hen, not the fish's life: no pulses from it.)
+          if (!pulsed && th.level >= 0.6 && th.kind !== "rival") {
+            pulsed = true;
+            const hunting = th.level >= 0.8;
+            const steady = Math.max(0, now - h.steadyFrom - 5);
+            const loud = MIX.pulse * (hunting ? 1 : 0.55) * (0.6 + 0.4 * near) * Math.max(0.4, 1 - steady / 15);
+            if (beating) {
+              pulseLoud = loud;
+              pulsePan = h.pan;
+            } else if (now >= h.pulseAt) {
+              h.pulseAt = now + (hunting ? 0.55 : 1.1) * (1 - 0.35 * near) * Math.min(3, 1 + steady / 5);
+              play(any("pulse"), nodes.water, loud, now + 0.01, random(0.95, 1.05), h.pan);
+            }
+          }
+        }
+        h.level = th.level;
+        h.coiled = !!th.coiled;
+      }
+      warnDanger = danger;
+    },
+    // A strike that missed (the game knows: predators.js, and the kingfisher's and the
+    // heron's in life.js): jaws, a bill, snapping shut on nothing where the hunter was last
+    // heard. `key` the hunter, as in warn(); `kind` as its warnings have it.
+    whiff(key, kind = "") {
+      if (!ready()) return;
+      const h = key ? heard.get(key) : null;
+      missed(kind, h ? h.pan : 0);
+    },
+    // A burst of speed (Space): the water shoved aside, a soft whump gliding down, and a trail
+    // of bubbles behind (`trail` false when the burst is a leap: the breach says it).
+    dash(size = 1, trail = true) {
+      if (!ready() || !coolOk("dash", 0.25)) return;
+      const at = context.currentTime + 0.01;
+      // (Lower for a bigger fish, but no lower than a phone can still play.)
+      play(any("whump"), nodes.water, MIX.whump, at, random(0.93, 1.07) / (1 + 0.12 * Math.min(size, 4)));
+      if (trail) bubbles(6, 0.35, 1 / (1 + 0.2 * size), MIX.trail, at + 0.03);
+    },
+    // The fish's jaws snapping shut on something (or on nothing): `k` 1 for a strike with
+    // Space, less for the small dart it makes by itself.
+    jaws(size = 1, k = 1) {
+      if (!ready() || !coolOk("jaws", 0.12)) return;
+      play(any("jaws"), nodes.body, MIX.jaws * k, undefined, random(0.93, 1.07) / (1 + 0.1 * size));
+    },
+    // Space with no breath left: a dull thud, the burst refused.
+    denied() {
+      if (!ready() || !coolOk("denied", 0.5)) return;
+      play(any("denied"), nodes.body, MIX.denied, undefined, random(0.95, 1.05));
+    },
+    // Out of breath: a gasp (the gills keep working while it lasts, see update()).
+    winded() {
+      if (!ready() || !coolOk("gasp", 3)) return;
+      play(any("gasp"), nodes.body, MIX.gasp, undefined, random(0.9, 1.1));
+    },
+    // The leap's charge at the Lachsfall: a tone rising with the meter's swing `v` (0..1),
+    // a tick as it passes the sweet spot. charge(-1) stops it; charge(v, true) lets the
+    // leap go, with a louder tick if it went at the sweet spot.
+    charge(v, release = false) {
+      if (!context || !nodes) return;
+      const now = context.currentTime;
+      if (v < 0 || release) {
+        if (release && v > SWEET && ready()) play(any("tick"), nodes.body, MIX.tick * 1.8);
+        if (chargeTone) {
+          chargeLevel.gain.cancelScheduledValues(now);
+          chargeLevel.gain.setTargetAtTime(0, now, 0.02);
+          chargeTone.stop(now + 0.12);
+          chargeTone = chargeLevel = null;
+        }
+        chargeAt = 0;
+        chargeWritten = -1;
+        return;
+      }
+      if (!ready()) return;
+      if (!chargeTone) {
+        chargeTone = oscillator("triangle");
+        chargeLevel = amp(0);
+        chargeTone.connect(chargeLevel).connect(nodes.body);
+        chargeTone.frequency.value = 260 + 640 * v;
+        chargeTone.start(now);
+        voice(chargeTone, chargeLevel);
+      }
+      // (Written only when it has moved: the swing takes 1.2 s, so about 20 times a second.)
+      if (Math.abs(v - chargeWritten) > 0.03) {
+        chargeWritten = v;
+        chargeTone.frequency.setTargetAtTime(260 + 640 * v, now, 0.02);
+        chargeLevel.gain.setTargetAtTime(MIX.charge * (0.1 + 0.08 * v), now, 0.03);
+      }
+      if (v > SWEET && chargeAt <= SWEET) play(any("tick"), nodes.body, MIX.tick);
+      chargeAt = v;
+    },
+    // How a leap at a fall ended: "cleared" (three quick bells up) or "failed" (a heavy thud
+    // back into the pool).
+    leapResult(kind) {
+      if (!ready() || !coolOk("leap", 1)) return;
+      if (kind === "cleared") play(any("cleared"), nodes.ui, MIX.cleared, undefined, random(0.99, 1.01));
+      else play(any("thud"), nodes.body, MIX.thud, undefined, random(0.95, 1.05));
     },
     // Another fish taking a fly off the surface somewhere near: a soft sip and a bubble,
     // fainter the further off.
@@ -1010,11 +1102,14 @@ export function createSound() {
       if (!ready()) return;
       const loud = Math.max(0, 1 - distance / 30);
       if (loud <= 0.02) return;
-      play(pick(bank("rise")), nodes.surface, MIX.rise * loud, undefined, random(0.9, 1.1));
+      play(any("rise"), nodes.surface, MIX.rise * loud, undefined, random(0.9, 1.1));
     },
     // Each frame: the river round the fish. `submerged` 0..1 (or `above`), the rest as the
-    // world has them.
-    update(dt, { rain = 0, daylight = 1, stir = 0, roar = 0, sea = 0, above = false, submerged: under = above ? 0 : 1, depth = 1 } = {}) {
+    // world has them: `regions` the weights of brook .. sea (without them, river or sea by
+    // `sea`), `flow` the current's speed, `depthRel` 0 at the surface .. 1 on the bed, `ice`
+    // the cover over it, `flood` a spate; the fish's `energy`, `breath` and `winded`; `danger`
+    // a strike about to come, `home` the scent of the home brook, `mill` how near the wheel.
+    update(dt, { rain = 0, daylight = 1, stir = 0, roar = 0, sea = 0, above = false, submerged: under = above ? 0 : 1, depth = 1, regions = null, flow = 1, depthRel = 0.5, ice = 0, flood = 0, energy = 1, breath = 1, winded = false, danger = 0, home = 0, mill = 0 } = {}) {
       if (!context || !nodes) return;
       if (performance.now() >= sleepAt) sleep();
       submerged += (under - submerged) * (1 - Math.exp(-dt / EASE));
@@ -1023,43 +1118,181 @@ export function createSound() {
       if (!(Math.abs(under - crossing) < 0.02)) cross(under, now);
       clock += dt;
       const stirred = Math.min(1, stir);
-      const river = 1 - sea;
       const night = 1 - daylight;
+      // Where the fish is (without the regions, the river or the sea by `sea`): a brook's
+      // bright, quick water; a big river's slow, deep weight; the sea's swell.
+      const seaW = regions ? (regions.sea ?? sea) + 0.5 * (regions.estuary ?? 0) : sea;
+      const brookish = regions ? (regions.brook ?? 0) + 0.5 * (regions.upper ?? 0) : 0;
+      const big = regions ? (regions.middle ?? 0) + (regions.lower ?? 0) + 0.5 * (regions.upper ?? 0) + 0.5 * (regions.estuary ?? 0) : 1 - sea;
+      // (The lower river and the estuary: wide, slow and silty, darker still.)
+      const low = regions ? (regions.lower ?? 0) + 0.25 * (regions.estuary ?? 0) : 0;
+      const river = 1 - seaW;
+      const flowK = Math.min(1.5, Math.max(0, flow / 5));
+      // (The scent of the home brook brings its bright gurgling, wherever the fish is.)
+      const homeK = Math.min(1, home);
+      const bright = Math.max(brookish, homeK);
+      // A spate roars like white water, and rain and the air are shut out under ice.
+      roar = Math.max(roar, 0.4 * flood);
+      const open = 1 - Math.min(1, ice);
       if (clock > nextBubble) {
-        const rate = 1.2 + 5 * stirred + 4 * rain + 14 * roar;
+        // (Sparser at sea, and lower: bigger bubbles, from further off.)
+        const rate = (1.2 + 5 * stirred + 4 * rain + 14 * roar) * (1 - 0.7 * seaW);
         nextBubble = clock + -Math.log(1 - Math.random()) / rate;
-        if (submerged > 0.5 && wanted()) play(pick(bank("bubble")), nodes.water, (0.05 + Math.random() * 0.08) * MIX.bubble, now + 0.02, random(0.9, 1.15));
+        if (submerged > 0.5 && wanted()) play(any("bubble"), nodes.ambience, (0.05 + Math.random() * 0.08) * MIX.bubble, now + 0.02, random(0.9, 1.15) * (1 - 0.3 * seaW), 0, true);
       }
+      // Eddies gurgling: in a brook (or with the scent of home) higher, narrower and quicker,
+      // with the current.
       if (clock > nextGurgle) {
-        nextGurgle = clock + 0.35 + Math.random() * 0.9;
-        const g = pick(nodes.gurgles);
-        g.band.frequency.setTargetAtTime(g.base * (0.7 + Math.random() * 0.8), now, 0.25);
-        g.level.gain.setTargetAtTime(MIX.gurgle * (0.25 + Math.random() * 0.55) * (1 + stirred + roar) * (1 - 0.3 * night) * river, now, 0.2);
-        g.level.gain.setTargetAtTime(MIX.gurgle * 0.05 * river, now + 0.5 + Math.random() * 0.6, 0.4);
+        nextGurgle = clock + (0.35 + Math.random() * 0.9) * (1 - 0.62 * bright);
+        const i = Math.floor(Math.random() * nodes.gurgles.length);
+        const g = nodes.gurgles[i];
+        const base = 220 + 140 * i + (230 + 120 * i) * bright;
+        const loud = MIX.gurgle * (0.6 + 0.8 * bright) * (0.5 + 0.5 * Math.max(flowK, 0.6 * homeK)) * (1 + stirred + roar) * (1 - 0.3 * night) * Math.max(river, 0.6 * homeK) * (1 + MIX.homeGurgle * homeK);
+        g.band.Q.setValueAtTime(6 + i + 4 * bright, now);
+        g.band.frequency.setTargetAtTime(base * (0.7 + Math.random() * 0.8), now, 0.25 * (1 - 0.6 * bright));
+        g.level.gain.setTargetAtTime(loud * (0.25 + Math.random() * 0.55), now, 0.2 * (1 - 0.5 * bright));
+        g.level.gain.setTargetAtTime(loud * 0.06, now + (0.5 + Math.random() * 0.6) * (1 - 0.6 * bright), 0.4 * (1 - 0.5 * bright));
+      }
+      // A flood knocks stones along the bed: bursts of clatter, now and then.
+      if (clock > nextClatter) {
+        // (Spaced about evenly, not at random: a flood clatters all along.)
+        nextClatter = clock + (flood > 0.05 ? random(0.5, 1.5) / (1.5 * flood) : 1);
+        if (flood > 0.05 && submerged > 0.5 && wanted()) play(any("clatter"), nodes.ambience, MIX.clatter * flood * random(0.4, 1), now + 0.02, random(0.9, 1.1), 0, true);
+      }
+      // Under ice it sings now and then: a thin, falling chirp as the sheet flexes.
+      if (clock > nextChirp) {
+        nextChirp = clock + random(6, 15);
+        if (ice > 0.5 && submerged > 0.5 && wanted()) play(any("chirp"), nodes.ambience, MIX.chirp * random(0.6, 1), now + 0.02, random(0.85, 1.15), 0, true);
+      }
+      // The mill wheel near by: its paddles slapping into the race a little under once a
+      // second, its axle creaking now and then (from above the water, muffled under it).
+      if (mill > 0.01 && clock > nextSlap) {
+        nextSlap = clock + (1 / 0.86) * random(0.9, 1.1);
+        if (wanted()) play(any("slap"), nodes.surface, MIX.slap * mill * mill, now + 0.02, random(0.93, 1.07), 0, true);
+        if (clock > nextCreak) {
+          nextCreak = clock + random(5, 12);
+          if (wanted()) play(any("creak"), nodes.surface, MIX.creak * mill * mill, now + random(0.1, 0.5), random(0.9, 1.1), 0, true);
+        }
+      }
+      // At sea: now and then a ship passing far off, and at night fish grunting.
+      if (seaW > 0.5) {
+        if (!shipNext) shipNext = clock + random(30, 90);
+        if (clock > shipNext) {
+          shipNext = clock + random(60, 150);
+          startShip(30);
+        }
+        if (clock > nextGrunt) {
+          nextGrunt = clock - Math.log(1 - Math.random()) * 12;
+          if (night > 0.5 && submerged > 0.5 && wanted()) play(any("grunt"), nodes.ambience, MIX.grunt * random(0.5, 1), now + 0.02, random(0.9, 1.1), 0, true);
+        }
+      }
+      // Gravel ticking along the bed of a brook, the more the harder it runs and the nearer
+      // the bed the fish is.
+      if (clock > nextGravel) {
+        const rate = Math.min(10, (1.5 + 6 * flowK) * brookish * (0.3 + 0.7 * depthRel));
+        nextGravel = clock + (rate > 0.05 ? -Math.log(1 - Math.random()) / rate : 1);
+        if (rate > 0.05 && submerged > 0.5 && wanted()) play(any("gravel"), nodes.ambience, MIX.gravel * random(0.3, 1), now + 0.02, random(0.9, 1.1), 0, true);
+      }
+      // The heart: when a strike is about to come (for as long as one is), or when strength
+      // runs low -- as it first falls under a quarter, and again with each blow that takes
+      // more of it, but otherwise not again for a minute: a weak fish is often weak for
+      // minutes, and a heart all that while would wear the ear out. On for ten seconds after,
+      // fading over the last four and slowing; it ducks the river under it a little.
+      const threat = (danger > 0 || warnDanger) && wanted();
+      if (threat) heartUntil = clock + 10;
+      if (energy < 0.25) {
+        if ((!weak || energy < lastEnergy - 0.03 || clock - weakAt > 60) && wanted()) {
+          heartUntil = Math.max(heartUntil, clock + 10);
+          weakAt = clock;
+        }
+        weak = true;
+      } else if (energy > 0.3) weak = false;
+      lastEnergy = energy;
+      // (Spawning: calm, slowing from 90 to 40 over four seconds, until the veil.)
+      const calm = clock - calmFrom < 6;
+      if (calm) heartUntil = Math.max(heartUntil, clock + 4);
+      beating = clock < heartUntil;
+      const fading = Math.min(1, (heartUntil - clock) / 4);
+      if (beating) {
+        const target = calm ? 90 - 50 * Math.min(1, (clock - calmFrom) / 4) : threat ? 110 : fading < 1 ? 60 : 72;
+        bpm += (target - bpm) * (1 - Math.exp(-dt / (calm ? 0.3 : threat ? 0.6 : 2)));
+        if (clock >= nextBeat) {
+          nextBeat = clock + 60 / bpm;
+          if (wanted()) {
+            play(any("heart"), nodes.body, MIX.heart * fading * random(0.9, 1), now + 0.02, random(0.98, 1.02));
+            // (A hunter's pulses go with the beats while it beats: see warn().)
+            if (pulseLoud > 0) play(any("pulse"), nodes.water, pulseLoud, now + 0.02, random(0.95, 1.05), pulsePan);
+          }
+        }
+      } else {
+        bpm = 64;
+        nextBeat = clock;
       }
       if (clock < nextSteer) return;
       nextSteer = clock + STEER;
       const k = nodes.knobs;
+      steer(k.ambience, beating ? 1 - 0.29 * fading : 1, now, 0.5);
       const swell = 0.8 + 0.2 * Math.sin(clock * 0.21) + 0.08 * Math.sin(clock * 0.53 + 1.3);
       const burble = 0.75 + 0.25 * Math.sin(clock * 0.37 + 2) * Math.sin(clock * 0.11);
-      steer(k.rush, MIX.rush * (0.5 + 0.25 * stirred) * swell * (1 - 0.25 * night) * (0.45 + 0.55 * river), now, 0.4);
-      steer(k.rushTone, 380 + 240 * stirred - 90 * night - 120 * sea, now, 0.3);
-      steer(k.rumble, MIX.rumble * (0.9 + 0.1 * swell), now, 1);
-      steer(k.flow, MIX.flow * swell * (1 + 0.5 * stirred) * (1 - 0.3 * night) * (0.35 + 0.65 * river), now, 0.4);
-      steer(k.flowTone, 480 + 160 * stirred - 60 * night - 100 * sea, now, 0.4);
-      steer(k.burble, MIX.burble * burble * (1 + 0.8 * stirred + roar) * (1 - 0.35 * night) * river, now, 0.5);
-      steer(k.burbleTone, 820 + 200 * stirred - 80 * night, now, 0.5);
+      // A big river's weight comes in slow surges, 40-150 Hz, every fifteen seconds or so.
+      const surge = 0.55 + 0.45 * Math.sin(2 * Math.PI * 0.07 * clock + 1.5 * Math.sin(2 * Math.PI * 0.023 * clock));
+      const weight = 1 + big * (1.3 * surge * (0.6 + 0.4 * flowK) - 0.6);
+      // The sea's swell: a slow heave, about every ten seconds but never twice the same (two
+      // slow waves against each other, and the sea's state rising and falling over a minute
+      // or so), the wash rising and brightening with it, and what is left of the river's
+      // sound going with it; a few decibels, not a tide, and felt less the deeper the fish is.
+      const waves = 0.7 * Math.sin(2 * Math.PI * 0.1 * clock + 0.3 * Math.sin(2 * Math.PI * 0.031 * clock)) + 0.3 * Math.sin(2 * Math.PI * 0.137 * clock + 1.1);
+      const heave = 0.5 + 0.5 * (0.65 + 0.35 * Math.sin(2 * Math.PI * 0.013 * clock + 0.4)) * waves;
+      const swaying = seaW * (1 - 0.6 * Math.min(1, depth / 30));
+      const heaving = 1 - 0.12 * swaying * (1 - heave);
+      steer(k.rush, MIX.rush * (0.5 + 0.25 * stirred) * swell * (1 - 0.25 * night) * (0.45 + 0.55 * river) * weight * heaving, now, 0.4);
+      steer(k.rushTone, 380 + 240 * stirred - 90 * night - 120 * seaW - 60 * big - 60 * low + 120 * brookish + 150 * flood, now, 0.3);
+      steer(k.rumble, MIX.rumble * (0.9 + 0.1 * swell) * weight * (1 - 0.5 * brookish), now, 0.5);
+      steer(k.rumbleTone, 90 + 30 * big, now, 1);
+      steer(k.flow, MIX.flow * swell * (1 + 0.5 * stirred) * (1 - 0.3 * night) * (0.05 + 0.95 * river) * (0.8 + 0.3 * flowK) * (1 - 0.25 * low) * heaving * (1 - 0.25 * ice), now, 0.4);
+      steer(k.flowTone, 480 + 160 * stirred - 60 * night - 100 * seaW - 40 * big - 50 * low + 200 * brookish, now, 0.4);
+      // (A brook's burble brighter and more of it; the scent of home brings it along.)
+      steer(k.burble, MIX.burble * burble * (1 + 0.8 * stirred + roar) * (1 - 0.35 * night) * Math.max(river, 0.6 * homeK) * (1 - 0.3 * big - 0.3 * low + 0.6 * bright) * (1 + MIX.homeGurgle * homeK) * (0.8 + 0.4 * depthRel) * (1 - 0.25 * ice), now, 0.5);
+      steer(k.burbleTone, 820 + 200 * stirred - 80 * night + 350 * bright - 120 * low, now, 0.5);
       steer(k.roar, MIX.roar * roar, now, 0.5);
       steer(k.roarLow, MIX.roarLow * roar, now, 0.5);
       steer(k.whiteWater, MIX.whiteWater * roar, now, 0.5);
-      const wash = 0.55 + 0.45 * Math.sin(clock * 0.13) * Math.sin(clock * 0.047 + 1);
-      steer(k.wash, MIX.wash * sea * wash, now, 1.2);
-      steer(k.washTone, 200 + 260 * wash, now, 1);
-      steer(k.washMid, MIX.washMid * sea * (0.4 + 0.6 * wash), now, 1.2);
-      steer(k.air, MIX.air * (0.8 + 0.2 * swell) * (1 + 0.6 * roar + 0.8 * rain), now, 0.4);
-      steer(k.rain, MIX.rain * rain, now, 1.2);
-      steer(k.rainUnder, MIX.rainUnder * rain, now, 1.2);
-      clearTone = 7000 * (1 - 0.3 * night) * (1 - 0.45 * Math.min(1, depth / 40));
+      // (Where river and sea meet, the sea's part of it a little more than half.)
+      const washing = Math.sqrt(seaW);
+      steer(k.wash, MIX.wash * washing * (1 - 0.32 * swaying * (1 - heave)), now, 0.5);
+      steer(k.washTone, 290 + 130 * swaying * (2 * heave - 1), now, 0.5);
+      steer(k.washMid, MIX.washMid * washing * (1 - 0.28 * swaying * (1 - heave)), now, 0.5);
+      steer(k.air, MIX.air * (0.8 + 0.2 * swell) * (1 + 0.6 * roar + 0.8 * rain) * open, now, 0.4);
+      steer(k.rain, MIX.rain * rain * open, now, 1.2);
+      steer(k.rainUnder, MIX.rainUnder * rain * open, now, 1.2);
+      // (The pings brightest just under the surface, fainter deeper down; the two runs of them
+      // at speeds drifting slowly apart and together, so that neither comes round on time.)
+      const pings = MIX.pings * rain * open * (0.3 + 0.7 * (1 - depthRel));
+      steer(k.pings, pings * 0.72, now, 1.2);
+      steer(k.pingsQuick, pings * 0.72, now, 1.2);
+      const loops = nodes.sometimes;
+      need(loops.pings, pings > 0.001, 1 + 0.04 * Math.sin(2 * Math.PI * 0.043 * clock));
+      need(loops.pingsQuick, pings > 0.001, 1.13 + 0.05 * Math.sin(2 * Math.PI * 0.031 * clock + 2));
+      // The ship: rising and falling over its pass, crossing from one side to the other.
+      const passed = (clock - shipFrom) / shipFor;
+      const ship = passed >= 0 && passed < 1 ? Math.pow(Math.sin(Math.PI * passed), 2) : 0;
+      steer(k.ship, MIX.ship * ship * seaW, now, 0.5);
+      if (k.shipPan && ship > 0) steer(k.shipPan, shipWay * (1.4 * passed - 0.7), now, 0.5);
+      need(loops.ship, ship * seaW > 0.001);
+      // The home brook's scent: a soft chord swelling the nearer home, now on its root and
+      // now a fourth up, the two giving way to each other and the whole of it rising and
+      // falling a little, slowly and never quite the same (with the gurgling above).
+      const fourth = 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.041 * clock) * Math.sin(2 * Math.PI * 0.017 * clock + 1);
+      const homeLevel = MIX.home * homeK * (0.8 + 0.2 * Math.sin(2 * Math.PI * 0.029 * clock + 2));
+      steer(k.home, homeLevel * Math.sqrt(1 - 0.8 * fourth), now, 1.5);
+      steer(k.homeUp, homeLevel * 0.8 * Math.sqrt(fourth), now, 1.5);
+      need(loops.home, homeK > 0.001);
+      need(loops.homeUp, homeK > 0.001, 4 / 3);
+      // The gills working while winded, harder the less breath there is.
+      steer(k.gills, winded ? MIX.gills * Math.min(1, Math.max(0.2, 1 - breath / 0.45)) : 0, now, 0.3);
+      need(loops.gills, winded);
+      // (The open sea darker too: its water takes more of the top.)
+      clearTone = 7000 * (1 - 0.3 * night) * (1 - 0.45 * Math.min(1, depth / 40)) * (1 - 0.35 * seaW);
       steer(k.waterTone, waterTone(), now, 0.4);
     },
   };

@@ -11,7 +11,7 @@ import { renderSettings } from "./render/policy.js";
 import { createDaylight } from "./daylight.js";
 import { framebufferSize, qualityName } from "../../shared/render-policy.js";
 import { reportSceneError } from "../../shared/controls.js";
-import { COURSE_VERSION, FALLS, MOUTH, REDD, S, TRIBUTARIES, bed, coolingAt, frame, gusts, level, locate, passSlot, place, poolAt, regionName, regionWeights, relaid, section, setSeasonFlow, driftRich } from "./course.js";
+import { COURSE_VERSION, FALLS, MILLS, MOUTH, REDD, S, TRIBUTARIES, bed, coolingAt, frame, gusts, level, locate, passSlot, place, poolAt, regionName, regionWeights, relaid, section, setSeasonFlow, driftRich } from "./course.js";
 import { createFlowField } from "./flowfield.js";
 import { createMirror, createWindow } from "./render/mirror.js";
 import { createBedMaterial, createRockMaterials, createSky, photoTextures, photosLoaded, createSurfaceMaterial,skyUniforms, surfaceUniforms } from "./materials.js";
@@ -315,9 +315,10 @@ async function start() {
   const lore = createLore({ hud });
   const loreRegions = {};
   const sound = createSound();
-  // What the sound is told each frame (one object, filled in afresh, not a new one each time).
-  const soundState = { rain: 0, daylight: 1, stir: 0, roar: 0, sea: 0, submerged: 1, depth: 1 };
-  const soundRegions = {};
+  // What the sound is told each frame (one object, filled in afresh, not a new one each time;
+  // every field there from the start, so that its shape never changes).
+  const soundRegions = { brook: 0, upper: 0, middle: 1, lower: 0, estuary: 0, sea: 0 };
+  const soundState = { rain: 0, daylight: 1, stir: 0, roar: 0, sea: 0, submerged: 1, depth: 1, regions: soundRegions, flow: 1, depthRel: 0.5, ice: 0, flood: 0, energy: 1, breath: 1, winded: false, danger: 0, home: 0, mill: 0 };
   mark("hud");
   // Badges for everything found and done the first time; the logbook keeps the collection.
   const badges = createBadges({ sound });
@@ -420,6 +421,8 @@ async function start() {
       closeQuality();
     }
     sound.hush(value || logbook.open, "pause");
+    // (The leap's charge tone stops with the swim; the meter starts afresh after.)
+    if (value) sound.charge(-1);
     held.clear();
     if (!value) last = performance.now();
   }
@@ -724,6 +727,7 @@ async function start() {
     const v = swing(charge.t);
     charge = null;
     meter.hidden = true;
+    sound.charge(v, true);
     // Only a leap near the top of the swing clears it (with a run at it and strength left);
     // "almost" falls back into the pool.
     leapPower = v > 0.82 ? 1.14 : 0.6 + 0.4 * v;
@@ -735,10 +739,13 @@ async function start() {
     if (!inLeapReach()) {
       charge = null;
       meter.hidden = true;
+      sound.charge(-1);
       return;
     }
     charge.t += dt;
     const v = swing(charge.t);
+    // Its tone rises and falls with the meter.
+    sound.charge(v);
     meterFill.style.transform = `scaleY(${v.toFixed(3)})`;
     meter.classList.toggle("sweet", v > 0.82);
   }
@@ -887,6 +894,7 @@ async function start() {
   let noseTime = 0;
   let riverFound = false;
   let strangeSaid = -1e9;
+  let homeScent = 0;
   function stepScent(dt) {
     const spawner = phaseOf(fish.stage) === "spawner" && dead <= 0;
     const atSea = fish.river.s > S.coast - 40;
@@ -904,6 +912,8 @@ async function start() {
       if (noseTime > 20) feat("nose", { delay: 2 });
       track("home_river", { seconds: Math.round(noseTime) });
     }
+    // (For the sound: the home brook's scent, the stronger the nearer.)
+    homeScent = scentOn ? Math.sqrt(clamp(st.home, 0, 1)) : 0;
     scentBar.hidden = !scentOn;
     if (!scentOn) return;
     if (atSea) noseTime += dt;
@@ -1599,6 +1609,9 @@ async function start() {
         y = -threatAt.y * h * 0.5;
       // Behind the camera the projection turns over.
       if (threatAt.z > 1) (x = -x), (y = -y);
+      // For the ear: where it is, left to right, and how near.
+      th.pan = clamp(x / (w * 0.5), -1, 1);
+      th.near = 1 - clamp(th.position.distanceTo(fish.position) / 45, 0, 1);
       const a = Math.atan2(y, x);
       const px = w * 0.5 + Math.cos(a) * w * 0.4,
         py = h * 0.5 + Math.sin(a) * h * 0.36;
@@ -1618,12 +1631,29 @@ async function start() {
       if (th.level >= 0.6)
         hud.tip("warn", "<b>Gefahr!</b> Die Pfeile am Bildrand zeigen, wo dich ein Jäger im Blick hat: gelb – er hat dich bemerkt, rot – er jagt dich. Pulsiert der Pfeil, stößt er gleich zu: jetzt zur Seite ausweichen!", 11);
     }
+    // And by ear: a swell where one notices the fish, pulses from the one hunting it, a
+    // quickening tick before a strike (the heart beats then as well).
+    sound.warn(list);
   }
   let veiled = false;
+  let deadHushed = false;
+  // The stage and the quarter of it the fish had reached (for the growth stinger).
+  let grownStage = -1,
+    grownQuarter = 0;
   const lastPlace = fish.position.clone();
   const heldPosition = new THREE.Vector3();
   const heldHeading = new THREE.Vector3();
 
+  // Food thrown in by the world (bread from the bridge): where the bread last landed, for
+  // its plops.
+  const breadAt = { x: 0, z: 0 };
+  const tossFood = (type, x, z) => {
+    if (type === "bread") (breadAt.x = x), (breadAt.z = z);
+    return life.food.toss(type, x, z, fish);
+  };
+  // The mill wheel's place (course.js; the wheel itself is built by features.js), for its
+  // sound.
+  const millAt = MILLS[0] ? place(MILLS[0].wheel, section(MILLS[0].wheel).thalweg + MILLS[0].side * (section(MILLS[0].wheel).half + MILLS[0].offset), {}) : null;
   // A blow landed in a fight: felt, heard and shown; and a won fight celebrated.
   let lastFoe = null;
   let foeHit = false;
@@ -1647,7 +1677,7 @@ async function start() {
       brood.won();
       if (hit.kind !== "rival") {
         hud.toast(`${hit.title} besiegt!`, "Sie flieht – und lässt dich von jetzt an in Ruhe.", 5);
-        sound.fanfare();
+        sound.victory();
       }
       logbook.victory(hit.kind);
       return;
@@ -1671,8 +1701,9 @@ async function start() {
     terrain.update(viewer, { radius: builtRadius(), near: clamp(0.28 + L * 0.1, 0.35, 1), budget: 5, land: 60 });
     prof.mark("terrain");
     featureEvents.length = 0;
-    features.update(fish.river.s, 3, { dt, time, fish, light: conditions.light, toss: (type, x, z) => life.food.toss(type, x, z, fish), events: featureEvents });
+    features.update(fish.river.s, 3, { dt, time, fish, light: conditions.light, toss: tossFood, events: featureEvents });
     prof.mark("features");
+    if (featureEvents.includes("bread")) sound.plops(Math.hypot(breadAt.x - fish.position.x, breadAt.z - fish.position.z));
     if (featureEvents.includes("bread")) hud.tip("bread", "<b>Brot!</b> Leute auf der Brücke werfen Brotkrumen ins Wasser. Schnell hin – sie treiben an der Oberfläche.", 8);
     // The mill wheel's paddles: a knock, and the water throws the fish on.
     const struck = dead <= 0 && !fish.airborne ? features.hazard(fish, time) : null;
@@ -1711,6 +1742,7 @@ async function start() {
         localStorage.setItem("salmon-survival-counted", String(n));
       } catch {}
       hud.toast("Gezählt!", `Lachs Nr. ${n} – die Kamera der Zählstation hat dich erfasst (${MONTHS[conditions.month]}).`, 6);
+      sound.counter();
       feat("counted", { delay: 2 });
     }
     counterLast = fish.river.s;
@@ -1764,6 +1796,11 @@ async function start() {
       prof.mark("misc");
       salmon.update(dt, wanted, world);
       prof.mark("salmon");
+      // A quarter of the way further through the stage: two soft notes up.
+      const quarter = Math.floor(fish.progress * 4);
+      if (fish.stage === grownStage && quarter > grownQuarter && quarter < 4) sound.growth();
+      grownStage = fish.stage;
+      grownQuarter = quarter;
       // The account of this life: the way swum; and the siblings dying unseen as it grows.
       const moved = fish.position.distanceTo(lastPlace);
       if (moved < 5) brood.moved(moved);
@@ -1795,8 +1832,13 @@ async function start() {
     for (const e of events.update(dt, { fish, time, dead })) {
       switch (e.type) {
         case "storm":
+          sound.storm();
           hud.note("Ein Gewitter zieht auf …");
           hud.tip("storm", "<b>Gewitter!</b> Blitz und Donner – und bald kommt die Sturzflut: Das Wasser steigt, wird braun und reißend, Äste treiben herab. Halt dich hinter großen Steinen und am Grund.", 11);
+          break;
+        case "lightning":
+          // The crack with the flash; the thunder follows (events.js).
+          sound.lightning(e.near);
           break;
         case "branch":
           shake = Math.max(shake, 0.8);
@@ -1833,6 +1875,11 @@ async function start() {
         case "otterSplash":
           ripples.add(e.x, e.z, 1.4);
           sound.splash(0.35, 4);
+          break;
+        case "underFloe":
+          // Up against a floe: a hollow knock (the event comes every frame it is pressed
+          // there; the sound keeps to one knock a while).
+          if (e.bump > 0.2) sound.thump("ice", clamp(e.bump / 2, 0.4, 1.2));
           break;
         case "floes":
           hud.tip("floes", "<b>Eisgang!</b> Das Eis bricht auf, Schollen treiben flussab. Unter ihnen kommst du nicht an die Luft.", 9);
@@ -1903,13 +1950,30 @@ async function start() {
         falls.splash(fish.position.x, level(fish.river.s), fish.position.z, L);
         ripples.add(fish.position.x, fish.position.z, 1.2);
       } else if (e.type === "leapDone") {
-        if (!e.fall.step) hud.toast(e.fall.name, "geschafft");
+        if (!e.fall.step) {
+          hud.toast(e.fall.name, "geschafft");
+          sound.leapResult("cleared");
+        }
         // Past a fall on the way home, this is where it starts again if it dies.
         if (STAGES[fish.stage].fasting) checkpoint = snapshotCheckpoint();
+      } else if (e.type === "leapFailed") {
+        // Fell short, back into the pool below. (At a step of the cascade, as with clearing
+        // one, only the splash says it: the young fish try them again and again.)
+        if (!e.fall.step) sound.leapResult("failed");
+      } else if (e.type === "lunge") {
+        // A burst: the whump of it, and bubbles behind (unless it is a leap: the breach).
+        sound.dash(L, !fish.events.some((x) => x.type === "leap"));
+      } else if (e.type === "strike") {
+        sound.jaws(L, e.auto ? 0.5 : 1);
+      } else if (e.type === "snap") {
+        // A spawner snapping from habit.
+        sound.jaws(L, 0.6);
       } else if (e.type === "noBreath") {
         hud.short();
+        sound.denied();
       } else if (e.type === "winded") {
         windedOnce = true;
+        sound.winded();
       } else if (e.type === "knock") {
         fish.energy = Math.max(0, fish.energy - e.strength);
         shake = 0.8;
@@ -2030,6 +2094,8 @@ async function start() {
     }
     for (const e of outcome.rivals ?? []) if (e.type === "nip" || e.type === "hit" || e.type === "lost") lastCombat = time;
     for (let i = 0; i < (outcome.missed ?? 0); i++) if (dead <= 0) brood.escaped();
+    // A strike that missed: heard snapping shut on nothing.
+    for (const w of outcome.whiffs ?? []) if (dead <= 0 && !fish.captive) sound.whiff(w.key, w.kind);
     // (vegan mode: nobody dies of anything)
     if (outcome.killed && dead <= 0 && !mode.vegan) die(outcome.killed);
     else if (fish.energy <= 0 && dead <= 0 && time - lastCombat < 6 && !mode.vegan) die("Im Kampf unterlegen");
@@ -2047,6 +2113,11 @@ async function start() {
       if (!veiled && DEATH - dead > (held.active ? 1.9 : 0)) {
         veiled = true;
         hud.veil("dark");
+      }
+      // The sound goes quiet with it -- or, where nothing caught the fish, once the swell
+      // closing over its death has been heard.
+      if (!deadHushed && DEATH - dead > (held.active ? 1.9 : 3)) {
+        deadHushed = true;
         sound.hush(true, "dead");
       }
       if (dead <= 0 && !lifecard.open) handover();
@@ -2188,11 +2259,13 @@ async function start() {
   function die(cause) {
     track("death", { cause, stage: STAGES[fish.stage].id });
     dead = DEATH;
-    veiled = false;
+    veiled = deadHushed = false;
     carded = false;
     deathInfo = { cause, stageName: STAGES[fish.stage].name, stageId: STAGES[fish.stage].id, progress: fish.progress, region: regionName(fish.river.s), month: MONTHS[conditions.month] };
     const held = life.hunters.captive;
     if (held.active) sound.eaten(held.kind);
+    else sound.ending();
+    sound.charge(-1);
     hud.toast(cause, "", 3);
     endDrive("died");
     endBall(true);
@@ -2241,6 +2314,7 @@ async function start() {
     dead = 0;
     hud.veil(null);
     sound.hush(false, "dead");
+    sound.veil(false);
     hud.toast("", broodWord("takeover"), 4);
     persist();
   }
@@ -2311,6 +2385,7 @@ async function start() {
     pebbles.prime(fish.position, fish.length, fish.river.s);
     hud.veil(null);
     sound.hush(false, "dead");
+    sound.veil(false);
     showBrood();
     persist();
   }
@@ -2330,6 +2405,7 @@ async function start() {
     pebbles.prime(fish.position, fish.length, fish.river.s);
     hud.veil(null);
     sound.hush(false, "dead");
+    sound.veil(false);
     persist();
   }
   // Spawning: the fish settles over the gravel of the redd, and the eggs go down among the
@@ -2361,6 +2437,7 @@ async function start() {
     spawning = { t: 0, laid: 0, traits: earned(brood.life) };
     if (redd.on) redd.spawn(fish);
     sound.hush(false, "dead");
+    sound.spawn();
   }
   function stepSpawning(dt) {
     if (!spawning) return;
@@ -2372,6 +2449,8 @@ async function start() {
     if (t > 4 && !spawning.veiled) {
       spawning.veiled = true;
       hud.veil("white");
+      // Silence under the white (the bells can still ring into it).
+      sound.veil(true);
       hud.toast("Gelaicht", "Im Kies der Quelle liegt die nächste Generation.");
     }
     // Home: the card of the life that came back, before the next generation begins.
@@ -2405,6 +2484,8 @@ async function start() {
     life.reset(fish);
     pebbles.prime(fish.position, fish.length, fish.river.s);
     hud.veil(null);
+    sound.veil(false);
+    sound.hatch();
     hud.toast(STAGES[0].name, `Generation ${save.generation + 1}`);
     feat("generation", { delay: 3 });
     persist();
@@ -2527,12 +2608,27 @@ async function start() {
     falls.light(0.25 + 0.75 * sunUp);
     soundState.rain = rain;
     soundState.daylight = sunUp;
-    soundState.stir = Math.max(0, fish.relative.length() - salmon.speeds().cruise) / Math.max(1, salmon.speeds().sprint);
+    const speeds = salmon.speeds();
+    soundState.stir = Math.max(0, fish.relative.length() - speeds.cruise) / Math.max(1, speeds.sprint);
     soundState.roar = falls.roar(fish.position, fish.river.s);
     soundState.sea = regionWeights(fish.river.s, soundRegions).sea;
     // (The sound eases this over the moment of crossing.)
     soundState.submerged = above ? 0 : 1;
     soundState.depth = depth;
+    // The water round the fish: how hard it runs, how far down the fish is between the
+    // surface and the bed, ice over it, a spate (the snowmelt's counts half; none at sea).
+    const fishLevel = level(fish.river.s);
+    soundState.flow = fish.flow.speed;
+    soundState.depthRel = clamp((fishLevel - fish.position.y) / Math.max(0.1, fishLevel - bed(fish.river.s, fish.river.u)), 0, 1);
+    soundState.ice = world.ice ?? 0;
+    soundState.flood = Math.max(events.flood, 0.5 * conditions.flood) * (1 - soundState.sea);
+    // (The heart beats for strength running out -- not while the fish is safe or dead.)
+    soundState.energy = dead > 0 || fish.safe || celebration.active ? 1 : fish.energy;
+    soundState.mill = millAt ? clamp(1 - Math.hypot(fish.position.x - millAt.x, fish.position.z - millAt.z) / 60, 0, 1) : 0;
+    // Home: its scent on the way, and the redd itself while the hen is courted.
+    soundState.home = redd.on && !spawning ? 0.5 + 0.5 * redd.state.courtship : homeScent;
+    soundState.breath = fish.breath;
+    soundState.winded = !!fish.winded && dead <= 0;
     sound.update(dt, soundState);
     updateWaterLevel();
     // The surface's ripples (and the caustic net they make) slide downstream; at sea, barely.
