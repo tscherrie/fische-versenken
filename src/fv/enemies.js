@@ -70,8 +70,8 @@ export function createEnemies(scene, { random }) {
       spec,
       owner,
       size,
-      hp: spec.hp,
-      maxHp: spec.hp,
+      hp: spec.hp * api.hpScale,
+      maxHp: spec.hp * api.hpScale,
       position: new THREE.Vector3(spot.x, height, spot.z),
       velocity: new THREE.Vector3(),
       heading: heading ? heading.clone().normalize() : new THREE.Vector3(Math.cos(random() * TAU), 0, Math.sin(random() * TAU)),
@@ -480,10 +480,12 @@ export function createEnemies(scene, { random }) {
     draw();
   }
 
-  return {
+  const api = {
     list,
     crowds,
     whiffs,
+    // Hit points of new enemies are scaled by this (the difficulty).
+    hpScale: 1,
     spawn,
     update,
     hit,
@@ -496,4 +498,5 @@ export function createEnemies(scene, { random }) {
       crowds[kind].body.visible = crowds[kind].membranes.visible = false;
     },
   };
+  return api;
 }

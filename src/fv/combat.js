@@ -9,6 +9,7 @@ import { STAGES } from "../salmon.js";
 import { clamp } from "../course.js";
 import "./i18n.js";
 import { createAim } from "./aim.js";
+import { createDifficulty } from "./difficulty.js";
 import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
@@ -35,6 +36,7 @@ export function createCombat(game) {
   const gore = createGore(scene, camera, { random, light });
   const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
+  const difficulty = createDifficulty(habitat);
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
@@ -137,11 +139,14 @@ export function createCombat(game) {
     const f = player.fish;
     if (clock < player.safeUntil || f.safe || game.now.dead > 0) return;
     const melee = e.spec.weapon?.kind === "melee" ? e.spec.weapon : null;
-    if (!shot && e.spec.swallows && e.size >= 2.2 * f.length) {
+    const level = difficulty.level;
+    const swallows = !shot && e.spec.swallows && e.size >= 2.2 * f.length;
+    if (swallows && level.swallow) {
       outcome.killed = e.spec.name;
       return;
     }
-    const damage = shot ? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1);
+    // (On Tourist a fish that would swallow the salmon only bites it, hard.)
+    const damage = (swallows ? 0.35 : shot ? shot.hitDamage ?? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1)) * level.taken;
     player.safeUntil = clock + (shot ? 0.12 : 0.8);
     f.energy = Math.max(0, f.energy - damage);
     if (clock - (player.feltAt ?? -1) > 0.35) {
@@ -161,7 +166,7 @@ export function createCombat(game) {
       pellet.y += (random() - 0.5) * 2 * gun.spread;
       pellet.z += (random() - 0.5) * 2 * gun.spread;
       pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
-      hostile.fire({ source: e, weapon: gun.id, cause: gun.cause, position: enemyMuzzle.clone(), velocity: pellet.clone(), damage: gun.damage, radius: 0.03 + 0.01 * e.size, life: (gun.range[1] * 1.4) / gun.speed, size: 0.05 + 0.02 * e.size, tint: [7, 3.2, 0.7], stretch: 3.5, s: e.river.s });
+      hostile.fire({ source: e, weapon: gun.id, cause: gun.cause, position: enemyMuzzle.clone(), velocity: pellet.clone(), damage: gun.damage, drag: gun.drag, radius: 0.03 + 0.01 * e.size, life: 12, size: 0.05 + 0.02 * e.size, tint: [7, 3.2, 0.7], stretch: 3.5, s: e.river.s });
     }
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, { size: 0.12 + 0.05 * e.size, life: 0.08, r: 5, g: 2.6, b: 0.6 });
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
@@ -226,7 +231,8 @@ export function createCombat(game) {
     const L = fish.length;
     if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
     fireWeapons(local, dt);
-    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length });
+    enemies.hpScale = difficulty.level.hp;
+    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
     gravel.update(dt, { fish, enemies, players: players.length });
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots });
     hostile.update(dt, players, {
@@ -277,7 +283,11 @@ export function createCombat(game) {
     hud.update(dt, shown ? local.arsenal : null);
     fx.begin();
     for (const p of projectiles.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
-    for (const p of hostile.live) fx.add(p.position.x, p.position.y, p.position.z, p.size, p.tint[0], p.tint[1], p.tint[2], p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
+    // (A spent bullet, sinking, is only a faint glint until it gets a look of its own.)
+    for (const p of hostile.live) {
+      const k = p.spent ? 0.06 : 1;
+      fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
+    }
     models.update(players);
     // (The enemies' own weapons, strapped on the same way, once the models draw them.)
     models.enemies?.(enemies.list);

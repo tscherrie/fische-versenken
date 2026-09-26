@@ -14,7 +14,8 @@ const BULLHEAD = PREDATORS.bullhead;
 // its strike a stab or a slash, a ranged one lets it shoot from a distance (hostile.js):
 //   range [near, far] in units, tell: how long it aims before it fires (the moment to
 //   dodge), burst: shots in a row, interval between them, pellets per shot, spread (rad),
-//   speed, damage per hit (of the strength bar), reload after a burst.
+//   speed, drag (how fast the water stops a round, per second), damage per hit (of the
+//   strength bar), reload after a burst.
 // behaviour:
 //   ambush   lies still on the bed until the salmon comes close, then snaps
 //   stalker  follows at a distance, draws itself up (the tell) and strikes
@@ -44,7 +45,7 @@ export const KINDS = {
     bottom: true,
     from: 40,
     regions: { brook: 1, upper: 0.7 },
-    weapon: { id: "sawnoff", title: "Abgesägte Schrotflinte", kind: "ranged", range: [1.2, 5.5], tell: 0.4, burst: 1, interval: 0.1, pellets: 7, spread: 0.16, speed: 13, damage: 0.03, reload: 2.6, cause: "Von einer Groppe niedergeschossen" },
+    weapon: { id: "sawnoff", title: "Abgesägte Schrotflinte", kind: "ranged", range: [1, 4], tell: 0.4, burst: 1, interval: 0.1, pellets: 7, spread: 0.16, speed: 13, drag: 2.6, damage: 0.03, reload: 2.6, cause: "Von einer Groppe niedergeschossen" },
   },
   troutParr: {
     title: "Junge Forelle",
@@ -88,7 +89,7 @@ export const KINDS = {
     coil: 0.32,
     from: 130,
     regions: { brook: 1, upper: 0.8 },
-    weapon: { id: "smg", title: "Maschinenpistole", kind: "ranged", range: [3.5, 15], tell: 0.5, burst: 6, interval: 0.085, pellets: 1, spread: 0.045, speed: 16, damage: 0.028, reload: 1.9, cause: "Von einer Bachforelle erschossen" },
+    weapon: { id: "smg", title: "Maschinenpistole", kind: "ranged", range: [3, 9], tell: 0.5, burst: 6, interval: 0.085, pellets: 1, spread: 0.045, speed: 16, drag: 1.4, damage: 0.028, reload: 1.9, cause: "Von einer Bachforelle erschossen" },
   },
   // The gravel defence (gravel.js): water-insect larvae crawling through the redd at the
   // alevins. They are drawn by their own models (look/larvae.js), not with a fish body

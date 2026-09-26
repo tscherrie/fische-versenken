@@ -64,7 +64,7 @@ export function createDirector({ random }) {
       nextSpawn = Math.max(nextSpawn, clock + seconds);
     },
     // players: in the room (for the numbers); the local player's fish is the anchor.
-    update(dt, { fish, stage, enemies, players = 1 }) {
+    update(dt, { fish, stage, enemies, players = 1, count = 1 }) {
       clock += dt;
       // Which way the fish is going along the river, held a while.
       frame(fish.river.s, at);
@@ -72,7 +72,7 @@ export function createDirector({ random }) {
       if (Math.abs(along) > 0.4 * Math.max(0.3, fish.length)) travel = Math.sign(along);
       const cycle = clock % (PRESSURE + BREATHER);
       const calm = cycle > PRESSURE;
-      const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)));
+      const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * count);
       let alive = 0;
       for (const e of enemies.list) if (!e.dead) alive++;
       if (calm || alive >= cap || clock < nextSpawn) return;
