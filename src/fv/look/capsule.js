@@ -2,7 +2,9 @@
 // turning slowly inside it, a ring round it in the colour of the stage the weapon belongs
 // to, and a thin column of little bubbles rising from it to the surface -- which is what
 // gives away one tucked into the lee of a stone. Swum into, it bursts: the shell swells and
-// is gone, the ring flies apart, a cloud of bubbles scatters.
+// is gone, the ring flies apart, a cloud of bubbles scatters. The ring rides a little above
+// the bubble's middle for a weapon worn on the back and a little below it for one worn at
+// the belly, so the place shows before the capsule is reached.
 //
 // Three instanced draws on layer 1 (out of the water's mirror and the Snell's window, with
 // the enemies and the effects): the shells, the rings, the bubbles. The shell and the ring
