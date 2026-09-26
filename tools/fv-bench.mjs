@@ -380,15 +380,19 @@ function summary(r) {
   const rest = stepMid - parts.reduce((s, p) => s + partValues[p], 0);
   const share = (v) => `${f((100 * v) / mid(d.combatFight), 0)} %`;
   const meshScript = mid(r.runs.map((x) => x.stress.meshes?.script));
+  // Per unit: a players' shot, an enemy (the dead ones drift and are drawn too), an enemy round.
+  const count = (key) => mid(r.runs.map((x) => x.stress.counts[key]?.mean ?? 0));
+  const units = { projectiles: [count("shots"), "a shot"], enemies: [count("enemies") + count("corpses"), "an enemy"], hostile: [count("flying") + count("spent") + count("rested"), "a round"] };
+  const unit = (p) => (units[p] && units[p][0] ? `${f((partValues[p] / units[p][0]) * 1000, 2)} µs ${units[p][1]}` : "");
   lines.push(
     table(
-      ["part", "ms", "share of combat.step + frame"],
+      ["part", "ms", "share of combat.step + frame", "per unit"],
       [
-        ...parts.map((p) => [partNames[p], f(partValues[p], 3), share(partValues[p])]),
-        ["rest of combat.step (firing, bosses, rules, fx.update, gore.update, corpses)", f(rest, 3), share(rest)],
-        ["combat.frame (hud and health bars, fx.begin/add/end, models, gore.frame)", f(mid(d.frameFight), 3), share(mid(d.frameFight))],
-        ["outside them: the threat list (signals.js, asked for by the game's own step)", f(part("threats"), 3), "–"],
-        ["outside them: handing combat's meshes to the card (the draw's script, paired)", f(meshScript, 3), "–"],
+        ...parts.map((p) => [partNames[p], f(partValues[p], 3), share(partValues[p]), unit(p)]),
+        ["rest of combat.step (firing, bosses, rules, fx.update, gore.update, corpses)", f(rest, 3), share(rest), ""],
+        ["combat.frame (hud and health bars, fx.begin/add/end, models, gore.frame)", f(mid(d.frameFight), 3), share(mid(d.frameFight)), ""],
+        ["outside them: the threat list (signals.js, asked for by the game's own step)", f(part("threats"), 3), "–", ""],
+        ["outside them: handing combat's meshes to the card (the draw's script, paired)", f(meshScript, 3), "–", ""],
       ],
     ),
   );
@@ -450,6 +454,14 @@ function summary(r) {
           .filter(([, x]) => x)
           .map(([label, x]) => [label, f(x.layout, 3), f(x.combatFrame, 3), f(x.total, 2)]),
       ),
+    );
+  }
+  const sh = r.shapes;
+  if (sh?.asItIs?.length) {
+    const avg = (list, key) => list.reduce((sum, x) => sum + (x[key] ?? 0), 0) / list.length;
+    lines.push("");
+    lines.push(
+      `Enemy records all of one shape (every field the combat code adds later given at spawn, in one order) against as they are, twice in turn after a fresh set of enemies: combat.step ${f(avg(sh.oneShape, "combatStep"), 3)} against ${f(avg(sh.asItIs, "combatStep"), 3)} ms, enemies.update ${f(avg(sh.oneShape, "enemies"), 3)} against ${f(avg(sh.asItIs, "enemies"), 3)}, projectiles.update ${f(avg(sh.oneShape, "projectiles"), 3)} against ${f(avg(sh.asItIs, "projectiles"), 3)}, heap ${f(avg(sh.oneShape, "heapKB"), 0)} against ${f(avg(sh.asItIs, "heapKB"), 0)} KB a frame.`,
     );
   }
   const a = r.allocation;
@@ -515,6 +527,14 @@ function summary(r) {
     lines.push("");
     const every = r.soak.filter((s, i) => i === 0 || s.t % 5 === 0);
     lines.push(table(["s", "flying", "spent, sinking", "on the bed", "oldest spent (s)", "hostile.update (ms)", "combat.step (ms)", "enemies (dead)", "shots", "bubbles", "heap (MB)"], every.map((s) => [s.t, s.flying, s.spent, s.rested, f(s.oldest, 1), f(s.hostile, 3), f(s.combatStep, 3), `${s.enemies ?? "–"} (${s.corpses ?? "–"})`, s.shots ?? "–", s.bubbles ?? "–", s.heapMB ?? "–"])));
+    const most = Math.max(...r.soak.map((s) => s.flying + s.spent + s.rested));
+    const spent = r.soak.reduce((sum, s) => sum + s.spent, 0) / r.soak.length;
+    const rested = r.soak.reduce((sum, s) => sum + s.rested, 0) / r.soak.length;
+    const oldest = Math.max(...r.soak.map((s) => s.oldest));
+    lines.push("");
+    lines.push(
+      `The list held at most ${most} rounds, ${f(spent, 0)} of them spent and sinking and ${f(rested, 0)} on the bed on average; no spent round was older than ${f(oldest, 1)} s, so ${rested ? "some reached the bed" : `none reached the bed (the water here is ${r.place.depth} u deep, and sinking at 0.45 u/s a round needs longer than it is kept)`}: the full list lets the oldest go first. Nothing piles up without bound.${lab ? ` At ${f(lab.spent, 2)} µs a step each (the lists of their own, above), the spent ones cost ${f((spent * lab.spent) / 1000, 3)} ms a step.` : ""}`,
+    );
   }
 
   // What the page said.

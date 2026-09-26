@@ -268,6 +268,29 @@ async function measure(ctx, here, name) {
     if (!load.shots) combat.projectiles.reset();
     if (!load.hostile) combat.hostile.reset();
   }
+  // A variant: enemy records all of one shape. Every field the combat code gives an enemy
+  // only later on (its gun's state, when it was hit, its home) is given right after it is
+  // spawned, in one order, with the value its absence stands for, so every record ends up
+  // with the same hidden class and loops over them stay monomorphic.
+  const LATER = [
+    ["strikeTime", 0.4],
+    ["reload", 0],
+    ["shots", 0],
+    ["firedAt", -1e9],
+    ["hitAt", -1e9],
+    ["eaten", false],
+    ["home", null],
+  ];
+  const spawnAsItIs = combat.enemies.spawn;
+  function oneShape(on) {
+    combat.enemies.spawn = on
+      ? function (kind, s, u, y, o) {
+          const e = spawnAsItIs.call(this, kind, s, u, y, o);
+          if (e) for (const [key, value] of LATER) if (!(key in e)) e[key] = value;
+          return e;
+        }
+      : spawnAsItIs;
+  }
   const toFish = new THREE.Vector3();
   function spawnNear(kind, near, far) {
     const angle = random() * Math.PI * 2;
@@ -552,7 +575,7 @@ async function measure(ctx, here, name) {
   // other way round), so whatever else the card is doing meanwhile -- other pages, other
   // programs -- weighs on both alike; the median of the paired differences. (Timing a
   // whole fight against a whole calm the same way is left to drift over seconds.)
-  async function pairedCost(objects, batches = 16, n = 8) {
+  async function pairedCost(objects, batches = 24, n = 4) {
     const shown = objects.map((o) => o.visible);
     const show = (on) => objects.forEach((o, i) => (o.visible = on && shown[i]));
     let submit = 0;
@@ -602,7 +625,7 @@ async function measure(ctx, here, name) {
     meters.step.fn = on ? stepFn : idle;
     meters.frame.fn = on ? frameFn : idle;
   }
-  async function condition(l, { settleFor = 2, n = frames, meshBatches = 16 } = {}) {
+  async function condition(l, { settleFor = 2, n = frames, meshBatches = 24 } = {}) {
     combatOn(true);
     setLoad(l);
     if (!l.enemies && !l.shots && !l.hostile) {
@@ -642,7 +665,7 @@ async function measure(ctx, here, name) {
   // ?xhold: the bench stops here and hands its parts to the console (window.bench), to try
   // things out by hand; it reports nothing.
   if (here.has("xhold")) {
-    window.bench = { setLoad, settle, drain, keep, frame, timedFrames, backToBack, fullFrames, pairedCost, condition, combatOn, meters, load, sync, parts, everything, MAIN, OFF };
+    window.bench = { setLoad, settle, drain, keep, frame, timedFrames, backToBack, fullFrames, pairedCost, condition, combatOn, oneShape, meters, load, sync, parts, everything, MAIN, OFF };
     await new Promise(() => {});
   }
 
@@ -658,7 +681,7 @@ async function measure(ctx, here, name) {
   setLoad(MAIN);
   await settle(1.5);
   const groups = {};
-  for (const [key, objects] of parts) if (objects.some((o) => o.visible)) groups[key] = await pairedCost(objects, 12);
+  for (const [key, objects] of parts) if (objects.some((o) => o.visible)) groups[key] = await pairedCost(objects, 16);
 
   // The river lookups, timed on their own on the fight as it stands.
   const lookups = micro();
@@ -741,9 +764,11 @@ async function measure(ctx, here, name) {
           }
           if (state === "rested") p.rested = true;
         }
-        const t0 = now();
+        // (One step first, untimed: a new round's first lookup starts from the fish's place.)
         lab.update(dt, combat.players, {});
-        total += now() - t0;
+        const t0 = now();
+        for (let k = 0; k < 3; k++) lab.update(dt, combat.players, {});
+        total += (now() - t0) / 3;
       }
       out[state] = +((total / (passes * N)) * 1000).toFixed(3);
     }
@@ -762,9 +787,10 @@ async function measure(ctx, here, name) {
           velocity.copy(heading).applyAxisAngle(UP, (random() - 0.5) * 0.7).multiplyScalar(40);
           shots.fire({ owner: 1, weapon: "piu", position: muzzle, velocity, damage: 0, radius: 0.07, life: 5, size: 0.1, s: fish.river.s });
         }
-        const t0 = now();
         update(dt, { enemies: combat.enemies.list, stones });
-        total += now() - t0;
+        const t0 = now();
+        for (let k = 0; k < 3; k++) update(dt, { enemies: combat.enemies.list, stones });
+        total += (now() - t0) / 3;
       }
       out[key] = +((total / (passes * N)) * 1000).toFixed(3);
     }
@@ -821,6 +847,20 @@ async function measure(ctx, here, name) {
     for (const e of hidden) e.style.display = "";
   }
 
+  // Enemy records as they are against all of one shape, each after a fresh set of enemies,
+  // twice in turn.
+  const shapes = { asItIs: [], oneShape: [] };
+  for (let k = 0; k < 2; k++)
+    for (const on of [false, true]) {
+      oneShape(on);
+      combat.enemies.reset();
+      setLoad(MAIN);
+      await settle(2);
+      const t = await timedFrames(frames);
+      shapes[on ? "oneShape" : "asItIs"].push({ combatStep: t.combatStep.trimmed, enemies: t.parts.enemies, projectiles: t.parts.projectiles, heapKB: t.heapKB?.trimmed ?? null });
+    }
+  oneShape(false);
+
   // What each part leaves on the heap a frame (KB), timed apart from everything else.
   let allocation = null;
   if (performance.memory) {
@@ -849,7 +889,7 @@ async function measure(ctx, here, name) {
       { enemies: 0, shots: 0, hostile: 0, empty: true },
     ]) {
       shotsCapped = false;
-      const t = await condition(l, { settleFor: 1.5, meshBatches: 10 });
+      const t = await condition(l, { settleFor: 1.5, meshBatches: 12 });
       scaled.push({ load: l, capped: shotsCapped, combatStep: t.combatStep.trimmed, combatFrame: t.combatFrame.trimmed, layout: t.layout.trimmed, total: t.total.trimmed, draw: t.draw.trimmed, heapKB: t.heapKB?.trimmed, parts: t.parts, counts: t.counts, events: t.events, gpu: t.meshes?.cost ?? null, calls: t.calls, triangles: t.triangles });
     }
   combatOn(true);
@@ -903,7 +943,7 @@ async function measure(ctx, here, name) {
   combat.enemies.update = enemyUpdate;
   combat.enemies.hit = enemyHit;
   renderer.info.autoReset = true;
-  return { config, place, load: { ...MAIN, aimShare, hpScale, capped: shotsCapped }, runs, groups, lookups, rounds, toggles, hud, allocation, scaled, soak };
+  return { config, place, load: { ...MAIN, aimShare, hpScale, capped: shotsCapped }, runs, groups, lookups, rounds, toggles, hud, shapes, allocation, scaled, soak };
 }
 
 // projectiles.js's update, copied so it can be timed with and without the lookup of the bed
@@ -1000,9 +1040,9 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
         continue;
       }
       if (!lookup) continue;
-      // (every > 1: each shot looks only every so many of its steps, its own count staggering
-      // them.)
-      if (every > 1 && (p.looks = (p.looks ?? 0) + 1) % every) continue;
+      // (every > 1: each shot looks only every so many of its steps, counted from when it was
+      // fired, which staggers them; no field is added, so the shots keep their shape.)
+      if (every > 1 && Math.round(p.age / dt) % every) continue;
       locate(p.position.x, p.position.z, p.river.s, p.river);
       if (p.position.y < bed(p.river.s, p.river.u)) {
         live.splice(i, 1);
