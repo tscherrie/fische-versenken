@@ -19,6 +19,7 @@ import { createGravel } from "./gravel.js";
 import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { createProjectiles } from "./projectiles.js";
+import { createRules } from "./rules.js";
 import { createSfx } from "./sfx.js";
 import { createSignals } from "./signals.js";
 import { WEAPONS, createArsenal, damageScale } from "./weapons.js";
@@ -39,6 +40,7 @@ export function createCombat(game) {
   const difficulty = createDifficulty(habitat);
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
+  const rules = createRules();
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
   const aim = createAim(camera);
@@ -227,6 +229,7 @@ export function createCombat(game) {
       director.hold(10);
     }
     wasDown = local.down;
+    rules.step(dt, local, enemies);
     wild.step();
     const L = fish.length;
     if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, WEAPONS[local.arsenal.back ?? "piu"].reach(L));
@@ -273,6 +276,7 @@ export function createCombat(game) {
       },
     });
     eatCorpses(local);
+    rules.after(local);
     fx.update(dt);
     gore.update(dt, enemies.list);
   }
