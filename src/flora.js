@@ -246,7 +246,8 @@ export function crowfoot(batch, x, z, ground, surface, flow, random, scale = 1, 
   }
 }
 
-// Pondweed: a stem up through the water column with broad, translucent, wavy leaves.
+// Pondweed: a stem up through the water column with long, translucent, wavy leaves, widest
+// a third of the way out, veined along their length.
 export function pondweed(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
   const own = ranger(plantRandom(x, z, 3));
@@ -288,7 +289,7 @@ export function pondweed(batch, x, z, ground, surface, flow, random, scale = 1, 
       const mid = node.clone().addScaledVector(out, leaf * 0.5).add(vec(0, leaf * 0.08, 0));
       const color = tones(red ? PALETTE.pondweedRed : PALETTE.pondweed, random(), random(), random());
       const old = ageUp(t);
-      blade(batch, [node, mid, tip], range(0.18, 0.3) * scale, color, root, 0.8, { rows: 6, cols: 3, thin: 1, browning: random() < 0.2 ? 0.3 : 0, age: [old + 0.1, old - 0.15] });
+      blade(batch, [node, mid, tip], range(0.18, 0.3) * scale, color, root, 0.8, { rows: 8, cols: 3, thin: 1, browning: random() < 0.2 ? 0.3 : 0, age: [old + 0.1, old - 0.15], envelope: "lanceolate", crinkle: 0.06, cut: CUT.MONOCOT });
     }
   }
 }
@@ -312,7 +313,7 @@ export function sedge(batch, x, z, ground, surface, random, scale = 1) {
     const above = points[2].y > surface;
     // (Above the water it keeps the colour of the grass on the banks.)
     const color = above ? new THREE.Color().setHSL(range(0.18, 0.24), range(0.4, 0.6), range(0.25, 0.35)) : tones(PALETTE.sedge, random(), random(), random());
-    blade(batch, points, range(0.05, 0.09) * scale, color, root, 0.25, { rows: 10, cols: 1, ribbon: true, thin: 0.7, browning: range(0, 0.3), age: [0.85, 0.2] });
+    blade(batch, points, range(0.05, 0.09) * scale, color, root, 0.25, { rows: 10, cols: 1, ribbon: true, thin: 0.7, browning: range(0, 0.3), age: [0.85, 0.2], spacing: 0.6, cut: CUT.MONOCOT });
   }
 }
 
@@ -400,7 +401,7 @@ export function eelgrass(batch, x, z, ground, surface, flow, random, scale = 1) 
       root.clone().addScaledVector(dir, length * 0.8).add(vec(0, h * 0.85, 0)),
     ];
     const color = tones(PALETTE.eelgrass, random(), random(), random());
-    blade(batch, points, range(0.05, 0.09) * scale, color, root, 1.1, { rows: 14, cols: 1, ribbon: true, thin: 1, browning: random() < 0.3 ? range(0.1, 0.3) : 0, age: [0.7, 0.3] });
+    blade(batch, points, range(0.05, 0.09) * scale, color, root, 1.1, { rows: 14, cols: 1, ribbon: true, thin: 1, browning: random() < 0.3 ? range(0.1, 0.3) : 0, age: [0.7, 0.3], spacing: 0.6, cut: CUT.MONOCOT });
   }
 }
 
@@ -620,7 +621,7 @@ export function burReed(batch, x, z, ground, surface, flow, random, scale = 1) {
     const float = range(3, 9) * scale;
     const points = [root.clone(), root.clone().addScaledVector(dir, depth * 0.3).add(vec(0, depth * 0.6, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float * 0.3).add(vec(0, depth - 0.08, 0)), root.clone().addScaledVector(dir, depth * 0.7 + float).add(vec(0, depth - 0.05, 0))];
     const color = tones(PALETTE.burReed, random(), random(), random());
-    blade(batch, points, range(0.1, 0.16) * scale, color, root, 1.1, { rows: 16, cols: 1, ribbon: true, thin: 1, twist: a + Math.PI / 2, browning: random() < 0.3 ? 0.25 : 0, age: [0.8, 0.2] });
+    blade(batch, points, range(0.1, 0.16) * scale, color, root, 1.1, { rows: 16, cols: 1, ribbon: true, thin: 1, twist: a + Math.PI / 2, browning: random() < 0.3 ? 0.25 : 0, age: [0.8, 0.2], spacing: 0.6, cut: CUT.MONOCOT });
   }
 }
 
@@ -649,8 +650,9 @@ export function algae(batch, at, flow, random, size = 1) {
   }
 }
 
-// Water starwort (Callitriche): slender stems rising and leaning with the current, pairs of
-// small pale leaves at each node, and where a stem reaches the surface a floating rosette.
+// Water starwort (Callitriche): slender stems rising and leaning with the current, crossed
+// pairs of narrow leaves notched at the tip, and where a stem reaches the surface a floating
+// rosette of broader, rounder ones.
 export function starwort(batch, x, z, ground, surface, flow, random, scale = 1, grow = 1) {
   const range = ranger(random);
   const own = ranger(plantRandom(x, z, 4));
@@ -679,16 +681,20 @@ export function starwort(batch, x, z, ground, surface, flow, random, scale = 1, 
     const curve = new THREE.CubicBezierCurve3(...points);
     const nodes = Math.max(2, Math.floor(height / (0.45 * scale)));
     const leafColor = tones(PALETTE.starwort, random(), random(), random());
+    // The leaves in opposite pairs, each pair crossed on the one below (the turn each node
+    // has always drawn only sets it a little askew), narrow and notched at the tip.
+    let first = 0;
     for (let n = 1; n <= nodes; n++) {
       const node = curve.getPoint(n / (nodes + 0.5));
       const a0 = range(0, TAU);
+      if (n === 1) first = a0;
       for (const side of [0, Math.PI]) {
-        const a = a0 + side;
-        const leaf = range(0.25, 0.45) * scale;
+        const a = first + (n * Math.PI) / 2 + (a0 / TAU - 0.5) * 0.35 + side;
+        const leaf = range(0.25, 0.45) * scale * 1.2;
         const tip = node.clone().add(vec(Math.cos(a) * leaf, leaf * 0.35, Math.sin(a) * leaf)).addScaledVector(d, leaf * 0.3);
         const mid = node.clone().lerp(tip, 0.5).add(vec(0, leaf * 0.12, 0));
         const old = ageUp(n / (nodes + 0.5));
-        blade(batch, [node, mid, tip], 0.14 * scale, leafColor, root, 0.9, { rows: 2, cols: 1, thin: 1, age: [old + 0.1, old - 0.1] });
+        blade(batch, [node, mid, tip], 0.07 * scale, leafColor, root, 0.9, { rows: 3, cols: 1, thin: 1, age: [old + 0.1, old - 0.1], envelope: "linear", cut: CUT.NOTCH });
       }
     }
     // The rosette on the surface.
@@ -701,7 +707,7 @@ export function starwort(batch, x, z, ground, surface, flow, random, scale = 1, 
         const leaf = range(0.3, 0.5) * scale;
         const tip = top.clone().add(vec(Math.cos(a) * leaf, 0.01, Math.sin(a) * leaf));
         const mid = top.clone().lerp(tip, 0.5).add(vec(0, 0.02, 0));
-        blade(batch, [top, mid, tip], 0.2 * scale, leafColor, root, 0.5, { rows: 2, cols: 1, thin: 1, age: [0.15, 0] });
+        blade(batch, [top, mid, tip], 0.2 * scale, leafColor, root, 0.5, { rows: 3, cols: 1, thin: 1, age: [0.15, 0], envelope: "obovate", cut: CUT.NOTCH });
       }
     }
   }
@@ -796,7 +802,7 @@ export function bankGrass(batch, x, z, ground, surface, out, flow, random, scale
     const wet = p3.y < surface;
     // (The part hanging in the water takes the colours of the sedge under it.)
     const color = wet ? paletteAt(tones(PALETTE.sedge, random(), random(), random()), 0.5) : new THREE.Color().setHSL(range(0.18, 0.25), range(0.4, 0.6), range(0.22, 0.32));
-    blade(batch, [root.clone(), p1, p2, p3], range(0.04, 0.08) * scale, color, root, 0.5, { rows: 8, cols: 1, ribbon: true, thin: 0.7, browning: range(0, 0.35) });
+    blade(batch, [root.clone(), p1, p2, p3], range(0.04, 0.08) * scale, color, root, 0.5, { rows: 8, cols: 1, ribbon: true, thin: 0.7, browning: range(0, 0.35), spacing: 0.6, cut: CUT.MONOCOT });
   }
 }
 

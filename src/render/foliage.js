@@ -394,6 +394,21 @@ export function paletteAt(palette, age, target = new THREE.Color()) {
   return a < 0.5 ? target.copy(palette.young).lerp(palette.body, a * 2) : target.copy(palette.body).lerp(palette.old, a * 2 - 1);
 }
 
+// Leaf outlines, half-width along the blade (t from foot to tip) for the envelope option:
+//   linear      the same width all along, the tip blunt (a starwort leaf under water)
+//   obovate     widest three quarters of the way out, rounded (a starwort's floating leaf)
+//   lanceolate  widest a third of the way out, tapering long (a pondweed leaf)
+//   strap       the same width all along, cut off square (a length of wrack)
+//   strapEnd    the same, with a rounded end (the tip of a wrack frond)
+// Without one, a leaf is widest near its middle, a ribbon near its foot.
+const ENVELOPES = {
+  linear: (t) => Math.min(1, 5 * t) * (1 - 0.4 * Math.pow(t, 6)),
+  obovate: (t) => Math.pow(Math.sin(Math.PI * 0.9 * Math.pow(t, 2.4)), 0.6),
+  lanceolate: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.66)), 0.8),
+  strap: (t) => Math.min(1, 6 * t),
+  strapEnd: (t) => Math.min(1, 6 * t) * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, t - 0.75) / 0.25, 2))),
+};
+
 // Each blade is a curved, cupped surface. It bends across its face unless it rides on a
 // parent strand, in which case it inherits the parent's motion at the attachment. Returns
 // its curve, its length and its frame at t ({ tangent, side, normal }), for what grows on it
@@ -418,6 +433,9 @@ export function blade(
     age = [0.7, 0.3],
     cut = CUT.NONE,
     low = false,
+    envelope: outline = null,
+    crinkle = 0.016,
+    spacing = 0,
   } = {},
 ) {
   // Even an omitted background blade consumes its original two random values. This
@@ -434,6 +452,9 @@ export function blade(
         ? new THREE.CubicBezierCurve3(...points)
         : new THREE.CatmullRomCurve3(points);
   const length = curve.getLength();
+  // (spacing: rows no further apart than that, up to 28, so a long ribbon bends without
+  // corners.)
+  if (spacing) rows = Math.min(28, Math.max(rows, Math.ceil(length / spacing)));
   const start = batch.positions.length / 3;
   const brown = new THREE.Color("#6b5a2a");
   const code = packThin(thin, cut, low);
@@ -448,9 +469,11 @@ export function blade(
     const t = i / rows;
     const center = curve.getPoint(t);
     const { tangent, side, normal } = frame(t);
-    const envelope = ribbon
-      ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
-      : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
+    const envelope = outline
+      ? ENVELOPES[outline](t)
+      : ribbon
+        ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
+        : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
     const halfWidth = width * Math.max(0.005, envelope);
     const strand = attached || {
       direction: normal,
@@ -462,12 +485,13 @@ export function blade(
     if (browning) tint.lerp(brown, smoothJS(1 - browning, 1, t) * 0.8);
     for (let j = 0; j <= cols; j++) {
       const u = (j / cols) * 2 - 1;
-      const wave = 1 + 0.016 * Math.sin(t * 25 + phase) * u * u;
+      // (crinkle: how much the margin waves, in the leaf's plane and out of it.)
+      const wave = 1 + crinkle * Math.sin(t * 25 + phase) * u * u;
       const p = center.clone().addScaledVector(side, u * halfWidth * wave);
       p.addScaledVector(
         normal,
         halfWidth *
-          (0.19 * u * u + 0.045 * Math.sin(t * 15 + phase) * Math.abs(u)),
+          (0.19 * u * u + (0.045 + 1.5 * (crinkle - 0.016)) * Math.sin(t * 15 + phase) * Math.abs(u)),
       );
       batch.vertex(p, [j / cols, t], tint, root, strand, code);
       if (i < rows && j < cols) {
