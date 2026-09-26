@@ -16,6 +16,7 @@ import {
   exp,
   faceDirection,
   float,
+  floor,
   fract,
   fwidth,
   length,
@@ -29,10 +30,12 @@ import {
   normalize,
   positionGeometry,
   positionView,
+  positionViewDirection,
   positionWorld,
   pow,
   reference,
   renderGroup,
+  saturate,
   select,
   sign,
   sin,
@@ -103,23 +106,65 @@ const vLeafNormal = varyingProperty("vec3", "vLeafNormal");
 export const PLANT_FADE = 0.1;
 export const plantShare = (d) => Math.min(1, Math.max(0.3, 1 - (d - 40) * 0.0125));
 const vPlantFade = varyingProperty("float", "vPlantFade");
+// Each plant's own shade (vPlantTint: brighter or darker, greener or yellower, from a hash of
+// where it stands), and per vertex (vPlantShade) how much of the water's light reaches in to
+// the foot of a clump (x) and how much of a brown film of diatoms and silt lies on the leaf
+// there (y). All worked out per vertex: per pixel it cost milliseconds.
+const vPlantTint = varyingProperty("vec3", "vPlantTint");
+const vPlantShade = varyingProperty("vec2", "vPlantShade");
+// Hashes without a sine (after Dave Hoskins), steady at the river's coordinates of some
+// thousands of metres, where a sine of the scaled coordinate has lost its digits.
+const hash13 = (p) => {
+  const q = fract(p.mul(0.1031)).toVar();
+  q.addAssign(dot(q, q.zyx.add(31.32)));
+  return fract(q.x.add(q.y).mul(q.z));
+};
+const hash33 = (p) => {
+  const q = fract(p.mul(vec3(0.1031, 0.103, 0.0973))).toVar();
+  q.addAssign(dot(q, q.yxz.add(33.33)));
+  return fract(q.xxy.add(q.yxx).mul(q.zyx));
+};
+// Value noise: the hashes of a cell's eight corners, blended smoothly.
+const valueNoise3 = (p) => {
+  const i = floor(p).toVar();
+  const f = fract(p).toVar();
+  const u = f.mul(f).mul(f.mul(-2).add(3)).toVar();
+  const corner = (x, y, z) => hash13(i.add(vec3(x, y, z)));
+  const lower = mix(mix(corner(0, 0, 0), corner(1, 0, 0), u.x), mix(corner(0, 1, 0), corner(1, 1, 0), u.x), u.y);
+  const upper = mix(mix(corner(0, 0, 1), corner(1, 0, 1), u.x), mix(corner(0, 1, 1), corner(1, 1, 1), u.x), u.y);
+  return mix(lower, upper, u.z);
+};
 // (From the eye, set each frame by main.js: in the sun's shadow pass the camera is the
 // sun's, and a plant must not lose its shadow by its distance from that.)
 export const plantEye = uniform(new THREE.Vector3());
-function strandPosition() {
+// shadow: the same motion for the sun's shadow map, with nothing handed on to be shaded.
+function strandPosition({ shadow = false } = {}) {
   const anchor = attribute("anchor", "vec3");
   const bend = attribute("bend", "vec4");
   const along = attribute("along", "vec4");
   return Fn(() => {
     const position = positionGeometry;
-    const root = modelWorldMatrix.mul(vec4(anchor, 1)).xyz;
+    const root = modelWorldMatrix.mul(vec4(anchor, 1)).xyz.toVar();
     const share = float(1).sub(length(root.sub(plantEye)).sub(40).mul(0.0125)).clamp(0.3, 1);
-    const fade = smoothstep(0, PLANT_FADE, share.sub(attribute("thin", "vec2").y));
-    vPlantFade.assign(fade);
+    const fade = smoothstep(0, PLANT_FADE, share.sub(attribute("thin", "vec2").y)).toVar();
     const stir = flowAt(position);
     const motion = strandMotion(anchor, bend.xyz, along.w, bend.w, stir.a);
-    const n = normalize(normalGeometry.sub(along.xyz.mul(motion.y.mul(dot(bend.xyz, normalGeometry)))));
-    vLeafNormal.assign(cameraViewMatrix.mul(vec4(modelNormalMatrix.mul(n), 0)).xyz);
+    const rest = modelWorldMatrix.mul(vec4(position, 1)).xyz.toVar();
+    if (!shadow) {
+      vPlantFade.assign(fade);
+      const n = normalize(normalGeometry.sub(along.xyz.mul(motion.y.mul(dot(bend.xyz, normalGeometry)))));
+      vLeafNormal.assign(cameraViewMatrix.mul(vec4(modelNormalMatrix.mul(n), 0)).xyz);
+      // A plant a little lighter or darker than its neighbours, some yellower; the foot of a
+      // clump, where the stems crowd, in the shade of the rest; and patches of the brown film
+      // on the old growth near the foot more than on the young growth out in the light. (By
+      // the distance from the root, not the height over it: moss hangs from the roof of a
+      // cave, leaves from a branch, grass from the bank.)
+      const h = hash33(vec3(root.x, root.z, root.y.mul(7.1))).toVar();
+      vPlantTint.assign(mix(vec3(1), vec3(1.12, 1, 0.7), h.y.mul(0.7)).mul(h.x.mul(0.32).add(0.84)));
+      const out = length(rest.sub(root));
+      const film = smoothstep(0.45, 0.8, valueNoise3(rest.mul(vec3(0.8, 1.5, 0.8)).add(h.z.mul(17)))).mul(smoothstep(0.3, 2.5, out).mul(-0.6).add(1));
+      vPlantShade.assign(vec2(mix(0.5, 1, smoothstep(0, 1.4, out)), film));
+    }
     const pushed = stir.rgb.mul(bend.w.mul(0.17).mul(along.w).mul(along.w).div(along.w.mul(along.w).mul(0.07).add(1))).toVar();
     pushed.subAssign(along.xyz.mul(dot(pushed, along.xyz)));
     // A blade can be pushed aside, not torn off: the displacement saturates.
@@ -127,8 +172,7 @@ function strandPosition() {
     const moved = position.add(bend.xyz.mul(motion.x)).add(pushed).toVar();
     // What grows under the water stays under it: a long ribbon lying out under the surface
     // flaps with the current, and would flap up through it into the air.
-    const rest = modelWorldMatrix.mul(vec4(position, 1)).xyz;
-    const ceiling = surfaceLevelAt(rest).sub(0.04);
+    const ceiling = surfaceLevelAt(rest).sub(0.04).toVar();
     If(rest.y.lessThan(ceiling), () => {
       moved.y.assign(min(moved.y, ceiling.sub(rest.y).add(position.y)));
     });
@@ -152,10 +196,13 @@ export function foliageMaterial() {
   // temporal resolve to average into a soft transparency (render/dither.js).
   material.alphaTestNode = ditherThreshold();
   material.positionNode = strandPosition();
+  material.castShadowPositionNode = strandPosition({ shadow: true });
   const thin = attribute("thin", "vec2").x;
   const leafUv = uv();
   material.colorNode = Fn(() => {
-    const base = attribute("color", "vec3").toVar();
+    // The plant's own shade, and the film of diatoms and silt, brown, over the old growth.
+    const base = attribute("color", "vec3").mul(vPlantTint).toVar();
+    base.assign(mix(base, vec3(0.1, 0.07, 0.025), vPlantShade.y.mul(0.55)));
     // The midrib highlight fades once a leaf is only a few pixels wide, so needle leaves do
     // not clip to white specks.
     const midrib = smoothstep(0.008, 0.035, abs(leafUv.x.sub(0.5))).oneMinus().mul(smoothstep(0.02, 0.06, fwidth(leafUv.x)).oneMinus());
@@ -199,12 +246,16 @@ export function foliageMaterial() {
     });
     return normal;
   })();
+  // Light through the leaf: what the tissue passes is its own colour, yellower than what it
+  // reflects (the green is spent on the way through), and more of it the thinner the leaf.
+  const through = () => diffuseColor.rgb.mul(vec3(1.2, 1.05, 0.55)).mul(thin);
   waterLit(material, {
-    // Light reaching the far side of a thin leaf is scattered through the tissue, which
-    // passes green far more readily than red or blue.
+    // Light reaching the far side of a thin leaf is scattered through the tissue: evenly
+    // about, and more of it straight on, so a leaf between the eye and the sun glows.
     perLight: ({ lightDirection, lightColor, reflectedLight }) => {
       const backLight = dot(normalView.negate(), lightDirection).clamp(0, 1);
-      reflectedLight.directDiffuse.addAssign(lightColor.mul(backLight).mul(1 / Math.PI).mul(diffuseColor.rgb).mul(vec3(0.55, 0.85, 0.3)).mul(thin.mul(0.9)));
+      const forward = pow(saturate(dot(positionViewDirection.negate(), lightDirection)), 6).mul(0.4);
+      reflectedLight.directDiffuse.addAssign(lightColor.mul(through()).mul(backLight.mul(1 / Math.PI).add(forward)));
     },
     afterIndirect: ({ reflectedLight }) => {
       // A blade seen edge-on can present a shading normal turned away from the eye, and the
@@ -213,16 +264,18 @@ export function foliageMaterial() {
       reflectedLight.indirectDiffuse.assign(max(reflectedLight.indirectDiffuse, vec3(0)));
       reflectedLight.indirectSpecular.assign(max(reflectedLight.indirectSpecular, vec3(0)));
       reflectedLight.directSpecular.assign(max(reflectedLight.directSpecular, vec3(0)));
+      // Into the foot of a clump less of the water's light finds its way.
+      reflectedLight.indirectDiffuse.mulAssign(vPlantShade.x);
       // The bright water all round lights a leaf from behind as well as in front: the sky's
-      // light reaching its far face comes through the tissue, green. Without it the underside
-      // of a blade in shade reads as a hole in the picture.
+      // light reaching its far face comes through the tissue. Without it the underside of a
+      // blade in shade reads as a hole in the picture.
       if (skyLight) {
         const sky = reference("color", "color", skyLight).setGroup(renderGroup);
         const ground = reference("groundColor", "color", skyLight).setGroup(renderGroup);
         const intensity = reference("intensity", "float", skyLight).setGroup(renderGroup);
         const behindWorld = cameraViewMatrix.transpose().mul(vec4(normalView.negate(), 0)).xyz;
         const behind = mix(ground, sky, behindWorld.y.mul(0.5).add(0.5)).mul(intensity);
-        reflectedLight.indirectDiffuse.addAssign(behind.mul(BRDF_Lambert({ diffuseColor: diffuseColor.rgb })).mul(vec3(0.75, 1, 0.55)).mul(thin.mul(0.7).add(0.3)));
+        reflectedLight.indirectDiffuse.addAssign(behind.mul(BRDF_Lambert({ diffuseColor: diffuseColor.rgb })).mul(vec3(1.2, 1.05, 0.55)).mul(thin.mul(0.7).add(0.3)));
       }
     },
   });
