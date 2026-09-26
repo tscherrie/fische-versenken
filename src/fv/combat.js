@@ -17,6 +17,7 @@ import { createWeaponModels } from "./models.js";
 import { createCombatHud } from "./hud.js";
 import { createProjectiles } from "./projectiles.js";
 import { createSfx } from "./sfx.js";
+import { createSignals } from "./signals.js";
 import { WEAPONS, createArsenal, damageScale } from "./weapons.js";
 import { tameTheWild } from "./wild.js";
 
@@ -33,6 +34,7 @@ export function createCombat(game) {
   const models = createWeaponModels(scene, { mirror: game.mirror });
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const director = createDirector({ random });
+  const signals = createSignals(game, enemies);
   const aim = createAim(camera);
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
@@ -200,6 +202,7 @@ export function createCombat(game) {
     fireWeapons(local, dt);
     director.update(dt, { fish, stage: fish.stage, enemies, players: players.length });
     enemies.update(dt, game.now.time, players, hurt(outcome));
+    signals.whiffs(outcome);
     if (projectiles.live.length) terrain.collidersNear(fish.position.x, fish.position.z, WEAPONS.piu.reach(L) + 4, stones);
     else stones.length = 0;
     projectiles.update(dt, {

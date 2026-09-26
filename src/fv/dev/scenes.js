@@ -108,6 +108,7 @@ async function runScene(salmon, extreme, query) {
       kills: combat.players[0].kills,
       heat: +(combat.players[0].arsenal.heat.piu ?? 0).toFixed(2),
       shots: combat.projectiles.live.length,
+      threats: salmon.life.hunters.threats(fish, []).map((t) => `${t.kind}:${t.level}`),
       enemies: combat.enemies.list.map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, d: +e.position.distanceTo(fish.position).toFixed(2) })),
     });
   note("start");

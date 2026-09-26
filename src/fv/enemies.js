@@ -23,6 +23,8 @@ export function createEnemies(scene, { random }) {
     crowds[kind] = createFishMesh(scene, spec.body, spec.coat, spec.capacity, { name: `Combat ${kind}`, castShadow: false, detail: 0.55 });
   }
   const list = [];
+  // The kinds whose strike missed in this step (for the whiff the game plays).
+  const whiffs = [];
   let nextId = 1;
 
   // Scratch.
@@ -238,6 +240,7 @@ export function createEnemies(scene, { random }) {
           e.mode = "recover";
           e.t = 0;
         } else if (e.t > (e.strikeTime ?? 0.4)) {
+          if (!untouchable) whiffs.push(e.kind);
           e.mode = "recover";
           e.t = 0;
         }
@@ -281,6 +284,7 @@ export function createEnemies(scene, { random }) {
   }
 
   function update(dt, time, players, hurt) {
+    whiffs.length = 0;
     for (const crowd of Object.values(crowds)) crowd.begin();
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
@@ -399,5 +403,5 @@ export function createEnemies(scene, { random }) {
     draw();
   }
 
-  return { list, crowds, spawn, update, hit, count, reset, snout };
+  return { list, crowds, whiffs, spawn, update, hit, count, reset, snout };
 }
