@@ -52,13 +52,26 @@ async function reachable() {
 // What this run started, stopped on the way out whatever happens.
 let server = null,
   chrome = null;
+// A Chrome runs in a process group of its own (spawned detached), so its helpers -- which
+// can outlive the browser process -- go with it: the whole group is signalled.
+function signal(child, name) {
+  try {
+    if (child.group) process.kill(-child.pid, name);
+    else child.kill(name);
+  } catch {}
+}
 function stop(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-  const gone = new Promise((r) => child.once("exit", r));
-  child.kill();
+  if (!child) return Promise.resolve();
+  const done = child.exitCode !== null || child.signalCode !== null;
+  const gone = done ? Promise.resolve() : new Promise((r) => child.once("exit", r));
+  signal(child, "SIGTERM");
   // (A Chrome that lingers would keep the DevTools port, and the next scene would attach to it.)
-  const hard = setTimeout(() => child.kill("SIGKILL"), 5000);
-  return gone.finally(() => clearTimeout(hard));
+  const hard = setTimeout(() => signal(child, "SIGKILL"), 5000);
+  return gone.finally(() => {
+    clearTimeout(hard);
+    // (And whatever of its group is still about.)
+    if (child.group) signal(child, "SIGKILL");
+  });
 }
 async function shutdown(code) {
   await Promise.all([stop(chrome), stop(server)]);
@@ -95,7 +108,7 @@ function address(scene) {
 // A small client for the DevTools protocol: send a command, and hear the page's console.
 async function devtools(onEvent) {
   let target = null;
-  for (let i = 0; i < 100 && !target; i++) {
+  for (let i = 0; i < 300 && !target; i++) {
     try {
       const pages = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json();
       target = pages.find((p) => p.type === "page");
@@ -160,8 +173,9 @@ try {
         "--autoplay-policy=no-user-gesture-required",
         "about:blank",
       ],
-      { stdio: "ignore" },
+      { stdio: "ignore", detached: true },
     );
+    chrome.group = true;
     chrome.on("error", (error) => console.error(`Chrome did not start: ${error.message}`));
     const consoleLines = [];
     const started = Date.now();
@@ -196,6 +210,16 @@ try {
     client?.close();
     await stop(chrome);
     chrome = null;
+    // (Until the DevTools port is free again: a helper of the last Chrome may hold it a moment,
+    // and the next Chrome could not open it.)
+    for (let i = 0; i < 50; i++) {
+      try {
+        await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
+      } catch {
+        break;
+      }
+      await sleep(100);
+    }
     await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
     await writeFile(join(root, "shots", set, `${scene.name}-console.json`), JSON.stringify(consoleLines, null, 1));
     try {
