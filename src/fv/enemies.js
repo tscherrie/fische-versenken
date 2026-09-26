@@ -20,11 +20,13 @@ const CORPSE_SECONDS = 40;
 export function createEnemies(scene, { random }) {
   const crowds = {};
   for (const [kind, spec] of Object.entries(KINDS)) {
-    crowds[kind] = createFishMesh(scene, spec.body, spec.coat, spec.capacity, { name: `Combat ${kind}`, castShadow: false, detail: 0.55 });
+    // With the distance detail (anatomy.js): enemies out of view are not drawn, and far ones
+    // are drawn with the light body.
+    crowds[kind] = createFishMesh(scene, spec.body, spec.coat, spec.capacity, { name: `Combat ${kind}`, castShadow: false, detail: 0.55, lod: true });
     // On layer 1 with the effects: the main view sees them, the mirror and the Snell's
     // window (which only show what is above the water) do not draw them again.
-    crowds[kind].body.layers.set(1);
-    crowds[kind].membranes.layers.set(1);
+    const far = crowds[kind].far;
+    for (const mesh of [crowds[kind].body, crowds[kind].membranes, far?.mesh ?? far]) mesh?.layers?.set(1);
   }
   const list = [];
   // The kinds whose strike missed in this step (for the whiff the game plays).
@@ -504,7 +506,7 @@ export function createEnemies(scene, { random }) {
     // A kind now drawn by its own models: its stand-in body is no longer drawn.
     drawnBy(kind) {
       drawnElsewhere.add(kind);
-      crowds[kind].body.visible = crowds[kind].membranes.visible = false;
+      // (Its slots are simply never written, so the crowd draws none of it.)
     },
   };
   return api;
