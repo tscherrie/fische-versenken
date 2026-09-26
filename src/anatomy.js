@@ -1350,7 +1350,13 @@ function shadeFish(materials, body, membranes) {
       // behind, a dark groove behind each free edge (the tile, render/scales.js).
       const scaleMask = float(0).toVar();
       scaleMask.assign(head.oneMinus().mul(u.coat_fish).mul(smoothstep(-0.29, -0.25, x)));
-      skin.mulAssign(mix(1, sc.b.mul(1.06), scaleMask.mul(0.4)));
+      // (The shade's contrast is raised where the scales are small: the tile's coarser
+      // mipmaps keep the pattern but flatten it.)
+      skin.mulAssign(sc.b.mul(1.06).sub(1).mul(scaleMask).mul(mix(1, 0.4, detail)).add(1));
+      // Farther off, where single scales blur, groups of a few catching the light together:
+      // a patchiness three scales across, faded before it gets fine enough to crawl.
+      const groups = smoothstep(0.35 / fadeAt, 0.7 / fadeAt, max(length(gDs1), length(gDs2))).oneMinus();
+      skin.mulAssign(skinNoise(lattice.mul(0.34)).sub(0.5).mul(0.22).mul(groups).mul(scaleMask).add(1));
       gScale.assign(sc.xy.mul(2).sub(1).mul(scaleMask).mul(mix(0.45, 1, detail)));
       // Each scale a slightly different mirror, the more so the more silver: its own tilt,
       // turned by a slow noise over the body so the tile's pattern does not repeat. Where
