@@ -5,7 +5,7 @@
 
 import { attribute, normalView, vec3 } from "three/tsl";
 import { createCapsules } from "../capsule.js";
-import { createLarvae } from "../larvae.js";
+import { REST, createLarvae } from "../larvae.js";
 
 const nextTask = () => new Promise((r) => setTimeout(r, 0));
 const query = new URLSearchParams(location.search);
@@ -13,10 +13,19 @@ const query = new URLSearchParams(location.search);
 const light = query.has("xlight") || query.get("quality") === "eco";
 
 // For looking into the shading (?xdebug=paint: the painted colours unlit; ?xdebug=normal:
-// the shading normal as a colour).
+// the shading normal as a colour; nobump, noclear: without the relief or the wet coat;
+// shadow: the patches under the larvae in red, to see where they lie).
 function debugLarvae(larvae, mode) {
   if (!mode) return;
+  if (mode === "shadow") {
+    const m = larvae.meshes[2].material;
+    m.colorNode = vec3(1, 0, 0);
+    m.needsUpdate = true;
+    return;
+  }
   for (const mesh of larvae.meshes) {
+    // (The larvae themselves, not their shadows.)
+    if (!mesh.userData.state) continue;
     const m = mesh.material;
     if (mode === "noclear" || mode === "nobump") {
       if (mode === "noclear") m.clearcoatNode = null;
@@ -75,19 +84,34 @@ async function picture(ctx, name, draw) {
   await ctx.salmon.capture(`${ctx.set}/${ctx.scene.name}-${name}`, 1280, 720);
 }
 
-// A place on the gravel for something `size` long near p: on the bed, or on the tops of the
-// pebbles there if they stand higher (the redd's gravel is a layer of stones on the bed).
+// A place on the gravel for a larva `size` long near p, as the enemy system keeps one: its
+// centre REST.foot of its size above the ground -- the bed, or the tops of the pebbles there
+// if they stand higher (the redd's gravel is a layer of stones on the bed) -- or, dead,
+// REST.dead above it. With `bedOnly`, above the bed alone (as the branch's older enemy system
+// did, before it walked them over the pebbles).
 function restOn(salmon) {
   const { fish, course, pebbles } = salmon;
   const spot = {},
-    stones = [];
-  return (p, size) => {
-    course.locate(p.x, p.z, fish.river.s, spot);
+    stones = [],
+    q = { x: 0, y: 0, z: 0 };
+  const topAt = (x, z, size, bedOnly) => {
+    course.locate(x, z, fish.river.s, spot);
     let top = course.bed(spot.s, spot.u);
-    stones.length = 0;
-    pebbles.near(p, size, stones);
-    for (const c of stones) if (Math.hypot(c.x - p.x, c.z - p.z) < c.r + size * 0.25) top = Math.max(top, c.y + c.ry * 0.85);
-    p.y = top + size * 0.12;
+    if (!bedOnly) {
+      q.x = x;
+      q.z = z;
+      stones.length = 0;
+      pebbles.near(q, size, stones);
+      for (const c of stones) if (Math.hypot(c.x - x, c.z - z) < c.r + size * 0.25) top = Math.max(top, c.y + c.ry * 0.85);
+    }
+    return top;
+  };
+  // (The highest of the ground under the middle and a little round it, so that a larva posed
+  // on a slope does not have its head in the stones: the scenes are for looking at it.)
+  return (p, size, { dead = false, bedOnly = false } = {}) => {
+    let top = topAt(p.x, p.z, size, bedOnly);
+    if (!bedOnly) for (let k = 0; k < 4; k++) top = Math.max(top, topAt(p.x + Math.cos(k * 1.571) * size * 0.3, p.z + Math.sin(k * 1.571) * size * 0.3, size, bedOnly));
+    p.y = top + size * (dead ? REST.dead : REST.foot);
     return p;
   };
 }
@@ -147,6 +171,7 @@ const SCENES = {
     e = pose("beetleLarva", 0.55, { mode: "recover", t: 0.06, gape: 1, phase: 0.4 });
     await picture(ctx, "kaefer-zugebissen", draw);
     e = pose("beetleLarva", 0.55, { dead: true, rolled: Math.PI, corpse: 3, mode: "dead", gape: 0.35 });
+    rest(e.position, 0.55, { dead: true });
     look(e, [0.3, 0.75, 0.62], 0);
     await picture(ctx, "kaefer-tot", draw);
 
@@ -156,6 +181,9 @@ const SCENES = {
     await picture(ctx, "libelle-kriecht", draw);
     look(e, [0.95, 0.35, 0.3], 0.25);
     await picture(ctx, "libelle-vorn", draw);
+    // The head close: the eyes' facets, the mask folded under the face.
+    look(e, [0.78, 0.22, 0.26], 0.32);
+    await picture(ctx, "libelle-kopf", draw);
     e = pose("dragonflyLarva", 0.42, { mode: "coil", t: 0.3, gape: 0.35 });
     look(e, [0.7, 0.4, 0.75], 0.2);
     await picture(ctx, "libelle-gespannt", draw);
@@ -172,6 +200,7 @@ const SCENES = {
     look(e, [1.15, 0.5, 0.45], 0.45);
     await picture(ctx, "libelle-zugepackt", draw);
     e = pose("dragonflyLarva", 0.42, { dead: true, rolled: Math.PI, corpse: 3, mode: "dead" });
+    rest(e.position, 0.42, { dead: true });
     look(e, [0.3, 0.75, 0.62], 0);
     await picture(ctx, "libelle-tot", draw);
 
@@ -305,8 +334,9 @@ async function capsuleScene(ctx, record) {
   draw();
   items[0].state = "taken";
   const takenAt = time;
-  for (const age of [0.06, 0.18, 0.4, 1.2]) {
+  for (const age of [0.03, 0.06, 0.18, 0.4, 1.2]) {
     items[0].age = age;
+    items[0].takenAge = age;
     time = takenAt + age;
     await picture(ctx, `genommen-${age}`, draw);
   }
@@ -314,7 +344,7 @@ async function capsuleScene(ctx, record) {
   items.length = 0;
   for (let i = 0; i < 6; i++) {
     const p = at.clone().addScaledVector(left, (i - 2.5) * 1.1 * L);
-    items.push({ x: p.x, y: p.y, z: p.z, place: i % 2 ? "belly" : "back", weapon: "piu", state: "idle", age: 3 + i, stage: [0, 1, 4, 5, 8, 9][i], size: 0.4 * L });
+    items.push({ x: p.x, y: p.y, z: p.z, place: i % 2 ? "belly" : "back", weapon: "piu", state: "idle", age: 3 + i, stage: [0, 1, 4, 5, 8, 9][i], size: 0.8 * L });
   }
   view(at.clone().addScaledVector(ahead, -4.2 * L).addScaledVector(up, 0.5 * L));
   await picture(ctx, "stufen", draw);
@@ -466,3 +496,375 @@ async function costScene(ctx, record) {
     drawMicroseconds: { larvae: larvaMicros, capsules: capsuleMicros },
   });
 }
+
+// ---- Views of the models as the player meets them, and in profile, for judging their shapes
+// and states side by side (the same cameras as the review of the first models used).
+
+// Frames drawn one at a time as the game draws them (one draw a frame, no settling), for
+// grain and shimmer in motion.
+async function frames(ctx, name, n, perFrame) {
+  const { salmon } = ctx;
+  const { renderer, post, camera } = salmon;
+  const canvas = renderer.domElement;
+  const bounds = canvas.getBoundingClientRect();
+  renderer.setSize(1280, 720, false);
+  post.setSize(1280, 720, 1280 / bounds.width, 1280, 720);
+  camera.aspect = 1280 / 720;
+  camera.updateProjectionMatrix();
+  for (let i = 0; i < n; i++) {
+    await salmon.run(1 / 30);
+    perFrame(i);
+    ctx.extreme.frame(1 / 30);
+    perFrame(i);
+    salmon.draw(1 / 30);
+    const image = canvas.toDataURL("image/jpeg", 0.92);
+    await fetch(`/__capture/${ctx.set}/${ctx.scene.name}-${name}-${String(i).padStart(2, "0")}`, { method: "POST", body: image });
+  }
+}
+
+// The game's own camera for a fish at `at` looking along yaw and pitch (placeCamera in
+// main.js, without its lag).
+function gameEye(salmon, at, yaw, pitch, L) {
+  const { THREE } = salmon;
+  const distance = L * 1.9 + 0.1;
+  const dir = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch), Math.sin(yaw) * Math.cos(pitch));
+  const eye = at.clone().addScaledVector(dir, -distance * 0.92);
+  eye.y += distance * 0.36;
+  const aim = at.clone().addScaledVector(dir, L * 1.2 + 0.05);
+  aim.y += L * 0.3;
+  return { eye, aim };
+}
+
+// Where a point lands in the 1280 by 720 picture (and its depth there).
+function project(salmon, p) {
+  const v = p.clone().project(salmon.camera);
+  return [Math.round((v.x * 0.5 + 0.5) * 1280), Math.round((-v.y * 0.5 + 0.5) * 720), +v.z.toFixed(4)];
+}
+
+Object.assign(SCENES, {
+  // Silhouettes: the two side by side, straight from above and from the side; each alone from
+  // above; the dragonfly larva's face head on.
+  async "larven-profil"(ctx, record) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE, course } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    debugLarvae(larvae, query.get("xdebug"));
+    const { ahead, left } = frameOf(salmon);
+    const rest = restOn(salmon);
+    await salmon.run(0.2);
+    const list = [];
+    const draw = () => larvae.draw(list);
+    const middle = fish.position.clone().addScaledVector(ahead, 0.8);
+    const a = rest(middle.clone().addScaledVector(left, 0.2), 0.52);
+    const b = rest(middle.clone().addScaledVector(left, -0.2), 0.42);
+    // Both facing across the picture, so from the side they are in profile.
+    list.push(larva(THREE, "beetleLarva", a, left, 0.52, { id: 2, phase: 0.9 }));
+    list.push(larva(THREE, "dragonflyLarva", b, left, 0.42, { id: 3, phase: 0.9 }));
+    const spot = {};
+    course.locate(middle.x, middle.z, fish.river.s, spot);
+    const surface = course.level(spot.s);
+    const c = a.clone().add(b).multiplyScalar(0.5);
+    salmon.view([c.x + 0.001, Math.min(c.y + 1.1, surface - 0.06), c.z], c.toArray(), 0.01);
+    await picture(ctx, "oben", draw);
+    const side = c.clone().addScaledVector(ahead, -1.25);
+    side.y = c.y + 0.05;
+    salmon.view(side.toArray(), c.toArray(), 0.01);
+    await picture(ctx, "seite", draw);
+    for (const [e, name] of [
+      [list[0], "kaefer-oben"],
+      [list[1], "libelle-oben"],
+    ]) {
+      const t = e.position;
+      salmon.view([t.x + 0.001, Math.min(t.y + e.size * 1.35, surface - 0.06), t.z], t.toArray(), 0.01);
+      await picture(ctx, name, draw);
+    }
+    const d = list[1];
+    const face = d.position.clone().addScaledVector(d.heading, d.size * 1.1);
+    face.y += d.size * 0.12;
+    salmon.view(face.toArray(), d.position.clone().addScaledVector(d.heading, d.size * 0.3).toArray(), 0.005);
+    await picture(ctx, "libelle-gesicht", draw);
+  },
+
+  // The mask through an attack, in profile and as the player sees it coming.
+  async "larven-maske"(ctx) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    const { ahead, left } = frameOf(salmon);
+    const rest = restOn(salmon);
+    await salmon.run(0.2);
+    const at = rest(fish.position.clone().addScaledVector(ahead, 0.7), 0.42);
+    const e = larva(THREE, "dragonflyLarva", at, left, 0.42, { phase: 1.1 });
+    const list = [e];
+    const draw = () => larvae.draw(list);
+    const steps = [
+      ["a-kriecht", "approach", 0],
+      ["b-coil", "coil", 0.3],
+      ["c-strike-0.02", "strike", 0.02],
+      ["d-strike-0.04", "strike", 0.04],
+      ["e-strike-0.08", "strike", 0.08],
+      ["f-strike-0.2", "strike", 0.2],
+      ["g-recover-0.08", "recover", 0.08],
+      ["h-recover-0.25", "recover", 0.25],
+    ];
+    const profile = () => {
+      const eye = e.position.clone().addScaledVector(ahead, -e.size * 1.6).addScaledVector(e.heading, e.size * 0.35);
+      eye.y = e.position.y + e.size * 0.05;
+      salmon.view(eye.toArray(), e.position.clone().addScaledVector(e.heading, e.size * 0.35).toArray(), 0.005);
+    };
+    const game = () => {
+      const eye = e.position.clone().addScaledVector(e.heading, e.size * 2.6);
+      eye.y = e.position.y + e.size * 1.1;
+      salmon.view(eye.toArray(), e.position.clone().addScaledVector(e.heading, e.size * 0.4).toArray(), 0.005);
+    };
+    for (const [name, mode, t] of steps) {
+      e.mode = mode;
+      e.t = t;
+      e.gape = mode === "strike" ? 1 : mode === "coil" ? 0.35 : 0.08;
+      profile();
+      await picture(ctx, `seite-${name}`, draw);
+      game();
+      await picture(ctx, `vorn-${name}`, draw);
+    }
+    // Held back (t below 0 in recover, as when the player has gone down): the mask stays in.
+    e.mode = "recover";
+    e.t = -3;
+    e.gape = 0.08;
+    game();
+    await picture(ctx, "vorn-i-zurueckgehalten", draw);
+  },
+
+  // Dead: half and wholly on its back, as the player's camera sees it and from low aside, laid
+  // where the enemy system lays a corpse.
+  async "larven-tot"(ctx) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    const { ahead, left, up } = frameOf(salmon);
+    const rest = restOn(salmon);
+    await salmon.run(0.2);
+    const list = [];
+    const draw = () => larvae.draw(list);
+    for (const [kind, size] of [
+      ["beetleLarva", 0.52],
+      ["dragonflyLarva", 0.42],
+    ]) {
+      for (const [rolled, tag] of [
+        [Math.PI * 0.5, "halb"],
+        [Math.PI, "ganz"],
+      ]) {
+        const at = rest(fish.position.clone().addScaledVector(ahead, 0.8), size, { dead: true });
+        list.length = 0;
+        list.push(larva(THREE, kind, at, left.clone().applyAxisAngle(up, 0.5), size, { dead: true, rolled, corpse: 3, mode: "dead", gape: 0.35 }));
+        const { eye } = gameEye(salmon, fish.position, Math.atan2(ahead.z, ahead.x), -0.25, 0.26);
+        salmon.view(eye.toArray(), at.toArray(), 0.01);
+        await picture(ctx, `${kind}-${tag}-spiel`, draw);
+        const low = at.clone().addScaledVector(ahead, -size * 1.3).addScaledVector(left, size * 0.3);
+        low.y = at.y + size * 0.25;
+        salmon.view(low.toArray(), at.toArray(), 0.005);
+        await picture(ctx, `${kind}-${tag}-seite`, draw);
+      }
+    }
+  },
+
+  // What the player sees: the game's camera behind the alevin, larvae crawling toward it at
+  // 1, 2 and 3.5 units, on the pebbles and (bed) on the bed alone; each picture also without
+  // the larvae, for the difference they make.
+  async "larven-distanz"(ctx, record) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    const { ahead, left, up } = frameOf(salmon);
+    const rest = restOn(salmon);
+    await salmon.run(0.2);
+    const list = [];
+    const draw = () => larvae.draw(list);
+    const yaw = Math.atan2(ahead.z, ahead.x);
+    const L = fish.length;
+    for (const bedOnly of [false, true]) {
+      list.length = 0;
+      let id = 1;
+      for (const [d, across] of [
+        [1, -0.25],
+        [2, 0.35],
+        [3.5, -0.4],
+      ]) {
+        const pb = rest(fish.position.clone().addScaledVector(ahead, d).addScaledVector(left, across), 0.52, { bedOnly });
+        const pd = rest(fish.position.clone().addScaledVector(ahead, d + 0.15).addScaledVector(left, across + 0.45), 0.4, { bedOnly });
+        list.push(larva(THREE, "beetleLarva", pb, ahead.clone().negate().applyAxisAngle(up, 0.3), 0.52, { id: id++, phase: d }));
+        list.push(larva(THREE, "dragonflyLarva", pd, ahead.clone().negate().applyAxisAngle(up, -0.3), 0.4, { id: id++, phase: d * 2 }));
+      }
+      for (const pitch of [0, -0.3]) {
+        const { eye, aim } = gameEye(salmon, fish.position, yaw, pitch, L);
+        salmon.view(eye.toArray(), aim.toArray(), 0.02);
+        const tag = `${bedOnly ? "logik" : "kiesel"}-p${pitch}`;
+        await picture(ctx, tag, draw);
+        record.push({ tag, L, points: list.map((e) => ({ kind: e.kind, d: +e.position.distanceTo(eye).toFixed(2), px: project(salmon, e.position) })) });
+        for (const m of larvae.meshes) m.visible = false;
+        await picture(ctx, `${tag}-ohne`, draw);
+        for (const m of larvae.meshes) m.visible = true;
+      }
+    }
+  },
+
+  // Crawling in motion, one draw a frame, the camera drifting: grain and shimmer.
+  async "larven-bewegung"(ctx) {
+    const { salmon } = ctx;
+    const { fish, scene, THREE } = salmon;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    const { ahead, left } = frameOf(salmon);
+    const rest = restOn(salmon);
+    await salmon.run(0.2);
+    const b = larva(THREE, "beetleLarva", rest(fish.position.clone().addScaledVector(ahead, 1.0).addScaledVector(left, 0.18), 0.52), ahead.clone().negate(), 0.52, { id: 1 });
+    const d = larva(THREE, "dragonflyLarva", rest(fish.position.clone().addScaledVector(ahead, 1.05).addScaledVector(left, -0.22), 0.4), ahead.clone().negate(), 0.4, { id: 2 });
+    const list = [b, d];
+    const startB = b.position.clone(),
+      startD = d.position.clone();
+    const mid = startB.clone().add(startD).multiplyScalar(0.5);
+    const yaw = Math.atan2(ahead.z, ahead.x);
+    await frames(ctx, "nah", 24, (i) => {
+      const t = i / 30;
+      b.phase = t * 6.28 * 1.4;
+      d.phase = t * 6.28 * 1.6;
+      b.position.copy(startB).addScaledVector(b.heading, t * 0.12);
+      d.position.copy(startD).addScaledVector(d.heading, t * 0.1);
+      const eye = mid.clone().addScaledVector(ahead, -0.75).addScaledVector(left, -0.3 + t * 0.25);
+      eye.y = mid.y + 0.3;
+      salmon.view(eye.toArray(), mid.toArray(), 0.01);
+      larvae.draw(list);
+    });
+    const { eye, aim } = gameEye(salmon, fish.position, yaw, -0.1, fish.length);
+    await frames(ctx, "spiel", 24, (i) => {
+      const t = i / 30;
+      b.phase = t * 6.28 * 1.4;
+      d.phase = t * 6.28 * 1.6;
+      salmon.view(eye.clone().addScaledVector(left, t * 0.1).toArray(), aim.toArray(), 0.02);
+      larvae.draw(list);
+    });
+  },
+
+  // The live redd with the game's own camera (the pilot steering), each larva's place in the
+  // picture written down, and the picture taken again without them.
+  async "larven-redd"(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, scene, look, held } = salmon;
+    const combat = extreme.combat;
+    const larvae = createLarvae(scene, { capacity: 24, light });
+    for (const kind of ["dragonflyLarva", "beetleLarva"]) combat.enemies.drawnBy?.(kind);
+    extreme.testing = true;
+    const steer = () => {
+      held.add("KeyS");
+      const live = combat.enemies.list.filter((e) => !e.dead);
+      if (live.length) {
+        const near = live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a));
+        const d = near.position.clone().sub(fish.position);
+        look.yaw = Math.atan2(d.z, d.x);
+        look.pitch = Math.max(-0.6, Math.min(0.6, Math.atan2(d.y, Math.hypot(d.x, d.z))));
+      }
+      combat.fire(live.length > 0 && live.some((e) => e.position.distanceTo(fish.position) < 3));
+      larvae.draw(combat.enemies.list);
+    };
+    const draw = () => larvae.draw(combat.enemies.list);
+    let last = 0;
+    for (const [t, name] of [
+      [12, "1"],
+      [40, "2"],
+      [66, "3"],
+    ]) {
+      await salmon.run(t - last, steer);
+      last = t;
+      await picture(ctx, name, draw);
+      const cam = salmon.camera.position.clone();
+      record.push({
+        t,
+        fish: fish.position.toArray().map((v) => +v.toFixed(2)),
+        pitch: +look.pitch.toFixed(2),
+        larvae: combat.enemies.list
+          .filter((e) => e.spec?.render === "larva")
+          .map((e) => ({ kind: e.kind, mode: e.mode, dead: e.dead, size: +e.size.toFixed(2), dFish: +e.position.distanceTo(fish.position).toFixed(2), dCam: +e.position.distanceTo(cam).toFixed(2), dy: +(e.position.y - fish.position.y).toFixed(2), px: project(salmon, e.position) })),
+      });
+      for (const m of larvae.meshes) m.visible = false;
+      await picture(ctx, `${name}-ohne`, draw);
+      for (const m of larvae.meshes) m.visible = true;
+    }
+    held.delete("KeyS");
+    combat.fire(false);
+  },
+
+  // Capsules as the parr meets them: the game's camera, capsules 3, 6 and 10 lengths ahead
+  // (the size pickups.js gives them), in motion, and one taken as the fish swims through it.
+  async "kapsel-spiel"(ctx, record) {
+    const { salmon } = ctx;
+    const { fish, THREE, course, scene } = salmon;
+    const capsules = createCapsules(scene, { capacity: 24, light });
+    const stand = new THREE.Group();
+    const metal = new THREE.MeshStandardNodeMaterial({ color: 0x2a2d30, metalness: 0.8, roughness: 0.35 });
+    stand.add(new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.1).translate(-0.12, 0, 0), metal));
+    stand.add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5, 12).rotateZ(Math.PI / 2).translate(0.25, 0.03, 0), metal));
+    const stands = [];
+    const docked = new THREE.Matrix4();
+    const { ahead, left, up } = frameOf(salmon);
+    const L = fish.length;
+    const spot = {};
+    const ground = (p) => {
+      course.locate(p.x, p.z, fish.river.s, spot);
+      return course.bed(spot.s, spot.u);
+    };
+    await salmon.run(0.2);
+    const items = [];
+    for (const [d, across, h] of [
+      [3, 0.5, 0],
+      [6, -0.9, -0.2],
+      [10, 0.8, 0.1],
+    ]) {
+      const p = fish.position.clone().addScaledVector(ahead, d * L).addScaledVector(left, across * L);
+      p.y = Math.max(ground(p) + 0.5 * L, fish.position.y + h * L);
+      items.push({ x: p.x, y: p.y, z: p.z, place: "back", weapon: "piu", state: "idle", age: 5, stage: fish.stage, size: 0.4 + 0.25 * L });
+      const s = stand.clone();
+      s.matrixAutoUpdate = false;
+      scene.add(s);
+      stands.push(s);
+    }
+    let time = 20;
+    const draw = () => {
+      capsules.draw(items, time);
+      stands.forEach((s, i) => {
+        const shown = capsules.anchor(i, docked);
+        s.visible = shown > 0;
+        if (shown > 0) s.matrix.copy(docked);
+        s.matrixWorldNeedsUpdate = true;
+      });
+    };
+    const yaw = Math.atan2(ahead.z, ahead.x);
+    record.push({ label: "fish", L, stage: fish.stage });
+    for (const pitch of [0, 0.25]) {
+      const { eye, aim } = gameEye(salmon, fish.position, yaw, pitch, L);
+      salmon.view(eye.toArray(), aim.toArray(), 0.03);
+      await picture(ctx, `spiel-p${pitch}`, draw);
+      record.push({ pitch, points: items.map((it) => ({ d: +eye.distanceTo(new THREE.Vector3(it.x, it.y, it.z)).toFixed(2), px: project(salmon, new THREE.Vector3(it.x, it.y, it.z)) })) });
+    }
+    const { eye, aim } = gameEye(salmon, fish.position, yaw, 0.1, L);
+    await frames(ctx, "lauf", 20, (i) => {
+      time = 20 + i / 30;
+      salmon.view(eye.clone().addScaledVector(ahead, i * 0.01 * L).toArray(), aim.toArray(), 0.03);
+      draw();
+    });
+    // Late in a long game (the clock far on): the column must rise as smoothly as at the start.
+    await frames(ctx, "spaet", 6, (i) => {
+      time = 3000 + i / 30;
+      salmon.view(eye.toArray(), aim.toArray(), 0.03);
+      draw();
+    });
+    const c0 = new THREE.Vector3(items[0].x, items[0].y, items[0].z);
+    salmon.view(c0.clone().addScaledVector(ahead, -2.2 * L).addScaledVector(left, -0.4 * L).addScaledVector(up, 0.3 * L).toArray(), c0.toArray(), 0.03);
+    time = 30;
+    draw();
+    items[0].state = "taken";
+    await frames(ctx, "genommen", 24, (i) => {
+      time = 30 + i / 30;
+      items[0].age = i / 30;
+      items[0].takenAge = i / 30;
+      draw();
+    });
+  },
+});
