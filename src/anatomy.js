@@ -562,13 +562,16 @@ function builder() {
 }
 
 // detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
-// small hunters): fewer rings along the body and round it, simpler eyes and fins.
-export function makeFish(kind = "salmon", { detail = 1 } = {}) {
-  const rows = Math.max(24, Math.round(72 * detail)),
-    columns = Math.max(14, 2 * Math.round(20 * detail));
+// small hunters): fewer rings along the body and round it, simpler eyes and fins. `far`
+// builds the least a fish can be and still read as one at a few dozen pixels: a shell of
+// twelve rings by eight, the tail and the dorsal fin as flat vanes in the same mesh (the
+// eye is painted on), about 230 triangles.
+export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
+  const rows = far ? 12 : Math.max(24, Math.round(72 * detail)),
+    columns = far ? 8 : Math.max(14, 2 * Math.round(20 * detail));
   const eyeRings = Math.max(4, Math.round(10 * detail)),
     eyeSegments = Math.max(12, Math.round(40 * detail));
-  const finColumns = Math.max(8, Math.round(16 * detail)),
+  let finColumns = Math.max(8, Math.round(16 * detail)),
     finSteps = Math.max(4, Math.round(7 * detail));
   const plan = BODIES[kind];
   const knots = plan.profile.slice().reverse();
@@ -762,7 +765,7 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
     const lift = rho <= 1 ? bulge * (1 - rho * rho) + 0.02 * eye.r : 0.02 * eye.r - 0.1 * eye.r * Math.min(1, (rho - 1) / 0.08);
     return skinZ(x, y) + lift;
   };
-  for (const side of [-1, 1]) {
+  for (const side of far ? [] : [-1, 1]) {
     const rings = eyeRings,
       segments = eyeSegments;
     const start = eyes.positions.length / 3;
@@ -859,9 +862,17 @@ export function makeFish(kind = "salmon", { detail = 1 } = {}) {
       [lx + 0.03, ly * 0.95, 0],
       [hypural - 0.02, ly * 0.55, 0],
     ];
+    if (far) {
+      finColumns = 4;
+      finSteps = 1;
+    }
     fan(1, base, tip);
   }
-  if (plan.dorsal) fan(2, median(plan.dorsal.base[0], plan.dorsal.base[1], true), tipLine(plan.dorsal.tip));
+  if (far) {
+    // The far fish's two vanes go in with its body: one opaque draw.
+    const finGeometry = fins.finish(true);
+    return { body: mergeParts([bodyGeometry, finGeometry]), fins: null, plan };
+  }
   if (plan.anal) fan(3, median(plan.anal.base[0], plan.anal.base[1], false), tipLine(plan.anal.tip));
   if (plan.adipose) fan(12, median(plan.adipose.base[0], plan.adipose.base[1], true, 3), tipLine(plan.adipose.tip));
   for (const side of plan.pectoral ? [-1, 1] : []) {
@@ -1103,11 +1114,13 @@ export function setFishQuality({ fine = true, taa = true } = {}) {
 // Materials for a coat: the skin, the fins, with the swimming built in. `coat` may be shared
 // uniforms (for a fish whose coat changes); otherwise a fresh set is made. `mesh` is the
 // body mesh (whose instances the shader places itself, after bending them).
-export function createFishMaterials(coat, plan, { uniforms = null } = {}) {
+export function createFishMaterials(coat, plan, { uniforms = null, far = false } = {}) {
   const u = uniforms ?? coatUniforms(coat);
   u.uMouth = uniform(new THREE.Vector2(plan.mouth.x, plan.mouth.y));
   u.uGill = uniform(plan.gill ?? plan.eye.x - 0.085);
   u.uEye = uniform(new THREE.Vector3(plan.eye.x, plan.eye.y, plan.eye.r));
+  // (A far fish: one opaque plain material, the coat's uniforms shared with the near one.)
+  if (far) return { skin: new THREE.MeshStandardNodeMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.4 }), fins: null, uniforms: u, plan };
   const skin = new THREE.MeshPhysicalNodeMaterial({
     color: 0xffffff,
     metalness: 0.4,
@@ -1135,10 +1148,11 @@ export function createFishMaterials(coat, plan, { uniforms = null } = {}) {
 
 // The shading of a fish, wired to its mesh once the mesh exists (the instances are placed
 // by the shader itself, after the fish is reshaped and bent).
-function shadeFish(materials, body, membranes) {
-  const u = materials.uniforms;
-  const instanceMatrix = ownInstanceMatrix(body);
-  ownInstanceMatrix(membranes);
+// A fish's vertex stage: the rest shape changed (the spawner's hump and hooked jaw, the
+// alevin's shrinking yolk, the mouth), bent by the swimming wave, placed by the instance's
+// own matrix; and what it hands the fragment stage.
+function swimmingFish(u, mesh, { steps = 8 } = {}) {
+  const instanceMatrix = ownInstanceMatrix(mesh);
   const swim = attribute("aSwim", "vec4");
   const finPhase = attribute("aFinMouth", "vec2").x;
   const partProgress = attribute("aPart", "vec2");
@@ -1199,13 +1213,20 @@ function shadeFish(materials, body, membranes) {
       });
     });
     vSkinPoint.assign(p);
-    const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim);
+    const bent = bendSpine(finMotion(p, { swim, finPhase, part, finProgress }), n, swim, steps);
     const placed = instanceMatrix.mul(vec4(bent.position, 1));
     const world = modelWorldMatrix.mul(instanceMatrix);
     vFishScale.assign(world.mul(vec4(1, 0, 0, 0)).xyz.length());
     vNormal.assign(cameraViewMatrix.mul(world.mul(vec4(bent.normal, 0))).xyz);
     return placed.xyz;
   })();
+  return { position, part, vSkinPoint, vJaw, vMouthOpen, vFishScale, vNormal };
+}
+
+function shadeFish(materials, body, membranes) {
+  const u = materials.uniforms;
+  ownInstanceMatrix(membranes);
+  const { position, part, vSkinPoint, vJaw, vMouthOpen, vFishScale, vNormal } = swimmingFish(u, body);
 
   // What the colour pass works out and the lighting reads.
   const gThrough = property("vec3", "fishThrough");
@@ -1698,13 +1719,90 @@ function shadeFish(materials, body, membranes) {
   materials.skin.clearcoatNormalNode = gN0;
 }
 
+// A far fish (a few dozen pixels at most): its coat's broad colours only -- the dark back,
+// the silver, the pale belly, its bars and marks as a shade, a dot for an eye -- lit as a
+// plain surface that mirrors the water round it. No scales, spots, relief or clear coat,
+// and no derivatives: little work for a small fish, and nothing to flicker.
+function shadeFarFish(materials, mesh) {
+  const u = materials.uniforms;
+  const { position, part, vSkinPoint, vNormal } = swimmingFish(u, mesh, { steps: 3 });
+  const fishUV = uv();
+  const gSilver = property("float", "fishSilver");
+  const color = Fn(() => {
+    gSilver.assign(0);
+    const x = vSkinPoint.x,
+      y = vSkinPoint.y;
+    const band = float(0).toVar();
+    band.assign(fishUV.y.clamp(0, 1));
+    const skin = vec3(0).toVar();
+    If(part.lessThan(0.5), () => {
+      const head = smoothstep(u.uGill.sub(0.01), u.uGill.add(0.01), x);
+      const flank = smoothstep(0.1, 0.75, band).mul(smoothstep(0.85, 0.6, band)).mul(head.oneMinus());
+      skin.assign(mix(u.coat_back, u.coat_flank, smoothstep(0.26, 0.44, band)));
+      skin.assign(mix(skin, u.coat_belly, smoothstep(0.62, 0.8, band)));
+      // Marks, bars and waves, and the spots, as the shade they average to from afar.
+      skin.mulAssign(u.coat_parr.mul(0.3).add(u.coat_bars.mul(0.3)).mul(flank).oneMinus());
+      skin.mulAssign(u.coat_waves.mul(0.45).mul(smoothstep(0.4, 0.26, band)).mul(head.oneMinus()).oneMinus());
+      skin.mulAssign(u.coat_blackSpots.mul(0.12).mul(smoothstep(0.55, 0.3, band)).mul(u.coat_fish).oneMinus());
+      skin.assign(mix(skin, mix(skin, vec3(0.3, 0.05, 0.03), 0.5), u.coat_redSpots.mul(0.15).mul(flank)));
+      If(u.coat_spawn.greaterThan(0.01), () => {
+        const dress = mix(mix(vec3(0.07, 0.03, 0.018), vec3(0.4, 0.06, 0.035), smoothstep(0.2, 0.5, band)), vec3(0.05, 0.07, 0.03), head);
+        skin.assign(mix(skin, dress, u.coat_spawn));
+      });
+      gSilver.assign(u.coat_silver.mul(smoothstep(0.3, 0.46, band)).mul(smoothstep(1, 0.88, band)));
+      skin.assign(mix(skin, skin.mul(0.55).add(vec3(0.33, 0.35, 0.37)), gSilver.mul(0.4)));
+      skin.assign(mix(skin, u.coat_back.mul(1.2), head.mul(smoothstep(0.3, 0.12, band)).mul(u.coat_fish)));
+      // The eye, a dark dot with a pale ring.
+      const eye = length(vec2(x.sub(u.uEye.x), y.sub(u.uEye.y))).div(u.uEye.z);
+      skin.assign(mix(skin, u.coat_iris.mul(0.7), smoothstep(1.1, 0.9, eye)));
+      skin.assign(mix(skin, vec3(0.01), smoothstep(0.65, 0.45, eye)));
+      skin.assign(mix(skin, skin.mul(0.6).add(vec3(0.2, 0.14, 0.11)), u.coat_translucent.mul(0.4)));
+    }).Else(() => {
+      // (A clear fin shows the water through it: from afar it is mostly the body's colour.)
+      skin.assign(mix(mix(u.coat_flank, u.coat_fin.mul(1.15).add(0.02), 0.5), vec3(0.03, 0.03, 0.035), smoothstep(0.7, 0.95, fishUV.y).mul(u.coat_finDark).mul(0.7)));
+    });
+    return skin;
+  })();
+  const material = materials.skin;
+  material.positionNode = position;
+  material.colorNode = color;
+  material.normalNode = normalize(vNormal).mul(faceDirection);
+  material.metalnessNode = gSilver.mul(0.7).add(0.04);
+  material.roughnessNode = mix(0.45, mix(0.36, 0.2, gSilver), u.coat_fish);
+  waterLit(material, {
+    mirror: 0,
+    beforeIndirect: ({ radiance }) => {
+      const reflectView = reflect(positionViewDirection.negate(), normalView);
+      const reflectWorld = normalize(cameraViewMatrix.transpose().mul(vec4(reflectView, 0)).xyz);
+      radiance.addAssign(underwaterInscatter(reflectWorld).mul(1.25).add(fogNodes().color.mul(3.5).mul(smoothstep(0.6, 0.97, reflectWorld.y))).mul(mix(0.2, 1, u.coat_fish)));
+    },
+  });
+}
+
+// Where the crowds of fish are looked at from, for their distance detail and to leave out
+// the ones out of sight: the game's camera, the canvas it draws on (for its height in
+// pixels) and the scene (for how far one sees through its water). Set once by the game.
+const fishView = { camera: null, canvas: null, scene: null };
+export function setFishView(camera, canvas, scene) {
+  Object.assign(fishView, { camera, canvas, scene });
+}
+const lodFrustum = new THREE.Frustum(),
+  lodMatrix = new THREE.Matrix4(),
+  lodSphere = new THREE.Sphere();
+
 // A fish mesh (instanced) of a kind in a coat, with the swimming attributes wired up.
 //
 // For a crowd (a shoal, a kind of hunter) the slots are fixed, one per animal, but only the
 // animals about are drawn: begin() blanks every slot, each animal writes its own, and
 // finish() packs the written ones to the front and draws just those -- a sea shoal far off
 // in the brook costs nothing.
-export function createFishMesh(scene, kind, coat, count, { name = kind, castShadow = true, uniforms = null, cacheKey = kind, detail = 1 } = {}) {
+//
+// With `lod` (the big crowds: shoals, the farm's pens, the nets) finish() also leaves out
+// the animals out of sight -- outside the view, or farther off than one sees through the
+// water -- and draws those small on screen (under about 48 pixels long, 64 on the lighter
+// graphics) as far fish: the lightest body and plain shading, in a second mesh with buffers
+// of its own, without shadows. At sea that is most of the fish there are.
+export function createFishMesh(scene, kind, coat, count, { name = kind, castShadow = true, uniforms = null, cacheKey = kind, detail = 1, lod = false } = {}) {
   const geometry = makeFish(kind, { detail });
   const swim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
   swim.setUsage(THREE.DynamicDrawUsage);
@@ -1727,15 +1825,40 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
   membranes.name = `${name} fins`;
   body.castShadow = castShadow;
   body.receiveShadow = true;
-  for (const mesh of [body, membranes]) {
+  // The far fish: the same animals, their own slots packed the same way.
+  let far = null;
+  if (lod) {
+    const farBody = makeFish(kind, { far: true }).body;
+    const farSwim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
+    const farFinMouth = new THREE.InstancedInterleavedBuffer(new Float32Array(count * 2), 2, 1);
+    for (const buffer of [farSwim, farFinMouth]) buffer.setUsage(THREE.DynamicDrawUsage);
+    farBody.setAttribute("aSwim", farSwim);
+    farBody.setAttribute("aFinMouth", new THREE.InterleavedBufferAttribute(farFinMouth, 2, 0));
+    const farMaterials = createFishMaterials(COATS[coat] ?? coat, geometry.plan, { uniforms: materials.uniforms, far: true });
+    const mesh = new THREE.InstancedMesh(farBody, farMaterials.skin, count);
+    shadeFarFish(farMaterials, mesh);
+    mesh.name = `${name} far`;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    far = { mesh, swim: farSwim, finMouth: farFinMouth, near: new Uint8Array(count) };
+  }
+  for (const mesh of far ? [body, membranes, far.mesh] : [body, membranes]) {
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(mesh);
   }
   const matrices = body.instanceMatrix.array;
+  const upload = (list, n) => {
+    for (const [attribute, size] of list) {
+      attribute.clearUpdateRanges();
+      if (n > 0) attribute.addUpdateRange(0, n * size);
+      attribute.needsUpdate = true;
+    }
+  };
   return {
     body,
     membranes,
+    far: far?.mesh ?? null,
     swim,
     fin,
     mouth,
@@ -1746,10 +1869,44 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
       matrices.fill(0);
     },
     finish() {
-      let w = 0;
+      // What is seen from where (last frame's camera: a frame late is no matter here).
+      const camera = far ? fishView.camera : null;
+      let reach = Infinity,
+        perUnit = 0,
+        small = 0;
+      if (camera) {
+        lodFrustum.setFromProjectionMatrix(lodMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        // (Through the water: at this distance next to nothing of a fish gets through.)
+        const density = fishView.scene?.fog?.density ?? 0;
+        if (density > 0) reach = 3.5 / density;
+        perUnit = (fishView.canvas?.clientHeight || 900) / (2 * Math.tan((camera.fov * Math.PI) / 360));
+        small = fishQuality.fine ? 48 : 64;
+      }
+      const farMatrices = far?.mesh.instanceMatrix.array;
+      let w = 0,
+        f = 0;
       for (let i = 0; i < count; i++) {
         const o = i * 16;
         if (matrices[o] === 0 && matrices[o + 1] === 0 && matrices[o + 2] === 0) continue;
+        if (camera) {
+          const length = Math.hypot(matrices[o], matrices[o + 1], matrices[o + 2]) * MODEL_LENGTH;
+          lodSphere.center.set(matrices[o + 12], matrices[o + 13], matrices[o + 14]);
+          lodSphere.radius = length * 0.66;
+          const distance = lodSphere.center.distanceTo(camera.position);
+          if (distance - lodSphere.radius > reach || !lodFrustum.intersectsSphere(lodSphere)) continue;
+          // Its length on screen, in pixels; a little either way of the line it stays as it
+          // was, so a fish hovering there does not flip back and forth.
+          const pixels = (length / Math.max(distance, 1e-3)) * perUnit;
+          const near = far.near[i] ? pixels > small * 0.9 : pixels > small * 1.1;
+          far.near[i] = near ? 1 : 0;
+          if (!near) {
+            farMatrices.set(matrices.subarray(o, o + 16), f * 16);
+            far.swim.array.set(swim.array.subarray(i * 4, i * 4 + 4), f * 4);
+            far.finMouth.array.set(finMouth.array.subarray(i * 2, i * 2 + 2), f * 2);
+            f++;
+            continue;
+          }
+        }
         if (w !== i) {
           matrices.copyWithin(w * 16, o, o + 16);
           swim.array.copyWithin(w * 4, i * 4, i * 4 + 4);
@@ -1759,14 +1916,25 @@ export function createFishMesh(scene, kind, coat, count, { name = kind, castShad
       }
       body.count = membranes.count = w;
       body.visible = membranes.visible = w > 0;
-      for (const [attribute, size] of [
-        [body.instanceMatrix, 16],
-        [swim, 4],
-        [finMouth, 2],
-      ]) {
-        attribute.clearUpdateRanges();
-        if (w > 0) attribute.addUpdateRange(0, w * size);
-        attribute.needsUpdate = true;
+      upload(
+        [
+          [body.instanceMatrix, 16],
+          [swim, 4],
+          [finMouth, 2],
+        ],
+        w,
+      );
+      if (far) {
+        far.mesh.count = f;
+        far.mesh.visible = f > 0;
+        upload(
+          [
+            [far.mesh.instanceMatrix, 16],
+            [far.swim, 4],
+            [far.finMouth, 2],
+          ],
+          f,
+        );
       }
     },
   };

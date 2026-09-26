@@ -1618,7 +1618,7 @@ addFeature({
       yield "barge";
     }
     // The farmed fish, going round.
-    if (!farmFish) farmFish = createFishMesh(scene0, "salmon", "sea", 72, { name: "Farm salmon", cacheKey: "farm-salmon", detail: 0.5, castShadow: false });
+    if (!farmFish) farmFish = createFishMesh(scene0, "salmon", "sea", 72, { name: "Farm salmon", cacheKey: "farm-salmon", detail: 0.5, castShadow: false, lod: true });
     const fish = Array.from({ length: 72 }, (_, i) => ({ pen: i % pens.length, r: range(0.3, 0.85) * FARM.radius, y: range(2, FARM.depth - 4), a: range(0, TAU), speed: range(0.08, 0.16), size: range(5.5, 7.5), phase: range(0, TAU) }));
     const matrix = new THREE.Matrix4(),
       quaternion = new THREE.Quaternion(),
@@ -1632,7 +1632,7 @@ addFeature({
     let pelletClock = 3;
     // Wild cod drawn in by the feed that sinks through the nets, cruising round the pens
     // and under them.
-    if (!farmCod) farmCod = createFishMesh(scene0, "cod", "cod", 10, { name: "Farm cod", cacheKey: "farm-cod", detail: 0.5, castShadow: false });
+    if (!farmCod) farmCod = createFishMesh(scene0, "cod", "cod", 10, { name: "Farm cod", cacheKey: "farm-cod", detail: 0.5, castShadow: false, lod: true });
     const cods = Array.from({ length: 10 }, (_, i) => ({ pen: i % pens.length, r: R * range(1.12, 1.5), y: range(D - 6, D + 8), a: range(0, TAU), speed: range(0.025, 0.06) * (random() < 0.5 ? -1 : 1), size: range(4, 6.5), phase: range(0, TAU) }));
     // Feed sinking through each pen from the spreader at the surface.
     const FEED = 150;

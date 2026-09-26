@@ -691,9 +691,10 @@ function createShoals(scene, { detail, brawls }) {
   for (const [name, spec] of Object.entries(SHOALS)) {
     const count = spec.per * spec.groups;
     // Shoal fish are small on screen: the lighter body.
-    const fishMesh = createFishMesh(scene, spec.body, spec.coat, count, { name, castShadow: spec.size[1] > 1.5 && detail, cacheKey: `shoal-${name}`, detail: spec.size[1] > 1.5 ? 0.6 : 0.45 });
+    const fishMesh = createFishMesh(scene, spec.body, spec.coat, count, { name, castShadow: spec.size[1] > 1.5 && detail, cacheKey: `shoal-${name}`, detail: spec.size[1] > 1.5 ? 0.6 : 0.45, lod: true });
     fishMesh.body.count = fishMesh.membranes.count = count;
-    meshes.push(fishMesh.body, fishMesh.membranes);
+    // (The far ones too: they mirror the same water.)
+    meshes.push(fishMesh.body, fishMesh.membranes, fishMesh.far);
     const groups = [];
     let slot = 0;
     for (let g = 0; g < spec.groups; g++) {

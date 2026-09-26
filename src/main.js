@@ -24,7 +24,7 @@ import { createHud } from "./hud.js";
 import { createSave, savedStage } from "./save.js";
 import { createSound } from "./sound.js";
 import { createPebbles } from "./pebbles.js";
-import { COATS, MODEL_LENGTH, createFishMesh, setFishQuality } from "./anatomy.js";
+import { COATS, MODEL_LENGTH, createFishMesh, setFishQuality, setFishView } from "./anatomy.js";
 import { createQualityChoice, isDesktop, qualityName as qualityLabel, showIntro, showPhoneNotice } from "./intro.js";
 import { MONTHS, conditions, forceYear, thermal, updateConditions, waterTemperature } from "./seasons.js";
 import { createNets } from "./nets.js";
@@ -224,6 +224,8 @@ async function start() {
   const pace = Number(query.get("pace")) || 1;
   // (Before any fish is built: its shaders are made for the graphics chosen.)
   setFishQuality({ fine: settings.detail, taa: settings.taa });
+  // (And the crowds of fish know where they are seen from, for their detail by distance.)
+  setFishView(camera, canvas, scene);
   const salmon = createSalmon(scene, { pace });
   const fish = salmon.fish;
   mark("salmon");
