@@ -30,6 +30,8 @@ export function createEnemies(scene, { random }) {
   // The kinds whose strike missed in this step (for the whiff the game plays).
   const whiffs = [];
   let nextId = 1;
+  // The game's clock at the last update (for when an enemy was last hit).
+  let clockNow = 0;
 
   // Scratch.
   const to = new THREE.Vector3();
@@ -358,6 +360,7 @@ export function createEnemies(scene, { random }) {
 
   function update(dt, time, players, hooks) {
     whiffs.length = 0;
+    clockNow = time;
     for (const crowd of Object.values(crowds)) crowd.begin();
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
@@ -459,6 +462,7 @@ export function createEnemies(scene, { random }) {
     if (e.dead) return false;
     e.hp -= damage;
     e.lastHitBy = by;
+    e.hitAt = clockNow;
     e.stagger = 0.12;
     if (dir) e.position.addScaledVector(dir, Math.min(0.3, 0.04 * e.size));
     // Woken: an ambusher hit on the bed goes for whoever shot it.
