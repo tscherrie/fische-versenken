@@ -11,9 +11,10 @@
 // Items: { x, y, z, place: "back"|"belly", weapon, state: "idle"|"taken", age, stage?, size?,
 // takenAge? }. `size` is the capsule's whole size, across (as pickups.js keeps it for how near
 // a fish must come): the bubble's radius is half of it. Without it the stage sets the size.
-// `stage` (an index or an id of salmon.js STAGES) picks the ring's colour; without it, the
-// weapon's own stage. `takenAge`, if kept, is the time since it was taken; otherwise the burst
-// is timed from the first frame the item is drawn taken.
+// `stage` (an index or an id of salmon.js STAGES; pickups.js gives the weapon's stage) picks the
+// ring's colour; without it, the weapon's stage in pickups.js ARSENAL. `takenAge`, if kept, is
+// the time since it was taken; otherwise the burst is timed from the first frame the item is
+// drawn taken.
 //
 // Three instanced draws on layer 1 (out of the water's mirror and the Snell's window, with
 // the enemies and the effects): the shells, the rings, the bubbles. The shell and the ring
@@ -32,7 +33,7 @@ import { ditherThreshold } from "../../render/dither.js";
 import { fogNodes, underwaterInscatter } from "../../render/fog.js";
 import { ownInstanceMatrix } from "../../render/instancing.js";
 import { surfaceLevelAt, waterLit } from "../../render/water.js";
-import { WEAPONS } from "../weapons.js";
+import { ARSENAL } from "../pickups.js";
 
 const LAYER = 1;
 const TAU = Math.PI * 2;
@@ -48,9 +49,6 @@ export const STAGE_COLOURS = {
   sea: 0xffd24a,
   spawner: 0xec6378,
 };
-// The stage a weapon's capsule belongs to, where WEAPONS does not say (weapons.js may give
-// each weapon a `stage`: a stage id from salmon.js STAGES, which then wins).
-const WEAPON_STAGES = { piu: "alevin" };
 
 // How long the burst takes once a capsule is taken, in seconds; after it the capsule is not
 // drawn and its anchor shows nothing. (Within the 0.6 s pickups.js keeps a taken item.) The
@@ -84,10 +82,10 @@ STAGES.forEach((st, i) => {
   STAGE_INDEX[st.id] = i;
 });
 
-// A capsule's stage: its own `stage` (an index or an id) if the item carries one, else its
-// weapon's.
+// A capsule's stage: its own `stage` (an index or an id) if the item carries one, else the one
+// its weapon comes with.
 function stageOf(item) {
-  const own = item.stage ?? WEAPONS[item.weapon]?.stage ?? WEAPON_STAGES[item.weapon] ?? "fry";
+  const own = item.stage ?? ARSENAL[item.weapon]?.stage ?? "fry";
   const index = typeof own === "number" ? own : (STAGE_INDEX[own] ?? 1);
   return STAGES[Math.max(0, Math.min(STAGES.length - 1, index))];
 }
