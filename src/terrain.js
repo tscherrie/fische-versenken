@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RockBatch, chooseRock, rockSet, rockWeights, topAt } from "./render/rocks.js";
 import { WoodBatch, legacyTubeVertices, woodLimb } from "./wood.js";
-import { GeometryBatch, randomGenerator } from "./render/geometry.js";
+import { GeometryBatch, noise, randomGenerator, smoothstep } from "./render/geometry.js";
 import { PLANT_FADE, foliageMaterial, plantShare } from "./render/foliage.js";
 import { FALLS, MILLS, S, TRIBUTARIES, bedDetail, current, frame, level, locate, passSlot, place, section, smooth, tributaryAt } from "./course.js";
 import { TreeBatch, birch, fallenTrunk, fern, forestMaterial, juniper, pine, shrub, spruce, stump } from "./forest.js";
@@ -611,13 +611,17 @@ export function createTerrain(scene, { bedMaterial, surfaceMaterial, rocks, deta
         // deep it is. Crowfoot and green algae where it runs; starwort, milfoil and, in the
         // bigger river, pondweed where it is slack.
         const big = r.middle + r.lower;
+        // The weed grows in patches: here thick and tall, a few metres on thin and low. (From
+        // a noise over the river's coordinates, drawing nothing; only the plants' sizes answer
+        // it, never how many there are or where they hide a fish.)
+        const grow = 0.7 + 0.65 * smoothstep(0.25, 0.75, noise(p.s * 0.035, p.u * 0.09, 7.3));
         if (margin > 0.78 && p.depth < 3) {
           if (big > 0.5 && roll < 0.6) reeds(plants, p.x, p.z, p.y, p.level, random, 1);
           else if (r.brook + r.upper > 0.4 && roll < 0.35) horsetail(plants, p.x, p.z, p.y, p.level, random, 0.8 + 0.4 * r.upper);
           else sedge(plants, p.x, p.z, p.y, p.level, random, 0.6 + 0.6 * (r.upper + r.middle));
           cover.push({ x: p.x, z: p.z, radius: 3, top: p.level });
         } else if (fast && p.depth > 2.5 && r.brook < 0.6 && roll < 0.8) {
-          crowfoot(plants, p.x, p.z, p.y, p.level, flow, random, 0.7 + 0.5 * big);
+          crowfoot(plants, p.x, p.z, p.y, p.level, flow, random, 0.7 + 0.5 * big, grow);
           cover.push({ x: p.x, z: p.z, radius: 5, top: p.y + Math.min(p.depth, 8) });
         } else if (fast) {
           // A patch of stones furred with moss and streaming threads.
@@ -635,13 +639,13 @@ export function createTerrain(scene, { bedMaterial, surfaceMaterial, rocks, deta
           burReed(plants, p.x, p.z, p.y, p.level, flow, random, 0.8 + 0.4 * big);
           cover.push({ x: p.x, z: p.z, radius: 2.5, top: p.level });
         } else if (p.depth > 2 && big > 0.3 && roll < 0.4) {
-          pondweed(plants, p.x, p.z, p.y, p.level, flow, random, 0.6 + 0.6 * (r.upper + big));
+          pondweed(plants, p.x, p.z, p.y, p.level, flow, random, 0.6 + 0.6 * (r.upper + big), grow);
           cover.push({ x: p.x, z: p.z, radius: 3, top: p.y + Math.min(p.depth, 10) });
         } else if (p.depth > 1.4 && roll < 0.7) {
-          milfoil(plants, p.x, p.z, p.y, p.level, flow, random, 0.8 + 0.5 * (r.upper + big));
+          milfoil(plants, p.x, p.z, p.y, p.level, flow, random, 0.8 + 0.5 * (r.upper + big), grow);
           cover.push({ x: p.x, z: p.z, radius: 2, top: p.y + Math.min(p.depth, 6) });
         } else {
-          starwort(plants, p.x, p.z, p.y, p.level, flow, random, 0.8 + 0.5 * (r.upper + big));
+          starwort(plants, p.x, p.z, p.y, p.level, flow, random, 0.8 + 0.5 * (r.upper + big), grow);
           cover.push({ x: p.x, z: p.z, radius: 1.8, top: p.y + Math.min(p.depth, 4) });
         }
       }

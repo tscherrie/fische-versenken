@@ -6,7 +6,7 @@ import { createCaustics, driftSurface } from "./render/caustics.js";
 import { createRipples } from "./render/ripples.js";
 import { createPost } from "./render/post.js";
 import { softShadowFilter, shadowFrame } from "./render/shadows.js";
-import { foliageSky, plantEye } from "./render/foliage.js";
+import { foliageSky, plantEye, plantSeason } from "./render/foliage.js";
 import { renderSettings } from "./render/policy.js";
 import { createDaylight } from "./daylight.js";
 import { framebufferSize, qualityName } from "../../shared/render-policy.js";
@@ -2547,6 +2547,9 @@ async function start() {
     treeUniforms.treeAutumn.value = Math.max(conditions.autumn, conditions.leafFall);
     treeUniforms.treeBare.value = clamp(conditions.leafFall * 0.7 + conditions.winter * 1.2 - conditions.spring * 1.2, 0, 1);
     treeUniforms.treeSnow.value = clamp(conditions.winter * 1.4 - 0.3, 0, 1) * (0.4 + 0.6 * conditions.ice);
+    // The weed flowers in summer and dies back in autumn.
+    plantSeason.bloom.value = clamp(1 - conditions.spring - conditions.autumn - conditions.winter, 0, 1);
+    plantSeason.fade.value = Math.max(conditions.autumn * 0.6, conditions.winter);
     skyUniforms.sun.value = sunUp * cloud + 0.25 * day.moon;
     skyUniforms.sunDirection.value.copy(sun.disk);
     skyUniforms.sunColor.value.copy(keyColor);
