@@ -246,6 +246,15 @@ export function stemStrand(curve, t, length, compliance) {
   };
 }
 
+// A plant's colours by age: `young` at a growing tip, `body` for the bulk of a leaf, `old`
+// where the tissue has aged, fouled and darkened (at the base of a stem, the lower leaves).
+// A blade or stem given such a palette instead of one colour grades it along its length,
+// from the age at its base to the age at its tip (age: [base, tip], 0 young, 1 old).
+export function paletteAt(palette, age, target = new THREE.Color()) {
+  const a = Math.min(1, Math.max(0, age));
+  return a < 0.5 ? target.copy(palette.young).lerp(palette.body, a * 2) : target.copy(palette.body).lerp(palette.old, a * 2 - 1);
+}
+
 // Each blade is a curved, cupped surface. It bends across its face unless it rides on a
 // parent strand, in which case it inherits the parent's motion at the attachment.
 export function blade(
@@ -265,6 +274,7 @@ export function blade(
     browning = 0,
     emit = true,
     random = null,
+    age = [0.7, 0.3],
   } = {},
 ) {
   // Even an omitted background blade consumes its original two random values. This
@@ -301,9 +311,7 @@ export function blade(
       distance: t * length,
       compliance,
     };
-    const tint = color
-      .clone()
-      .multiplyScalar(0.86 + 0.14 * Math.sin(Math.PI * t * 0.9));
+    const tint = (color.isColor ? color.clone() : paletteAt(color, age[0] + (age[1] - age[0]) * t)).multiplyScalar(0.86 + 0.14 * Math.sin(Math.PI * t * 0.9));
     if (browning) tint.lerp(brown, smoothJS(1 - browning, 1, t) * 0.8);
     for (let j = 0; j <= cols; j++) {
       const u = (j / cols) * 2 - 1;
@@ -324,8 +332,9 @@ export function blade(
 }
 
 // taper: how much of its radius a stem has lost at its tip; rows: rings along it (more
-// for a long thin stem, so it bends without corners).
-export function stem(batch, points, radius, color, root, compliance, attached = null, { taper = 0.65, rows: ringCount = 0 } = {}) {
+// for a long thin stem, so it bends without corners); age: as for a blade, when the colour
+// is a palette (old at the foot, young at the tip).
+export function stem(batch, points, radius, color, root, compliance, attached = null, { taper = 0.65, rows: ringCount = 0, age = [0.9, 0.1] } = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
   const length = curve.getLength();
   const rows = ringCount || Math.max(4, points.length * 3),
@@ -340,13 +349,14 @@ export function stem(batch, points, radius, color, root, compliance, attached = 
       .normalize();
     const b = new THREE.Vector3().crossVectors(tangent, a).normalize();
     const strand = attached || stemStrand(curve, t, length, compliance);
+    const tint = color.isColor ? color : paletteAt(color, age[0] + (age[1] - age[0]) * t);
     for (let j = 0; j <= cols; j++) {
       const angle = (j / cols) * TAU;
       const v = p
         .clone()
         .addScaledVector(a, Math.cos(angle) * radius * (1 - taper * t))
         .addScaledVector(b, Math.sin(angle) * radius * (1 - taper * t));
-      batch.vertex(v, [j / cols, t], color, root, strand, 0);
+      batch.vertex(v, [j / cols, t], tint, root, strand, 0);
       if (i < rows && j < cols) {
         const k = start + i * (cols + 1) + j;
         batch.quad(k, k + 1, k + cols + 1, k + cols + 2);
