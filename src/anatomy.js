@@ -561,6 +561,83 @@ function builder() {
   };
 }
 
+// A body plan's shape: its top, bottom and half width along the fish, the point of the
+// shell at height v (-1 the belly, 1 the back) round the section, and the shell's half width
+// at a point (x, y) of the side view. Made once per plan.
+const shapes = new WeakMap();
+function shapeOf(plan) {
+  let shape = shapes.get(plan);
+  if (shape) return shape;
+  const knots = plan.profile.slice().reverse();
+  const top = spline(knots.map((k) => [k[0], k[1]]));
+  const bottom = spline(knots.map((k) => [k[0], k[2]]));
+  const width = spline(knots.map((k) => [k[0], k[3]]));
+  const surface = (x, v, side) => {
+    const t = top(x),
+      b = bottom(x),
+      c = (t + b) * 0.5;
+    const y = v >= 0 ? c + v * (t - c) : c + v * (c - b);
+    const fullness = v >= 0 ? 1.85 : 2.4;
+    const waist = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(v), 2.1)), 1 / fullness);
+    return [x, y, side * Math.max(width(x) * waist, 0.0003)];
+  };
+  const skinZ = (x, y) => {
+    const t = top(x),
+      b = bottom(x),
+      c = (t + b) * 0.5;
+    const v = Math.max(-0.999, Math.min(0.999, y >= c ? (y - c) / Math.max(t - c, 1e-5) : (y - c) / Math.max(c - b, 1e-5)));
+    return surface(x, v, 1)[2];
+  };
+  shape = { top, bottom, width, surface, skinZ };
+  shapes.set(plan, shape);
+  return shape;
+}
+
+// Where a plan's (right) eye sits and which way it looks: the point of the skin at its
+// centre, and the skin's normal there. A salmon's eye looks out sideways and a little up;
+// the pike's, the bullhead's and the seal's sit high and look partly upward -- laid along
+// the side view instead, their rim would ride up over the brow. `toSkin(a, b)` carries a
+// point of the eye's own plane (a toward the snout, b upward, in eye radii) along that
+// normal down onto the skin.
+const eyeFrames = new WeakMap();
+export function eyeFrameOf(plan) {
+  let frame = eyeFrames.get(plan);
+  if (frame) return frame;
+  const { top, bottom, skinZ } = shapeOf(plan);
+  const { eye } = plan;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const h = eye.r * 0.2;
+  const slopeX = (skinZ(eye.x + h, eye.y) - skinZ(eye.x - h, eye.y)) / (2 * h),
+    slopeY = (skinZ(eye.x, eye.y + h) - skinZ(eye.x, eye.y - h)) / (2 * h);
+  const centre = V(eye.x, eye.y, skinZ(eye.x, eye.y));
+  const normal = V(-slopeX, -slopeY, 1).normalize();
+  const along = V(1, 0, 0).addScaledVector(normal, -normal.x).normalize();
+  const up = normal.clone().cross(along);
+  const inside = (p) => p.y < top(p.x) && p.y > bottom(p.x) && p.z < skinZ(p.x, p.y);
+  const q = V(0, 0, 0),
+    p = V(0, 0, 0);
+  // How far below the eye's plane the skin lies, along the normal (bisected: the head is
+  // convex round the eye, so the ray goes in once).
+  const depth = (a, b) => {
+    q.copy(centre).addScaledVector(along, a * eye.r).addScaledVector(up, b * eye.r);
+    let lo = -eye.r,
+      hi = eye.r * 3;
+    for (let k = 0; k < 32; k++) {
+      const mid = (lo + hi) * 0.5;
+      if (inside(p.copy(q).addScaledVector(normal, -mid))) hi = mid;
+      else lo = mid;
+    }
+    return (lo + hi) * 0.5;
+  };
+  const toSkin = (a, b, lift = 0) => {
+    const d = depth(a, b);
+    return q.clone().addScaledVector(normal, lift - d);
+  };
+  frame = { centre, normal, along, up, toSkin };
+  eyeFrames.set(plan, frame);
+  return frame;
+}
+
 // detail < 1 builds a lighter shell for fish that are only ever small on screen (shoals,
 // small hunters): fewer rings along the body and round it, simpler eyes and fins. `far`
 // builds the least a fish can be and still read as one at a few dozen pixels: a shell of
@@ -574,10 +651,7 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
   let finColumns = Math.max(8, Math.round(16 * detail)),
     finSteps = Math.max(4, Math.round(7 * detail));
   const plan = BODIES[kind];
-  const knots = plan.profile.slice().reverse();
-  const top = spline(knots.map((k) => [k[0], k[1]]));
-  const bottom = spline(knots.map((k) => [k[0], k[2]]));
-  const width = spline(knots.map((k) => [k[0], k[3]]));
+  const { top, bottom, surface } = shapeOf(plan);
   const hypural = plan.profile[plan.profile.length - 1][0];
   const SL = SNOUT - hypural;
 
@@ -590,15 +664,6 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
     const w = 0.5 - 0.5 * Math.cos(Math.PI * t);
     xs.push(SNOUT - (0.55 * t + 0.45 * w) * SL);
   }
-  const surface = (x, v, side) => {
-    const t = top(x),
-      b = bottom(x),
-      c = (t + b) * 0.5;
-    const y = v >= 0 ? c + v * (t - c) : c + v * (c - b);
-    const fullness = v >= 0 ? 1.85 : 2.4;
-    const waist = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(v), 2.1)), 1 / fullness);
-    return [x, y, side * Math.max(width(x) * waist, 0.0003)];
-  };
   const grid = [];
   for (let i = 0; i <= rows; i++) {
     const row = [];
@@ -741,30 +806,25 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
   }
   const bodyGeometry = body.finish(true);
 
-  // Eyes: set flush into the head, the cornea bulging only a little out of the skin. The
-  // rings lie at even steps of the radius seen from the side, so uv.y is that radius (0 at
-  // the centre, 1 where the cornea meets the skin) and the iris can be drawn in it without
-  // being squeezed toward the rim; uv.x is the angle round, 0 toward the snout. A last ring
-  // beyond the rim is sunk under the skin, so no gap shows round it.
+  // Eyes: set flush into the head, the cornea bulging only a little out of the skin, laid
+  // square to the skin at the eye's centre (eyeFrameOf). The rings lie at even steps of the
+  // radius on the eye's own plane, so uv.y is that radius (0 at the centre, 1 where the
+  // cornea meets the skin) and the iris is drawn round in it, not squeezed toward the rim;
+  // uv.x is the angle round, 0 toward the snout. A last ring beyond the rim is sunk under
+  // the skin, so no gap shows round it.
   const eyes = builder();
   const { eye } = plan;
-  // The head's own surface at (x, y), as the body shell lays it (half width from the height).
-  const skinZ = (x, y) => {
-    const t = top(x),
-      b = bottom(x),
-      c = (t + b) * 0.5;
-    const v = Math.max(-0.999, Math.min(0.999, y >= c ? (y - c) / Math.max(t - c, 1e-5) : (y - c) / Math.max(c - b, 1e-5)));
-    return surface(x, v, 1)[2];
-  };
-  const bulge = 0.16 * eye.r;
-  const corneaZ = (rho, theta) => {
-    const x = eye.x + rho * eye.r * Math.cos(theta),
-      y = eye.y + rho * eye.r * Math.sin(theta);
-    // (The rim stands a hair proud of the skin, so the eye's own round edge is what shows,
-    // not where it cuts the body's facets.)
-    const lift = rho <= 1 ? bulge * (1 - rho * rho) + 0.02 * eye.r : 0.02 * eye.r - 0.1 * eye.r * Math.min(1, (rho - 1) / 0.08);
-    return skinZ(x, y) + lift;
-  };
+  const eyeFrame = eyeFrameOf(plan);
+  // (An eye that looks upward stands up out of the head more, as the bullhead's does, or
+  // seen from the side it would be all but flat.)
+  const bulge = eye.r * (0.16 + 0.3 * Math.max(0, 0.85 - eyeFrame.normal.z));
+  // (The rim stands a hair proud of the skin, so the eye's own round edge is what shows,
+  // not where it cuts the body's facets.)
+  const lift = (rho) => (rho <= 1 ? bulge * (1 - rho * rho) + 0.02 * eye.r : 0.02 * eye.r - 0.1 * eye.r * Math.min(1, (rho - 1) / 0.08));
+  const cornea = (a, b) => eyeFrame.toSkin(a, b, lift(Math.hypot(a, b)));
+  const du = new THREE.Vector3(),
+    dv = new THREE.Vector3(),
+    en = new THREE.Vector3();
   for (const side of far ? [] : [-1, 1]) {
     const rings = eyeRings,
       segments = eyeSegments;
@@ -775,16 +835,14 @@ export function makeFish(kind = "salmon", { detail = 1, far = false } = {}) {
         const theta = (k / segments) * TAU;
         const c = Math.cos(theta),
           s = Math.sin(theta);
-        const x = eye.x + rho * eye.r * c,
-          y = eye.y + rho * eye.r * s;
+        const p = cornea(rho * c, rho * s);
         // The normal from the slope of the surface (worked out numerically, in steps of a
         // fiftieth of the eye's radius).
-        const at = (qx, qy) => corneaZ(Math.hypot(qx, qy), Math.atan2(qy, qx));
         const h = 0.02;
-        const fx = (at(rho * c + h, rho * s) - at(rho * c - h, rho * s)) / (2 * h * eye.r);
-        const fy = (at(rho * c, rho * s + h) - at(rho * c, rho * s - h)) / (2 * h * eye.r);
-        const inv = 1 / Math.hypot(fx, fy, 1);
-        eyes.vertex([x, y, side * corneaZ(rho, theta)], [-fx * inv, -fy * inv, side * inv], [k / segments, rho], 7);
+        du.subVectors(cornea(rho * c + h, rho * s), cornea(rho * c - h, rho * s));
+        dv.subVectors(cornea(rho * c, rho * s + h), cornea(rho * c, rho * s - h));
+        en.crossVectors(du, dv).normalize();
+        eyes.vertex([p.x, p.y, side * p.z], [en.x, en.y, side * en.z], [k / segments, rho], 7);
         if (r <= rings && k < segments) {
           const a = start + r * (segments + 1) + k;
           if (side > 0) {
@@ -1107,6 +1165,16 @@ const gauss = (x, width) => {
   const t = x.div(width);
   return exp(t.mul(t).negate());
 };
+// How far a point of the skin (rest shape) lies from the eye's centre, in eye radii, on the
+// eye's own plane -- the socket round an eye that looks partly upward is round on the head
+// as the eye is. Points far off that plane (the belly under a high-set eye) count as far.
+const eyeDistance = (u, p) => {
+  const d = vec3(p.x, p.y, abs(p.z)).sub(u.uEyeC);
+  const off = dot(d, u.uEyeN);
+  return length(d.sub(u.uEyeN.mul(off)))
+    .add(max(abs(off).sub(u.uEye.z.mul(2.5)), 0).mul(4))
+    .div(u.uEye.z);
+};
 
 // What the fish shaders may spend, fixed when they are built (the game reloads on a change
 // of graphics): `fine` the eye's depth and the scales' finest touches (the colour of each,
@@ -1126,6 +1194,10 @@ export function createFishMaterials(coat, plan, { uniforms = null, far = false }
   u.uMouth = uniform(new THREE.Vector2(plan.mouth.x, plan.mouth.y));
   u.uGill = uniform(plan.gill ?? plan.eye.x - 0.085);
   u.uEye = uniform(new THREE.Vector3(plan.eye.x, plan.eye.y, plan.eye.r));
+  // The (right) eye's centre on the skin and the way it looks (eyeFrameOf).
+  const eyeFrame = eyeFrameOf(plan);
+  u.uEyeC = uniform(eyeFrame.centre.clone());
+  u.uEyeN = uniform(eyeFrame.normal.clone());
   // (A far fish: one opaque plain material, the coat's uniforms shared with the near one.)
   if (far) return { skin: new THREE.MeshStandardNodeMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.4 }), fins: null, uniforms: u, plan };
   const skin = new THREE.MeshPhysicalNodeMaterial({
@@ -1258,6 +1330,8 @@ function shadeFish(materials, body, membranes) {
   const gRough = property("float", "fishRough");
   const gCoat = property("float", "fishCoat");
   const gCoatRough = property("float", "fishCoatRough");
+  // How much of the water round it the clear coat mirrors.
+  const gCoatEnv = property("float", "fishCoatEnv");
   const gFilm = property("float", "fishFilm");
   // The scales' relief (x along the fish, y down the flank), already weighted.
   const gScale = property("vec2", "fishScaleNormal");
@@ -1288,6 +1362,7 @@ function shadeFish(materials, body, membranes) {
     gRough.assign(0.4);
     gCoat.assign(0);
     gCoatRough.assign(0.16);
+    gCoatEnv.assign(1);
     gFilm.assign(360);
     gScale.assign(vec2(0));
     gN0.assign(normalize(vNormal).mul(faceDirection));
@@ -1604,33 +1679,41 @@ function shadeFish(materials, body, membranes) {
         const r = length(q);
         const toward = q.x.div(max(r, 1e-4));
         // The pupil, black, with the notch toward the snout that salmon have (the lens can
-        // swing forward there); a larger one in the alevin.
-        const pupilR = float(0.52).add(smoothstep(0.7, 1, toward).mul(0.07)).add(u.coat_yolk.mul(0.05));
+        // swing forward there). The alevin's eye is mostly pupil, a narrow ring round it.
+        const pupilR = float(0.52).add(smoothstep(0.7, 1, toward).mul(0.07)).add(u.coat_yolk.mul(0.13));
         const soft = px.div(u.uEye.z).max(0.01);
         const pupil = smoothstep(pupilR.add(soft), pupilR.sub(soft), r);
         const lens = vec3(0.004, 0.006, 0.008).add(vec3(0.02, 0.032, 0.036).mul(gauss(length(q.sub(vec2(0.14, 0.16))), 0.16)));
         // The iris: fine radial fibres, a golden ring round the pupil, dark flecks, darker
-        // toward its edge; then the dark ring where it meets the white of the eye.
+        // toward its edge; then the dark ring where it meets the white of the eye. (Kept
+        // well below white: a pale iris ring on a dark head stares.)
         const theta = atan(q.y, q.x);
-        const fibre = sin(theta.mul(70).add(skinNoise(q.mul(9)).mul(3))).mul(0.25).add(0.75);
+        const fibre = sin(theta.mul(70).add(skinNoise(q.mul(9)).mul(3))).mul(u.coat_yolk.mul(-0.15).add(0.25)).add(0.75);
         const fleck = smoothstep(0.74, 0.84, skinNoise(q.mul(vec2(14, 10))));
         const collar = gauss(r.sub(pupilR).sub(0.045), 0.035);
         // (Darker above, where the iris carries more pigment.)
         const iris = u.coat_iris
+          .mul(u.coat_yolk.mul(-0.3).add(0.62))
           .mul(fibre)
-          .mul(mix(0.9, 0.5, smoothstep(0.7, 0.9, r)))
+          .mul(mix(1, 0.45, smoothstep(0.62, 0.9, r)))
           .mul(smoothstep(0.25, 0.8, q.y).mul(0.35).oneMinus())
           .mul(fleck.mul(0.55).oneMinus())
-          .add(vec3(0.1, 0.07, 0.015).mul(collar));
-        const limbus = mix(u.coat_iris.mul(0.2), u.coat_back.mul(0.6), smoothstep(0.95, 1.02, r));
+          .add(vec3(0.08, 0.056, 0.012).mul(collar));
+        const limbus = mix(u.coat_iris.mul(0.15), u.coat_back.mul(0.6), smoothstep(0.95, 1.02, r));
         const ring = smoothstep(0.9, 0.96, r);
-        skin.assign(mix(mix(iris, limbus, ring), lens, pupil));
-        gMetal.assign(mix(mix(0.55, 0.2, ring), 0, pupil));
-        gRough.assign(mix(0.35, 0.2, pupil));
-        // The cornea over it: clear, wet, mirroring the bright water overhead and the sun.
-        gCoat.assign(1);
+        // An otter's or a seal's eye (no fish coat) is dark all over, its wet gleam all
+        // there is to it: no iris ring to speak of, nothing metallic.
+        const mammal = vec3(0.01, 0.008, 0.007).add(vec3(0.025, 0.015, 0.008).mul(smoothstep(0.55, 0.9, r)));
+        skin.assign(mix(mammal, mix(mix(iris, limbus, ring), lens, pupil), u.coat_fish));
+        gMetal.assign(mix(mix(0.3, 0.15, ring), 0, pupil).mul(u.coat_fish));
+        gRough.assign(mix(0.3, mix(0.35, 0.2, pupil), u.coat_fish));
+        // The cornea over it: clear and wet, catching the sun and, faintly, the bright water
+        // overhead. (Under water the cornea mirrors little -- it bends light hardly more than
+        // the water does; mirroring all of the water's light, it veils the eye milky.)
+        gCoat.assign(mix(0.2, 0.4, u.coat_fish));
         gCoatRough.assign(0.03);
-        gEnv.assign(0.4);
+        gCoatEnv.assign(0.5);
+        gEnv.assign(mix(0.12, 0.4, u.coat_fish));
       })
       .Else(() => {
         // Fins: a clear membrane stretched on darker rays, clearer toward the edge.
@@ -1726,7 +1809,7 @@ function shadeFish(materials, body, membranes) {
       if (lightingModel?.clearcoatRadiance) {
         const coatView = reflect(positionViewDirection.negate(), gN0);
         const coatWorld = normalize(cameraViewMatrix.transpose().mul(vec4(coatView, 0)).xyz);
-        lightingModel.clearcoatRadiance.addAssign(surroundings(coatWorld));
+        lightingModel.clearcoatRadiance.addAssign(surroundings(coatWorld).mul(gCoatEnv));
       }
     },
     afterIndirect: ({ irradiance, iblIrradiance, reflectedLight }) => {
@@ -1786,8 +1869,8 @@ function shadeFarFish(materials, mesh) {
       skin.assign(mix(skin, skin.mul(0.55).add(vec3(0.33, 0.35, 0.37)), gSilver.mul(0.4)));
       skin.assign(mix(skin, u.coat_back.mul(1.2), head.mul(smoothstep(0.3, 0.12, band)).mul(u.coat_fish)));
       // The eye, a dark dot with a pale ring.
-      const eye = length(vec2(x.sub(u.uEye.x), y.sub(u.uEye.y))).div(u.uEye.z);
-      skin.assign(mix(skin, u.coat_iris.mul(0.7), smoothstep(1.1, 0.9, eye)));
+      const eye = eyeDistance(u, vSkinPoint);
+      skin.assign(mix(skin, u.coat_iris.mul(0.5), smoothstep(1.1, 0.9, eye)));
       skin.assign(mix(skin, vec3(0.01), smoothstep(0.65, 0.45, eye)));
       skin.assign(mix(skin, skin.mul(0.6).add(vec3(0.2, 0.14, 0.11)), u.coat_translucent.mul(0.4)));
     }).Else(() => {
