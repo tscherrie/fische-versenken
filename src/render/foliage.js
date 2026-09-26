@@ -41,6 +41,7 @@ import {
   sign,
   sin,
   smoothstep,
+  step,
   uniform,
   uv,
   varying,
@@ -205,12 +206,14 @@ function strandPosition({ shadow = false } = {}) {
     If(rest.y.lessThan(ceiling), () => {
       moved.y.assign(min(moved.y, ceiling.sub(rest.y).add(position.y)));
     });
-    // A plant faded out altogether is folded into its root: no pixels at all. (And in the
-    // sun's shadow map, so is a plant low on the bed: turf and fallen leaves, and flowers;
-    // and out of season, so are a plant's flowers, each plant's a little earlier or later.)
-    if (shadow) return select(fade.greaterThan(0).and(lowPlant.not()), moved, anchor);
-    const out = cutMode.equal(CUT.FLOWER).and(plantSeason.bloom.lessThan(hash13(root.xzx.add(5.3)).mul(0.8).add(0.1)));
-    return select(fade.greaterThan(0).and(out.not()), moved, anchor);
+    // A plant faded out altogether is folded into its root: no pixels at all; and out of
+    // season, so are a plant's flowers, each plant's a little earlier or later. In the sun's
+    // shadow map, so are the plants low on the bed (turf, fallen leaves, crowfoot flowers)
+    // and the fine threads and moss shoots of the small tufts on the stones, whose cut
+    // outlines the map cannot hold: whole, they would throw solid shadows of nothing.
+    const offSeason = cutMode.equal(CUT.FLOWER).and(plantSeason.bloom.lessThan(hash13(root.xzx.add(5.3)).mul(0.8).add(0.1)));
+    if (shadow) return select(fade.greaterThan(0).and(lowPlant.or(offSeason).or(cutMode.equal(CUT.SCALES)).or(cutMode.equal(CUT.BRUSH)).not()), moved, anchor);
+    return select(fade.greaterThan(0).and(offSeason.not()), moved, anchor);
   })();
 }
 
@@ -232,19 +235,19 @@ export function foliageMaterial() {
   material.castShadowPositionNode = strandPosition({ shadow: true });
   const thin = leafThin;
   const leafUv = uv();
-  material.colorNode = Fn(() => {
+  // (Its colour only: what of the leaf is there, its alpha, is the opacity below. The sun's
+  // shadow pass takes the colour's alpha, and would work out every cut to throw it away; it
+  // is handed a plain one, and none of the colour's sums.)
+  material.colorNode = Fn((builder) => {
+    if (builder.material?.isShadowPassMaterial) return vec4(0, 0, 0, 1);
     // The plant's own shade, and the film of diatoms and silt, brown, over the old growth.
     const base = attribute("color", "vec3").mul(vPlantTint).toVar();
     base.assign(mix(base, vec3(0.1, 0.07, 0.025), vPlantShade.y.mul(0.55)));
-    // How far the leaf's coordinates move across a pixel, for every cut and pattern below.
-    // (Worked out here, at the top, once: a derivative taken in a branch is garbage.)
+    // How far the leaf's coordinates move across a pixel. (Worked out here, at the top,
+    // once: a derivative taken in a branch is garbage.)
     const du = float(0).toVar();
     du.assign(fwidth(leafUv.x));
-    const dv = float(0).toVar();
-    dv.assign(fwidth(leafUv.y));
     const across = abs(leafUv.x.sub(0.5)).toVar();
-    const a = float(0).toVar();
-    a.assign(across.mul(2));
     const v = leafUv.y;
     // The midrib highlight fades once a leaf is only a few pixels wide, so needle leaves do
     // not clip to white specks.
@@ -252,7 +255,7 @@ export function foliageMaterial() {
     // Veins: pinnate off the midrib, or parallel along a grass-like leaf.
     const monocot = cutMode.equal(CUT.MONOCOT);
     const veins = select(monocot, pow(cos(across.mul(88)).mul(0.5).add(0.5), 10).mul(0.6), pow(cos(v.sub(across.mul(0.32)).mul(155)).mul(0.5).add(0.5), 22));
-    const edge = pow(a, 5);
+    const edge = pow(across.mul(2), 5);
     const mottling = sin(v.mul(64).add(sin(leafUv.x.mul(25)))).mul(0.035).add(0.965);
     base.mulAssign(mottling.mul(edge.mul(-0.09).add(1).add(veins.mul(0.12))));
     base.assign(mix(base, base.mul(1.22).add(vec3(0.008, 0.012, 0)), midrib.mul(0.6)));
@@ -261,13 +264,26 @@ export function foliageMaterial() {
     // In autumn the weed dies back: browner, the old growth more than the tips.
     const withered = vec3(1.25, 0.95, 0.45).mul(dot(base, vec3(0.2126, 0.7152, 0.0722)));
     base.assign(mix(base, withered, plantSeason.fade.mul(0.35).mul(v.mul(-0.5).add(1))));
+    return vec4(base, 1);
+  })();
 
-    // The cut shapes. Each edge is softened over the width of a pixel (the alpha test's
-    // dither makes that a clean edge over a few frames), and once its detail is too fine for
-    // the pixels it gives way to a plain, narrower outline, so a distant feather is a slim
-    // leaf and not a paddle or a shimmer.
-    // (Everything the cuts share is a variable set here: a shared expression is worked out
-    // where it is first used, and that may be inside another cut's branch.)
+  // What of a leaf is there. The cut shapes give it its species' outline out of the same few
+  // triangles. Each edge is softened over the width of a pixel (the alpha test's dither
+  // makes that a clean edge over a few frames), and once its detail is too fine for the
+  // pixels it gives way to a plain, narrower outline, so a distant feather is a slim leaf
+  // and not a paddle or a shimmer.
+  material.opacityNode = Fn(() => {
+    // (Everything the cuts share is a variable set here, derivatives first: a shared
+    // expression is worked out where it is first used, and that may be inside another cut's
+    // branch.)
+    const du = float(0).toVar();
+    du.assign(fwidth(leafUv.x));
+    const dv = float(0).toVar();
+    dv.assign(fwidth(leafUv.y));
+    const across = abs(leafUv.x.sub(0.5)).toVar();
+    const a = float(0).toVar();
+    a.assign(across.mul(2));
+    const v = leafUv.y;
     const aw = float(0).toVar();
     aw.assign(du.mul(2));
     // (1 inside the edge, 0 outside, softened over w; never over nothing, which is a NaN.)
@@ -319,7 +335,18 @@ export function foliageMaterial() {
       alpha.mulAssign(smoothstep(0.25, 0.8, length(positionWorld.sub(cameraPosition))));
     });
     alpha.mulAssign(vPlantFade);
-    return vec4(base, alpha);
+    return alpha;
+  })();
+  // The same cuts, plainly, for the sun's shadow map where a cut leaf is big enough to throw
+  // a shadow of its own shape: a milfoil leaf its pinnae, a kelp blade its straps (the small
+  // tufts are left out of the map altogether, strandPosition).
+  material.maskShadowNode = Fn(() => {
+    const a = abs(leafUv.x.sub(0.5)).mul(2).toVar();
+    const v = leafUv.y;
+    const pinna = step(abs(fract(v.mul(5).sub(a)).sub(0.5)), 0.2).mul(step(a, v.mul(-0.35).add(1)));
+    const feather = max(pinna, step(a, 0.08));
+    const fingers = max(step(abs(fract(leafUv.x.mul(5)).sub(0.5)), 0.38), step(v, 0.3));
+    return select(cutMode.equal(CUT.FEATHER), feather, select(cutMode.equal(CUT.FINGERS), fingers, float(1))).greaterThan(0.5);
   })();
   // The rib and veins in relief, from their height's change across the pixel.
   material.normalNode = Fn(() => {
