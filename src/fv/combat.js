@@ -152,7 +152,7 @@ export function createCombat(game) {
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
   function enemyShoots(e, dir, gun) {
-    enemies.snout(e, enemyMuzzle);
+    if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
     for (let i = 0; i < gun.pellets; i++) {
       pellet.copy(dir);
       pellet.x += (random() - 0.5) * 2 * gun.spread;

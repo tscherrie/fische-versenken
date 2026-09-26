@@ -21,6 +21,10 @@ export function createEnemies(scene, { random }) {
   const crowds = {};
   for (const [kind, spec] of Object.entries(KINDS)) {
     crowds[kind] = createFishMesh(scene, spec.body, spec.coat, spec.capacity, { name: `Combat ${kind}`, castShadow: false, detail: 0.55 });
+    // On layer 1 with the effects: the main view sees them, the mirror and the Snell's
+    // window (which only show what is above the water) do not draw them again.
+    crowds[kind].body.layers.set(1);
+    crowds[kind].membranes.layers.set(1);
   }
   const list = [];
   // The kinds whose strike missed in this step (for the whiff the game plays).
@@ -209,6 +213,7 @@ export function createEnemies(scene, { random }) {
         if (e.t >= gun.interval && e.shots > 0) {
           e.t = 0;
           e.shots--;
+          e.firedAt = time;
           hooks.shoot?.(e, lead(e, fish, gun.speed, want).normalize(), gun);
         }
         if (e.shots <= 0 && e.t >= gun.interval) {
