@@ -487,6 +487,18 @@ export async function runShots(salmon, query) {
   if (query.has("plantab")) numbers.plantab = await plantCost(salmon, Number(query.get("plantab")) || 7);
   if (query.has("dumpwindow")) await dumpWindow(salmon, `${set}/${shot.name}`);
   await salmon.capture(`${set}/${shot.name}`, 1600, 900, { render: Number(query.get("render")) || 1 });
+  // (?xmask: the same picture again without the water plants, in the same page and the same
+  // held moment, so the two differ only by the plants and their shadows: what share of the
+  // picture they fill, and how they stand out from what is behind them.)
+  if (query.has("xmask")) {
+    const hidden = [];
+    salmon.scene.traverse((o) => {
+      if (o.isMesh && o.name === "Plants" && o.visible) hidden.push(o);
+    });
+    for (const o of hidden) o.visible = false;
+    await salmon.capture(`${set}/${shot.name}-np`, 1600, 900, { render: Number(query.get("render")) || 1 });
+    for (const o of hidden) o.visible = true;
+  }
   const report = {
     name: shot.name,
     set,
