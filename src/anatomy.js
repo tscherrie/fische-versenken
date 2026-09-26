@@ -1008,12 +1008,12 @@ export const COATS = {
   alevin: {
     back: [0.3, 0.22, 0.17], flank: [0.46, 0.34, 0.28], belly: [0.55, 0.42, 0.36],
     silver: 0.05, parr: 0, redSpots: 0, blackSpots: 0.25, spotSize: 0.45, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 1, fin: [0.3, 0.26, 0.22], finDark: 0, adipose: [0.3, 0.26, 0.22], iris: [0.3, 0.3, 0.26], yolk: 1,
+    spawn: 0, translucent: 1, fin: [0.3, 0.26, 0.22], finDark: 0, adipose: [0.3, 0.26, 0.22], iris: [0.3, 0.3, 0.26], yolk: 1, scales: 0,
   },
   fry: {
     back: [0.05, 0.05, 0.028], flank: [0.2, 0.17, 0.1], belly: [0.5, 0.46, 0.38],
     silver: 0.12, parr: 0.85, redSpots: 0.35, blackSpots: 0.25, spotSize: 0.6, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 0.5, fin: [0.2, 0.18, 0.13], finDark: 0, adipose: [0.45, 0.22, 0.1], iris: [0.5, 0.42, 0.22], yolk: 0,
+    spawn: 0, translucent: 0.5, fin: [0.2, 0.18, 0.13], finDark: 0, adipose: [0.45, 0.22, 0.1], iris: [0.5, 0.42, 0.22], yolk: 0, scales: 0.4,
   },
   parr: {
     back: [0.035, 0.038, 0.018], flank: [0.24, 0.19, 0.08], belly: [0.62, 0.58, 0.47],
@@ -1063,7 +1063,7 @@ export const COATS = {
   bullhead: {
     back: [0.06, 0.05, 0.035], flank: [0.17, 0.14, 0.09], belly: [0.42, 0.4, 0.33],
     silver: 0, parr: 0, redSpots: 0, blackSpots: 0.9, spotSize: 1.8, halo: 0, bars: 0.6, pikeSpots: 0,
-    spawn: 0, translucent: 0, fin: [0.2, 0.17, 0.12], finDark: 0.2, adipose: [0.2, 0.17, 0.12], iris: [0.6, 0.5, 0.3], yolk: 0,
+    spawn: 0, translucent: 0, fin: [0.2, 0.17, 0.12], finDark: 0.2, adipose: [0.2, 0.17, 0.12], iris: [0.6, 0.5, 0.3], yolk: 0, scales: 0,
   },
   perch: {
     back: [0.04, 0.07, 0.03], flank: [0.32, 0.36, 0.11], belly: [0.68, 0.66, 0.52],
@@ -1088,7 +1088,7 @@ export const COATS = {
   eel: {
     back: [0.035, 0.04, 0.018], flank: [0.16, 0.15, 0.07], belly: [0.55, 0.5, 0.3],
     silver: 0.12, parr: 0, redSpots: 0, blackSpots: 0, spotSize: 1, halo: 0, bars: 0, pikeSpots: 0,
-    spawn: 0, translucent: 0, fin: [0.1, 0.1, 0.06], finDark: 0, adipose: [0.1, 0.1, 0.06], iris: [0.7, 0.62, 0.3], yolk: 0,
+    spawn: 0, translucent: 0, fin: [0.1, 0.1, 0.06], finDark: 0, adipose: [0.1, 0.1, 0.06], iris: [0.7, 0.62, 0.3], yolk: 0, scales: 0,
   },
   mackerel: {
     back: [0.02, 0.13, 0.11], flank: [0.62, 0.68, 0.7], belly: [0.93, 0.93, 0.9],
@@ -1102,9 +1102,13 @@ export const COATS = {
   },
 };
 
+// (Scales: how much of the scale pattern a coat shows. None on the alevin, whose scales
+// have not grown yet (they come at three to four centimetres, in the fry's first summer),
+// the bullhead, which has none, or the eel, whose are sunk in its skin; none on fur.)
 for (const coat of Object.values(COATS)) {
   coat.fish ??= 1;
   coat.waves ??= 0;
+  coat.scales ??= coat.fish;
 }
 const COAT_KEYS = Object.keys(COATS.parr);
 export function coatUniforms(coat) {
@@ -1422,25 +1426,32 @@ function shadeFish(materials, body, membranes) {
       const mottle = skinNoise(vec2(along.mul(26), band.mul(8))).mul(0.6).add(skinNoise(vec2(along.mul(70), band.mul(20))).mul(0.4));
       skin.mulAssign(mix(1, mottle.mul(0.28).add(0.86), u.coat_fish));
       // Scales from the gill cover's edge to the tail: each lies over the front of the one
-      // behind, a dark groove behind each free edge (the tile, render/scales.js).
+      // behind, a dark groove behind each free edge (the tile, render/scales.js). Not on
+      // a fish without them (coat_scales: the alevin, the bullhead, the eel).
       const scaleMask = float(0).toVar();
-      scaleMask.assign(head.oneMinus().mul(u.coat_fish).mul(smoothstep(-0.29, -0.25, x)));
+      scaleMask.assign(head.oneMinus().mul(u.coat_scales).mul(smoothstep(-0.29, -0.25, x)));
+      // A fresh silver flank is one mirror, its scales only a faint net over it that shows
+      // in a raking light: the more silver, the quieter the scales' shade and relief.
+      const mirrorFlank = smoothstep(0.2, 0.9, u.coat_silver);
       // (The shade's contrast is raised where the scales are small: the tile's coarser
       // mipmaps keep the pattern but flatten it.)
-      skin.mulAssign(sc.b.mul(1.06).sub(1).mul(scaleMask).mul(mix(1, 0.4, detail)).add(1));
+      skin.mulAssign(sc.b.mul(1.06).sub(1).mul(scaleMask).mul(mix(1, 0.4, detail)).mul(mix(1, 0.6, mirrorFlank)).add(1));
       // Farther off, where single scales blur, groups of a few catching the light together:
       // a patchiness three scales across, faded before it gets fine enough to crawl.
       const groups = smoothstep(0.35 / fadeAt, 0.7 / fadeAt, max(length(gDs1), length(gDs2))).oneMinus();
-      skin.mulAssign(skinNoise(lattice.mul(0.34)).sub(0.5).mul(0.22).mul(groups).mul(scaleMask).add(1));
-      gScale.assign(sc.xy.mul(2).sub(1).mul(scaleMask).mul(mix(0.45, 1, detail)));
-      // Each scale a slightly different mirror, the more so the more silver: its own tilt,
-      // turned by a slow noise over the body so the tile's pattern does not repeat. Where
-      // the scales are small on screen this goes, before it can flicker.
+      skin.mulAssign(skinNoise(lattice.mul(0.34)).sub(0.5).mul(mix(0.22, 0.1, mirrorFlank)).mul(groups).mul(scaleMask).add(1));
+      gScale.assign(sc.xy.mul(2).sub(1).mul(scaleMask).mul(mix(0.45, 1, detail)).mul(mix(1, 0.7, mirrorFlank)));
+      // Each scale a slightly different mirror: its own small tilt (on a silver flank a
+      // little goes a long way), turned by a slow noise over the body so the tile's pattern
+      // does not repeat. Where the scales are small on screen this goes, before it can
+      // flicker.
       const turn = skinNoise(lattice.mul(0.07)).mul(TAU * 2);
       const aim = sc.w.mul(TAU * 2).add(turn);
-      const tiltAmount = mix(0.08, 0.2, smoothstep(0.2, 0.9, u.coat_silver)).mul(sin(sc.w.mul(37)).mul(0.4).add(0.6));
+      const tiltAmount = mix(0.09, 0.08, mirrorFlank).mul(sin(sc.w.mul(37)).mul(0.4).add(0.6));
       gTilt.assign(vec2(cos(aim), sin(aim)).mul(tiltAmount).mul(detail).mul(scaleMask));
-      if (fishQuality.fine && fishQuality.taa) gFilm.assign(mix(mix(300, 420, sc.w), 360, detail.mul(scaleMask).oneMinus()));
+      // (The thin film's colour differs a little from scale to scale: violet to green, not
+      // a patchwork of blue sequins.)
+      if (fishQuality.fine && fishQuality.taa) gFilm.assign(sc.w.sub(0.5).mul(40).mul(detail).mul(scaleMask).add(360));
       // Where each scale's row and column is, and the point within it (no derivatives).
       const row = floor(lattice.y);
       const shifted = lattice.x.sub(mod(row, 2).mul(0.5));
@@ -1455,7 +1466,7 @@ function shadeFish(materials, body, membranes) {
       skin.mulAssign(gauss(band.sub(lineBand), max(0.006, px.mul(6))).mul(0.05).mul(mix(0.4, 1, u.coat_silver)).mul(lineMask).add(1));
       if (fishQuality.fine) {
         const pore = smoothstep(1, 0.6, length(vec2(local.x.sub(0.16).div(0.2), local.y.div(0.07))));
-        skin.mulAssign(pore.mul(onLine).mul(detail).mul(lineMask).mul(0.5).oneMinus());
+        skin.mulAssign(pore.mul(onLine).mul(detail).mul(lineMask).mul(u.coat_scales).mul(0.5).oneMinus());
       }
       // Fine dark freckles over the back: the odd scale with a melanophore at its centre.
       const freckled = step(0.9, skinHash(cellId.add(17.3))).mul(smoothstep(0.42, 0.2, band));
@@ -1626,7 +1637,7 @@ function shadeFish(materials, body, membranes) {
         mix(
           0.6,
           mix(0.36, 0.17, gSilver)
-            .add(sc.w.sub(0.5).mul(0.07).mul(detail).mul(scaleMask))
+            .add(sc.w.sub(0.5).mul(mix(0.07, 0.03, mirrorFlank)).mul(detail).mul(scaleMask))
             .add(detail.oneMinus().mul(scaleMask).mul(gSilver).mul(0.1)),
           u.coat_fish,
         ),
