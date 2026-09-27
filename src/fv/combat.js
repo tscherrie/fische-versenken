@@ -203,8 +203,11 @@ export function createCombat(game) {
     if (deaths.length > 16) deaths.shift();
   }
   // An enemy's gun goes off: its pellets fly from its muzzle toward where the salmon will be.
+  // (Each pellet is a record from hostile.js's pool, filled in here: nothing is made per shot.)
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
+  // The rounds' glow, one array for them all (it is only read).
+  const roundTint = [7, 3.2, 0.7];
   function enemyShoots(e, dir, gun) {
     if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
     for (let i = 0; i < gun.pellets; i++) {
@@ -213,10 +216,31 @@ export function createCombat(game) {
       pellet.y += (random() - 0.5) * 2 * gun.spread;
       pellet.z += (random() - 0.5) * 2 * gun.spread;
       pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
-      hostile.fire({ source: e, weapon: gun.id, cause: gun.cause, position: enemyMuzzle.clone(), velocity: pellet.clone(), damage: gun.damage, drag: gun.drag, radius: 0.03 + 0.01 * e.size, life: 12, size: 0.05 + 0.02 * e.size, tint: [7, 3.2, 0.7], stretch: 3.5, s: e.river.s });
+      const p = hostile.spawn(e, gun.id, enemyMuzzle, pellet, e.river.s);
+      p.cause = gun.cause;
+      p.damage = gun.damage;
+      // (A gun without a drag of its own keeps the water's default.)
+      p.drag = gun.drag ?? p.drag;
+      p.radius = 0.03 + 0.01 * e.size;
+      p.life = 12;
+      p.size = 0.05 + 0.02 * e.size;
+      p.tint = roundTint;
+      p.stretch = 3.5;
     }
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, { size: 0.12 + 0.05 * e.size, life: 0.08, r: 5, g: 2.6, b: 0.6 });
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
+  }
+  // The salmon as the splatter sees it when an enemy's round strikes it (gore.hit takes an
+  // enemy): one record kept for each player and brought up to date at every hit, and the
+  // round's direction handed in beside it.
+  const struckAlong = new THREE.Vector3();
+  function struckBody(player) {
+    const f = player.fish;
+    const body = (player.struckBody ??= { position: f.position, heading: f.heading, size: f.length, kind: "salmon", dead: false, spec: {} });
+    body.position = f.position;
+    body.heading = f.heading;
+    body.size = f.length;
+    return body;
   }
 
   // What a sunk enemy gives back: a little growth for every kill, so fighting pays as well as
@@ -335,7 +359,7 @@ export function createCombat(game) {
     hostile.update(dt, players, {
       onPlayer(shot, player) {
         hurt(player, shot.source, outcome, shot);
-        gore.hit?.({ position: player.fish.position, heading: player.fish.heading, size: player.fish.length, kind: "salmon", dead: false, spec: {} }, shot.position, shot.velocity.clone().normalize(), shot.weapon);
+        gore.hit?.(struckBody(player), shot.position, struckAlong.copy(shot.velocity).normalize(), shot.weapon);
       },
       onGround(shot) {
         fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });

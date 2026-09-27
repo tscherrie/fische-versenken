@@ -4,18 +4,57 @@
 // the enemy that fired it, for the cause of death.
 //
 // Water stops a bullet: it loses its speed fast, does harm only over a short distance and
-// less the slower it gets, and once it is spent it hangs in the water and sinks to the bed.
+// less the slower it gets, and once it is spent it only sinks. It comes to rest on the bed,
+// or where it is when its life is up, lies there a while (REST) and then goes.
 
+import * as THREE from "three";
 import { bed, level, locate } from "../course.js";
 
 // Below this share of its first speed a bullet is spent: harmless, sinking.
 const SPENT = 0.25;
 const SINK = 0.45;
-// A spent round that reached the bed lies there this long, then goes.
-const REST = 8;
+// A round at rest lies there this long, then goes (the look fades it out over this time).
+export const REST = 8;
+
+// The fields a round carries, with their values for a new one (the gun sets what it needs
+// after spawn()).
+const NO_TINT = [7, 3.2, 0.7];
+function blank(p) {
+  p.source = null;
+  p.weapon = null;
+  p.cause = null;
+  p.damage = 0;
+  // How fast the water takes its speed (per second).
+  p.drag = 1.5;
+  p.radius = 0.03;
+  p.life = 12;
+  p.size = 0.05;
+  p.tint = NO_TINT;
+  p.stretch = 3.5;
+  p.age = 0;
+  p.speed0 = 0;
+  p.spent = false;
+  // Seconds since it was spent; whether it is at rest, and its spentAge when it came to rest.
+  p.spentAge = 0;
+  p.rested = false;
+  p.restAt = 0;
+  // The bed under it, worked out once when it is spent.
+  p.floor = 0;
+  // What it does to the player it strikes (set as it strikes).
+  p.hitDamage = 0;
+  return p;
+}
 
 export function createHostile({ capacity = 160 } = {}) {
   const live = [];
+  // The records, made once; `free` holds those not in the water.
+  const free = [];
+  for (let i = 0; i < capacity; i++) free.push(blank({ position: new THREE.Vector3(), velocity: new THREE.Vector3(), last: new THREE.Vector3(), river: { s: null, u: 0 }, born: 0 }));
+  let born = 0;
+  // The rounds that struck a player this step, and whom, handed on once the step is done.
+  const struck = [];
+  const struckPlayer = [];
+  let struckCount = 0;
   let along = 0;
   // Closest distance between segments p0-p1 and q0-q1, squared; `along` the fraction on p.
   function distance2(p0, p1, q0x, q0y, q0z, q1x, q1y, q1z) {
@@ -51,53 +90,115 @@ export function createHostile({ capacity = 160 } = {}) {
     return dx * dx + dy * dy + dz * dz;
   }
 
-  // A shot: `drag` is how fast the water takes its speed (per second).
-  function fire(shot) {
-    // (Full: the oldest goes, which is most likely a round lying on the bed.)
-    if (live.length >= capacity) live.shift();
-    shot.age = 0;
-    shot.speed0 = shot.velocity.length();
-    shot.drag ??= 1.5;
-    shot.spent = false;
-    // Seconds since it was spent, and whether it lies on the bed.
-    shot.spentAge = 0;
-    shot.rested = false;
-    shot.river = { s: shot.s ?? null, u: 0 };
-    shot.last = shot.position.clone();
-    live.push(shot);
+  // (Taken out of the list at `i`, its place filled from the end.)
+  function take(i) {
+    const p = live[i];
+    live[i] = live[live.length - 1];
+    live.pop();
+    return p;
+  }
+  // Full: the oldest round at rest goes first, then the oldest spent one, and only then the
+  // oldest still flying.
+  function evict() {
+    let rested = -1,
+      spent = -1,
+      flying = -1;
+    for (let i = 0; i < live.length; i++) {
+      const p = live[i];
+      if (p.rested) {
+        if (rested < 0 || p.born < live[rested].born) rested = i;
+      } else if (p.spent) {
+        if (spent < 0 || p.born < live[spent].born) spent = i;
+      } else if (flying < 0 || p.born < live[flying].born) flying = i;
+    }
+    return take(rested >= 0 ? rested : spent >= 0 ? spent : flying);
+  }
+  // (Still from now on, and REST counted from its spentAge now.)
+  function rest(p) {
+    p.velocity.set(0, 0, 0);
+    p.rested = true;
+    p.restAt = p.spentAge;
   }
 
-  // Move every shot one step; `onPlayer(shot, player)` when one hits a player's body.
+  // A new round from `position` along `velocity` (both copied), fired by the enemy `source`
+  // from the gun `weapon` (an id), at `s` along the river. The record comes back with every
+  // field at its default: the gun sets what it needs (cause, damage, drag, radius, life, size,
+  // tint, stretch).
+  function spawn(source, weapon, position, velocity, s = null) {
+    const p = blank(free.pop() ?? evict());
+    p.source = source;
+    p.weapon = weapon;
+    p.position.copy(position);
+    p.last.copy(position);
+    p.velocity.copy(velocity);
+    p.speed0 = p.velocity.length();
+    p.river.s = s;
+    p.river.u = 0;
+    p.born = ++born;
+    live.push(p);
+    return p;
+  }
+  // The same with the fields given in one object (for tests and rare shots; a field left
+  // undefined keeps its default).
+  function fire(o) {
+    const p = spawn(o.source ?? null, o.weapon ?? null, o.position, o.velocity, o.s ?? null);
+    for (const k in o) if (k !== "position" && k !== "velocity" && k !== "s" && k !== "source" && k !== "weapon" && o[k] !== undefined) p[k] = o[k];
+    return p;
+  }
+
+  // Move every round one step; `onPlayer(shot, player)` when one hits a player's body,
+  // `onGround(shot)` when a flying one strikes the bed. The round goes back to the pool right
+  // after its callback: keep nothing of it.
   function update(dt, players, { onPlayer, onGround }) {
+    // (How much of a spent round's speed goes over to sinking in this step: the same for all.)
+    const settle = 1 - Math.exp(-dt * 2);
+    // (Backwards, so a round moved into a freed place has had its step already.)
     for (let i = live.length - 1; i >= 0; i--) {
       const p = live[i];
       p.age += dt;
-      if (p.age >= p.life) {
-        live.splice(i, 1);
-        continue;
-      }
       if (p.rested) {
         p.spentAge += dt;
-        if (p.spentAge > REST + (p.restAt ?? 0)) live.splice(i, 1);
+        if (p.spentAge > REST + p.restAt) free.push(take(i));
+        continue;
+      }
+      // Its life is up: it rests where it is.
+      if (p.age >= p.life) {
+        rest(p);
         continue;
       }
       p.last.copy(p.position);
-      p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
       if (p.spent) p.spentAge += dt;
-      if (!p.spent && p.velocity.length() < SPENT * p.speed0) {
-        p.spent = true;
-        // Where it will come down: worked out once, not asked of the river every step (it
-        // barely drifts from here on).
-        locate(p.position.x, p.position.z, p.river.s, p.river);
-        p.floor = bed(p.river.s, p.river.u);
+      else {
+        p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
+        if (p.velocity.length() < SPENT * p.speed0) {
+          p.spent = true;
+          // Where it will come down: worked out once, not asked of the river every step (it
+          // barely drifts from here on).
+          locate(p.position.x, p.position.z, p.river.s, p.river);
+          p.floor = bed(p.river.s, p.river.u);
+        }
       }
-      if (p.spent) p.velocity.y += (-SINK - p.velocity.y) * (1 - Math.exp(-dt * 2));
+      // A spent round has no speed left for the water to take: it only sinks, what it had
+      // going sideways dying away as it goes over to sinking.
+      if (p.spent) {
+        p.velocity.x -= p.velocity.x * settle;
+        p.velocity.z -= p.velocity.z * settle;
+        p.velocity.y += (-SINK - p.velocity.y) * settle;
+      }
       p.position.addScaledVector(p.velocity, dt);
-      let struck = null,
+      if (p.spent) {
+        if (p.position.y < p.floor) {
+          p.position.y = p.floor;
+          rest(p);
+        }
+        continue;
+      }
+      let hit = null,
         best = 2;
-      for (const player of players) {
+      for (let j = 0; j < players.length; j++) {
+        const player = players[j];
         const f = player.fish;
-        if (p.spent || !f || player.down || f.captive || f.safe) continue;
+        if (!f || player.down || f.captive || f.safe) continue;
         const L = f.length,
           h = f.heading,
           c = f.position;
@@ -106,51 +207,51 @@ export function createHostile({ capacity = 160 } = {}) {
         const d2 = distance2(p.last, p.position, c.x - h.x * 0.5 * L, c.y - h.y * 0.5 * L, c.z - h.z * 0.5 * L, c.x + h.x * 0.44 * L, c.y + h.y * 0.44 * L, c.z + h.z * 0.44 * L);
         if (d2 < r * r && along < best) {
           best = along;
-          struck = player;
+          hit = player;
         }
       }
-      if (struck) {
+      if (hit) {
         p.position.lerpVectors(p.last, p.position, best);
-        live.splice(i, 1);
         // The slower it has become, the less it does.
         p.hitDamage = p.damage * Math.min(1, Math.max(0.4, p.velocity.length() / p.speed0));
-        onPlayer?.(p, struck);
-        continue;
-      }
-      if (p.spent) {
-        if (p.position.y < p.floor) {
-          p.position.y = p.floor;
-          p.velocity.set(0, 0, 0);
-          p.rested = true;
-          p.restAt = p.spentAge;
-        }
+        struck[struckCount] = take(i);
+        struckPlayer[struckCount++] = hit;
         continue;
       }
       locate(p.position.x, p.position.z, p.river.s, p.river);
-      const floor = bed(p.river.s, p.river.u);
-      if (p.position.y < floor) {
-        // A spent round settles on the bed; a live one strikes it and is gone.
-        if (p.spent) {
-          p.position.y = floor;
-          p.velocity.set(0, 0, 0);
-          p.rested = true;
-          p.restAt = p.spentAge;
-          continue;
-        }
-        live.splice(i, 1);
+      // A flying round strikes the bed and is gone.
+      if (p.position.y < bed(p.river.s, p.river.u)) {
         onGround?.(p);
+        free.push(take(i));
         continue;
       }
-      if (p.position.y > level(p.river.s) + 0.05) live.splice(i, 1);
+      if (p.position.y > level(p.river.s) + 0.05) free.push(take(i));
+    }
+    // The hits, told once every round has moved and newest round first, as they came when the
+    // list still kept the order the rounds were fired in: of several rounds striking a player
+    // in one step only the first told harms it (the rest fall in combat's moment of grace), so
+    // swapping rounds about in the list must not change which one that is.
+    while (struckCount > 0) {
+      let k = 0;
+      for (let j = 1; j < struckCount; j++) if (struck[j].born > struck[k].born) k = j;
+      const p = struck[k],
+        player = struckPlayer[k];
+      struckCount--;
+      struck[k] = struck[struckCount];
+      struckPlayer[k] = struckPlayer[struckCount];
+      struck[struckCount] = struckPlayer[struckCount] = null;
+      onPlayer?.(p, player);
+      free.push(p);
     }
   }
 
   return {
     live,
+    spawn,
     fire,
     update,
     reset() {
-      live.length = 0;
+      while (live.length) free.push(live.pop());
     },
   };
 }
