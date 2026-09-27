@@ -1,9 +1,9 @@
 // Splatter: what a hit and a kill leave in the water. The joke of Extreme is the contrast
 // between the calm river and weapons that are meant seriously, so this is meant seriously
 // too, and it grows with the weapon: the little laser leaves a puff, a fizz of steam and a
-// sinking fish trailing a thin red thread and smoke from a burnt pinhole; heavier weapons
-// tear the exit side open; the heaviest (or any weapon against a fish much smaller than the
-// one firing it) burst the fish: a billowing cloud, flecks, silver scales, and chunks of
+// dead fish trailing a thin red thread and smoke from a burnt pinhole; heavier weapons
+// tear the exit side open; the big guns (weapons.js: bursts) burst the fish whatever its
+// size: a billowing cloud, flecks, silver scales, and chunks of
 // flesh flung out on arcs, falling as they would in air (the game's rule: weapons work under
 // water as in air), bouncing once off the gravel and lying there. Blood drifts with the
 // current (the same water that carries the motes), darkens from crimson to rust as it
@@ -33,7 +33,7 @@ import { river, waterTime } from "../render/water.js";
 import { bed, clamp, current, level, locate } from "../course.js";
 import { FX_LAYER } from "./fx.js";
 import { BLOOD, CLOUD, EMBER, FLECK, GOO, ICHOR, SCALE, SILT, SMOKE, STEAM, createCloudMaterial, createGibGeometry, createGibMaterial, createSpeckMaterial, spriteBasis } from "./gore-shapes.js";
-import { WEAPONS } from "./weapons.js";
+import { WEAPONS, bursts } from "./weapons.js";
 
 const TAU = Math.PI * 2;
 // Chunks fall as they would in air (the weapons' rule), in scene units per second squared.
@@ -57,8 +57,8 @@ const FAINT = 4;
 const CORPSE_FOOD = 35;
 
 // How hard each weapon tears (the roster's splatter column). `power` 1 is a solid rifle hit;
-// a fish bursts when it is no longer than 0.9 * power of the firing fish's length, so the
-// little laser bursts only fry-sized things and a torpedo nearly everything. `burn`: the
+// it sets how much flies, while whether the fish bursts at all is the weapon's class
+// (weapons.js: bursts). `burn`: the
 // wound is burnt (steam, an ember, cauterised rims, smoke instead of a gush). A weapon may
 // say so itself in WEAPONS (`gore: power` or `gore: { power, burn }`); otherwise this table,
 // and failing that the damage of one shot.
@@ -653,8 +653,10 @@ export function createGore(scene, camera, { light = false } = {}) {
     // Clouds grow more slowly than the fish: a big one's burst fills the water round it,
     // not the whole screen.
     const kc = k > 1 ? Math.pow(k, 0.75) : k;
-    // Does it come apart, or sink whole with a hole in it?
-    const burst = k <= 0.9 * power * L;
+    // Does it come apart, or float up whole with a hole in it? The weapon decides (the
+    // user's rule, weapons.js): the big guns burst it into many pieces, the precise ones
+    // only kill it.
+    const burst = bursts(weapon);
     woundOf(e);
     const wx = wound.x,
       wy = wound.y,

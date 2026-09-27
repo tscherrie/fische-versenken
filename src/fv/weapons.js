@@ -12,7 +12,8 @@
 // overrule).
 //
 // Each weapon has a verb (`mode`):
-//   bolt     single fast shots, hold for a stream, heat lock (the laser)
+//   bolt     single fast shots, hold for a stream, heat lock (the laser); with `beam`, held
+//            it alternates a few pulses and a steady beam, the beam longer on a bigger fish
 //   pellets  a shell of pellets in a cone, two barrels, a break-action reload (the shotgun)
 //   lob      a grenade on an arc solved to land at the crosshair, bounces, blast (launcher)
 //   blade    a cut over an arc in front of the snout; Space with the blade out is a dash cut
@@ -66,6 +67,11 @@ export const WEAPONS = {
     core: [5, 2.6, 2.2],
     glow: [3, 0.35, 0.2],
     stretch: 9.5,
+    // Held, it alternates: `pulses` shots, then a steady beam for `seconds`, then pulses
+    // again (the user's wish). Each pair is [the alevin, the spawner], in between by the log
+    // of the length, so a fry mostly pulses and a big fish mostly holds the beam. The beam
+    // burns what it touches at the pulses' rate (damage and heat a second).
+    beam: { pulses: [6, 1], seconds: [0.3, 1.6] },
   },
   flinte: {
     title: "Abgesägte Doppelflinte",
@@ -179,6 +185,16 @@ export const WEAPONS = {
   },
 };
 
+// What a kill does to the fish (the user's rule): the big guns burst it into many pieces;
+// the precise weapons (the laser, the blades, the beams) only kill it, and it floats up
+// whole; fire chars it, and it floats up too. A weapon may say so itself (`burst`).
+const BURSTS = new Set(["flinte", "granate", "minigun", "torpedo", "raketen", "minen", "panzerbuechse", "harpune", "kanone", "saege"]);
+export const bursts = (id) => WEAPONS[id]?.burst ?? BURSTS.has(id);
+
+// Where a fish is between the alevin (0) and the spawner (1), by the log of its length.
+const growth = (L) => Math.min(1, Math.max(0, Math.log(L / 0.22) / Math.log(9 / 0.22)));
+const between = (pair, L) => pair[0] + (pair[1] - pair[0]) * growth(L);
+
 // Damage grows with the body: a fry's laser stings, the same laser on a big fish burns.
 export const damageScale = (L) => Math.min(12, Math.max(1, Math.pow(L / 0.35, 0.7)));
 // The balance unit: the laser's burst, damage per second.
@@ -210,6 +226,9 @@ export function createArsenal() {
     ammo: {},
     reloading: {},
     cooldown: { back: 0, belly: 0 },
+    // A laser held down (per place): whether its beam is on, the beam's seconds left, and
+    // the pulses fired since the trigger went down or the beam last went off.
+    cycle: { back: { beam: false, left: 0, pulses: 0 }, belly: { beam: false, left: 0, pulses: 0 } },
     // The weapon's state, made if it is new (any id can be put on the fish: tests do).
     ensure(id) {
       if (!id || id in this.heat) return;
@@ -300,6 +319,72 @@ function bodyEnds(e, tail, head) {
   head.copy(e.position).addScaledVector(e.heading, 0.44 * e.size);
 }
 
+// The closest approach of the segments p0-p1 and q0-q1: the squared distance; how far along
+// p0-p1 (0..1) it is is left in `nearS`.
+const u1 = new THREE.Vector3();
+const u2 = new THREE.Vector3();
+const w0 = new THREE.Vector3();
+const unit = (x) => Math.min(1, Math.max(0, x));
+let nearS = 0;
+function segmentSegment(p0, p1, q0, q1) {
+  u1.subVectors(p1, p0);
+  u2.subVectors(q1, q0);
+  w0.subVectors(p0, q0);
+  const a = u1.dot(u1),
+    e = u2.dot(u2),
+    f = u2.dot(w0);
+  let s = 0,
+    t = 0;
+  if (a > 1e-12) {
+    const c = u1.dot(w0);
+    if (e > 1e-12) {
+      const b = u1.dot(u2),
+        denom = a * e - b * b;
+      s = denom > 1e-12 ? unit((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) {
+        t = 0;
+        s = unit(-c / a);
+      } else if (t > 1) {
+        t = 1;
+        s = unit((b - c) / a);
+      }
+    } else s = unit(-c / a);
+  } else if (e > 1e-12) t = unit(f / e);
+  nearS = s;
+  const x = w0.x + u1.x * s - u2.x * t,
+    y = w0.y + u1.y * s - u2.y * t,
+    z = w0.z + u1.z * s - u2.z * t;
+  return x * x + y * y + z * z;
+}
+// How far a ray from `o` along the unit `d` goes before it enters a stone (a turned
+// ellipsoid, as projectiles.js has them), if that is before `far`; else `far`. A ray that
+// starts inside one goes nowhere.
+function rayStone(o, d, far, c) {
+  const rx = c.rx ?? c.r,
+    rz = c.rz ?? c.r,
+    ry = c.ry ?? c.r;
+  const cs = c.cos ?? 1,
+    sn = c.sin ?? 0;
+  const ox = o.x - c.x,
+    oy = o.y - c.y,
+    oz = o.z - c.z;
+  const Ox = (ox * cs - oz * sn) / rx,
+    Oy = oy / ry,
+    Oz = (ox * sn + oz * cs) / rz;
+  const Dx = (d.x * cs - d.z * sn) / rx,
+    Dy = d.y / ry,
+    Dz = (d.x * sn + d.z * cs) / rz;
+  const a = Dx * Dx + Dy * Dy + Dz * Dz,
+    b = Ox * Dx + Oy * Dy + Oz * Dz,
+    k = Ox * Ox + Oy * Oy + Oz * Oz - 1;
+  if (k < 0) return 0;
+  const disc = b * b - a * k;
+  if (disc < 0 || b > 0) return far;
+  const t = (-b - Math.sqrt(disc)) / a;
+  return t >= 0 && t < far ? t : far;
+}
+
 // The flame's puffs (tints and how they cool: kept, not made per puff).
 const FLAME_CORE_COOL = [0.9, 0.2, 0.03];
 const FLAME_BILLOW = [1.5, 0.6, 0.13];
@@ -307,6 +392,7 @@ const FLAME_BILLOW_COOL = [0.4, 0.05, 0.01];
 // What the jet and a burn tell the splatter (the same every time).
 const FIRE_INFO = Object.freeze({ mode: "flame", fire: true });
 const BURN_INFO = Object.freeze({ mode: "flame", fire: true, burning: true });
+const BEAM_INFO = Object.freeze({ mode: "beam", burn: true });
 
 // ---- The firing: every verb, and what the shots do when they land.
 //
@@ -331,6 +417,9 @@ export function createFiring(ctx) {
   const head = new THREE.Vector3();
   const closest = new THREE.Vector3();
   const eye = new THREE.Vector3();
+  const probe = new THREE.Vector3();
+  const beamEnd = new THREE.Vector3();
+  const rocks = [];
   const where = { s: null, u: 0 };
   let clock = 0;
   let volleys = 0;
@@ -345,6 +434,14 @@ export function createFiring(ctx) {
     let b = blades.get(player.id);
     if (!b) blades.set(player.id, (b = { swings: [], side: 1, lastCut: -9, drawn: false, held: false, lunges: player.fish.lungeCount ?? 0, dash: null }));
     return b;
+  };
+  // Per player and place: a laser's beam while it is on, worked out in the step (where it
+  // ends, and on what) and drawn in the frame.
+  const beams = new Map();
+  const beamOf = (player, place) => {
+    let r = beams.get(player.id);
+    if (!r) beams.set(player.id, (r = {}));
+    return (r[place] ??= { on: false, was: false, id: null, age: 0, to: new THREE.Vector3(), what: null });
   };
   // Enemies being thrown, stunned belly-up (until when), burning; when each may be stunned
   // again; the pellets of the last shell on each; when each last bled for a jet or a burn.
@@ -540,6 +637,137 @@ export function createFiring(ctx) {
     fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: w.size(L) * 2.2, life: 0.07, r: 4, g: 0.5, b: 0.3 });
     stat(id).shots++;
     if (player.local) sfx.piu(L, player.arsenal.heat[id] ?? 0);
+  }
+
+  // beam: the laser held steady, a step of it. It goes straight from the emitter to the
+  // crosshair and on to the first thing in the way -- a body, a stone, the bed, the
+  // surface -- or to its reach, and burns what it touches for as long as it stays on it, at
+  // the pulses' rate.
+  function ray(player, place, w, id, dt) {
+    const f = player.fish;
+    const L = f.length;
+    const b = beamOf(player, place);
+    muzzleOf(player, place, muzzle);
+    aimFrom(muzzle, L, aimDir);
+    const reach = w.reach(L);
+    let far = rayWater(muzzle, aimDir, reach, f.river.s);
+    let what = far < reach ? rayEnd : null;
+    if (game?.terrain) {
+      game.terrain.collidersNear(muzzle.x + aimDir.x * far * 0.5, muzzle.z + aimDir.z * far * 0.5, far * 0.5 + 3, rocks);
+      for (const c of rocks) {
+        const t = rayStone(muzzle, aimDir, far, c);
+        if (t < far) {
+          far = t;
+          what = "stone";
+        }
+      }
+    }
+    // The nearest body along it.
+    beamEnd.copy(muzzle).addScaledVector(aimDir, far);
+    const radius = w.radius(L);
+    let best = null,
+      bestS = 1;
+    for (const e of enemies.list) {
+      if (e.dead || pointSegment(e.position, muzzle, beamEnd, closest) > e.size * 0.6 + radius) continue;
+      bodyEnds(e, tail, head);
+      const r = e.size * 0.09 + radius;
+      if (segmentSegment(muzzle, beamEnd, tail, head) < r * r && nearS < bestS) {
+        best = e;
+        bestS = nearS;
+      }
+    }
+    if (best) {
+      far *= bestS;
+      what = "body";
+    }
+    b.to.copy(muzzle).addScaledVector(aimDir, far);
+    b.what = what;
+    b.age = b.was ? b.age + dt : 0;
+    b.on = true;
+    b.id = id;
+    if (best) damage(player.id, best, (w.damage / w.interval) * damageScale(L) * dt, aimDir, b.to, id, gorier(best, 0.12), BEAM_INFO);
+    // Where it ends on stone, gravel or the surface it boils the water: beads, and off stone
+    // or gravel now and then a spark and a puff of silt.
+    const p = b.to;
+    if (what && what !== "body") {
+      if (look() < dt * 18) fx.fizz(p.x, p.y, p.z, { count: 1, size: 0.006 + 0.006 * L, spread: 0.04 * L, rise: 0.9, random: look });
+      if (what !== "surface" && look() < dt * 10) {
+        sphere(tmp, look);
+        fx.spark(p.x, p.y, p.z, { vx: tmp.x * 1.5 * L, vy: Math.abs(tmp.y) * 2 * L, vz: tmp.z * 1.5 * L, size: 0.012 + 0.012 * L, life: 0.18, r: 5, g: 1.4, b: 0.35, stretch: 2 });
+      }
+      if (what !== "surface" && look() < dt * 3) puff(SILT, p.x, p.y + 0.02 * L, p.z, 0, 0.3 * L, 0, 0.06 * L + 0.015, 2.4, 1 + 0.5 * look(), 0.3, 3, 0.05 * L, f.river.s);
+    }
+    // And a bead now and then along it, where it heats the water it goes through.
+    if (look() < dt * 8) {
+      tmp.copy(muzzle).addScaledVector(aimDir, far * look());
+      fx.fizz(tmp.x, tmp.y, tmp.z, { count: 1, size: 0.005 + 0.004 * L, spread: 0.02 * L, rise: 0.7, random: look });
+    }
+    stat(id).beam = (stat(id).beam ?? 0) + dt;
+  }
+  // How far a ray from `o` along `d` goes before it meets the bed or the surface, if that
+  // is before `far` (marched, then narrowed down); which of the two it met is left in
+  // `rayEnd`.
+  let rayEnd = null;
+  function outside(o, d, t) {
+    probe.copy(o).addScaledVector(d, t);
+    locate(probe.x, probe.z, where.s, where);
+    if (probe.y > level(where.s) + 0.02) return (rayEnd = "surface");
+    if (probe.y < bed(where.s, where.u)) return (rayEnd = "bed");
+    return null;
+  }
+  function rayWater(o, d, far, s) {
+    const step = Math.max(0.3, far / 32);
+    where.s = s;
+    let last = 0;
+    for (let t = step; ; t += step) {
+      const at = Math.min(t, far);
+      if (outside(o, d, at)) {
+        let lo = last,
+          hi = at;
+        for (let i = 0; i < 6; i++) {
+          const mid = 0.5 * (lo + hi);
+          if (outside(o, d, mid)) hi = mid;
+          else lo = mid;
+        }
+        outside(o, d, hi);
+        return hi;
+      }
+      last = at;
+      if (at >= far) return far;
+    }
+  }
+  // A laser with a beam, held: after its pulses (and one interval) the beam for a while,
+  // then pulses again. Whether the beam burnt this step (the pulses are fire()'s).
+  function beamStep(player, place, w, id, dt, on) {
+    const a = player.arsenal;
+    const c = a.cycle[place];
+    const L = player.fish.length;
+    if (!on) {
+      c.beam = false;
+      c.pulses = 0;
+      return false;
+    }
+    if (!c.beam && c.pulses >= Math.round(between(w.beam.pulses, L)) && a.cooldown[place] <= 0) {
+      c.beam = true;
+      c.left = between(w.beam.seconds, L);
+      models.recoil(player, place);
+    }
+    if (!c.beam) return false;
+    ray(player, place, w, id, dt);
+    a.heat[id] += (w.heat / w.interval) * dt;
+    a.fired[id] = 0;
+    c.left -= dt;
+    if (a.heat[id] >= 1) {
+      a.locked[id] = true;
+      if (player.local) sfx.overheat(id);
+    }
+    if (c.left <= 0 || a.locked[id]) {
+      // (A breath between the beam and the next pulses, so the two read apart.)
+      c.beam = false;
+      c.pulses = 0;
+      a.cooldown[place] = w.interval;
+    }
+    return true;
   }
 
   // pellets: a shell of pellets in a cone, the flash, the kick.
@@ -1086,7 +1314,14 @@ export function createFiring(ctx) {
   function fire(player, dt, held, can) {
     const a = player.arsenal;
     a.cool(dt);
+    let beaming = false;
     for (const place of PLACES) {
+      // (A beam is on only while a step keeps it on.)
+      const beam = beams.get(player.id)?.[place];
+      if (beam) {
+        beam.was = beam.on;
+        beam.on = false;
+      }
       const id = a[place];
       if (!id) continue;
       magazine(player, id, dt);
@@ -1107,11 +1342,21 @@ export function createFiring(ctx) {
         if (player.local) sfx.flame(on && !a.locked[id], a.heat[id], player.fish.length);
         continue;
       }
+      if (w.beam && beamStep(player, place, w, id, dt, on)) {
+        beaming = true;
+        continue;
+      }
       if (!on) continue;
+      const c = a.cycle[place];
       while (a.cooldown[place] <= 0) {
         if (w.shells && (a.ammo[id] <= 0 || a.reloading[id] > 0)) break;
+        // (A laser that has fired its pulses waits an interval, then holds the beam.)
+        if (w.beam && c.pulses >= Math.round(between(w.beam.pulses, player.fish.length))) break;
         a.cooldown[place] += w.interval;
-        if (w.mode === "bolt") bolt(player, place, w, id);
+        if (w.mode === "bolt") {
+          bolt(player, place, w, id);
+          if (w.beam) c.pulses++;
+        }
         else if (w.mode === "pellets") shell(player, place, w, id);
         else if (w.mode === "lob") lob(player, place, w, id);
         else if (w.mode === "blade") cut(player, place, w, id);
@@ -1127,6 +1372,8 @@ export function createFiring(ctx) {
         }
       }
     }
+    // (The beam's hum, when the sound has one.)
+    if (player.local) sfx.beam?.(beaming, a.heat[a.back] ?? 0, player.fish.length);
     dashCheck(player);
     // A weapon that has cooled enough clicks back on.
     for (const id in a.locked) {
@@ -1344,6 +1591,15 @@ export function createFiring(ctx) {
       }
       fx.add(p.position.x, p.position.y, p.position.z, size, r * fade, g * fade, b * fade, p.stretch, v.x, v.y, v.z);
     }
+    // The lasers' beams.
+    if (camera && beams.size) {
+      camera.getWorldDirection(forward);
+      for (const player of ctx.players) {
+        const r = beams.get(player.id);
+        if (!r || player.down) continue;
+        for (const place of PLACES) if (r[place]?.on) drawBeam(player, place, r[place], tall);
+      }
+    }
     // The katana: a thin crescent of light where the blade's tip has just been, and the
     // dash cut's line along its path, both fading in a moment.
     if (ribbons) {
@@ -1414,5 +1670,57 @@ export function createFiring(ctx) {
     }
   }
 
-  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, stunned, stats, burning, blades, options };
+  // A beam from the emitter (where it is in this frame) to the end the step found: a chain
+  // of streaks laid along it, each turned and stretched to the stretch of beam it stands
+  // for as the eye sees it (in perspective), so the chain reads as one line at any angle,
+  // neither beading nor piling up; a white-hot core in a red sheath, the lens lit, and a
+  // hot spot where it ends.
+  const forward = new THREE.Vector3();
+  const beamDir = new THREE.Vector3();
+  const seen = new THREE.Vector3();
+  const across = new THREE.Vector3();
+  function drawBeam(player, place, b, tall) {
+    const w = WEAPONS[b.id];
+    if (!w) return;
+    const L = player.fish.length;
+    muzzleOf(player, place, muzzle);
+    beamDir.subVectors(b.to, muzzle);
+    const length = beamDir.length();
+    if (length < 1e-4) return;
+    beamDir.divideScalar(length);
+    // (Brighter and wider in its first moment, as it strikes.)
+    const strike = 1 + 0.8 * Math.max(0, 1 - b.age / 0.08);
+    const width = w.size(L) * 0.8 * strike;
+    const n = Math.min(40, Math.max(8, Math.ceil(length / Math.max(0.15, 0.5 * L))));
+    const seg = length / n;
+    const facing = beamDir.dot(forward);
+    const [r, g, bl] = w.tint;
+    const [cr, cg, cb] = w.core;
+    for (let i = 0; i <= n; i++) {
+      tmp.copy(muzzle).addScaledVector(beamDir, seg * i);
+      seen.subVectors(tmp, eye);
+      const depth = seen.dot(forward);
+      if (depth < 0.05) continue;
+      // The way the beam runs across the screen here (its direction less the part that
+      // only goes away from the eye), and how long a stretch of it looks.
+      across.copy(beamDir).multiplyScalar(depth).addScaledVector(seen, -facing);
+      const span = (seg * across.length()) / depth;
+      const size = Math.max(width, 0.006 * tall * depth);
+      // (Towards either end the streaks shorten, so none reaches back past the emitter or on
+      // past where the beam stops.)
+      const room = Math.min(i, n - i) * span;
+      // (A shimmer along it, from the step's clock: it holds still in the pause.)
+      const k = 0.5 * strike * (0.8 + 0.2 * Math.sin(i * 2.3 + clock * 53));
+      fx.add(tmp.x, tmp.y, tmp.z, size, r * k, g * k, bl * k, Math.max(1, Math.min(span / 0.18, room / 0.4) / size), across.x, across.y, across.z);
+      fx.add(tmp.x, tmp.y, tmp.z, size * 0.45, cr * k, cg * k, cb * k, Math.max(1, Math.min(span / 0.08, room / 0.18) / size), across.x, across.y, across.z);
+    }
+    fx.add(muzzle.x, muzzle.y, muzzle.z, width * 2.4, 4, 0.5, 0.3, 1);
+    if (b.what) {
+      const spot = Math.max(width * 3, 0.012 * tall * eye.distanceTo(b.to));
+      fx.add(b.to.x, b.to.y, b.to.z, spot, r * 0.5, g * 0.5, bl * 0.5, 1);
+      fx.add(b.to.x, b.to.y, b.to.z, spot * 0.4, cr * 0.8, cg * 0.8, cb * 0.8, 1);
+    }
+  }
+
+  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, stunned, stats, burning, blades, beams, options };
 }

@@ -47,7 +47,10 @@ export const SCENES = [
   // lengths for a camera beside the fight instead of behind the fish (the aim then follows
   // the nearest enemy); `lunges`: seconds at which Space is pressed; `melee`: the trigger
   // only while an enemy is in the blade's reach (as the phone's auto-fire would).
-  { name: "w-laser", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 5, pictures: [0.1, 1.2, 3.4], spawn: [["troutParr", 5, -0.6], ["troutParr", 5.5, 0], ["troutParr", 5, 0.6], ["bullhead", 4, 0.3]] },
+  { name: "w-laser", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 5, pictures: [0.1, 0.85, 1.2, 3.4], spawn: [["troutParr", 5, -0.6], ["troutParr", 5.5, 0], ["troutParr", 5, 0.6], ["bullhead", 4, 0.3]] },
+  // The laser held: pulses and the beam by turns, the beam longer on the bigger fish.
+  { name: "w-laser-seite", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 3, side: [3.2, 0.6, -1.5, 2], pictures: [0.3, 0.85], spawn: [["troutParr", 4, -0.3], ["troutParr", 4.5, 0.2], ["bullhead", 3.5, 0]] },
+  { name: "w-laser-parr", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "piu", seconds: 4, pictures: [0.2, 0.9, 1.4], spawn: [["troutParr", 3.5, -0.5], ["troutParr", 4, 0], ["troutParr", 3.5, 0.5], ["trout", 6, 0]] },
   { name: "w-flinte", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "flinte", seconds: 5, range: 1.6, pictures: [1.5, 4], snaps: ["shot", "kill", "reload"], spawn: [["troutParr", 2.4, -0.4], ["troutParr", 2.8, 0.3], ["troutParr", 3.2, 0], ["bullhead", 2, 0.5]] },
   { name: "w-flinte-seite", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "flinte", seconds: 3, range: 1.6, side: [0.8, 0.45, 1.0, 2.0], pictures: [1.2], snaps: ["shot", "kill"], spawn: [["troutParr", 2.4, -0.3], ["troutParr", 2.8, 0.2], ["troutParr", 3.2, 0]] },
   { name: "w-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, weapon: "granate", seconds: 6, pictures: [2, 5], snaps: ["flight", "blast", "gas", "kill", "reload"], spawn: [["troutParr", 5, -0.8], ["troutParr", 5.5, 0], ["troutParr", 5, 0.8], ["bullhead", 4.5, 0.3]] },
@@ -76,7 +79,10 @@ export const SCENES = [
   { name: "dps-katana", stage: "yearling", at: 1500, season: "summer", hour: 14, weapon: "katana", seconds: 6, dummy: ["troutParr", 0.8] },
   { name: "dps-flammen", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 4.5, dummy: ["trout", 2.2] },
   // Kills close to the eye: what a hit and a sinking leave in the water.
+  // (`kill`: the weapon the shots count as: a precise one leaves the fish whole to float up,
+  // a big gun bursts it.)
   { name: "splatter", stage: "parr", at: 2500, season: "summer", hour: 15, splatter: true, spawn: [["troutParr", 3.5, -0.4], ["troutParr", 4, 0.3], ["bullhead", 3, 0.1], ["trout", 7, 0]] },
+  { name: "splatter-gross", stage: "parr", at: 2500, season: "summer", hour: 15, splatter: true, kill: "flinte", spawn: [["troutParr", 3.5, -0.4], ["troutParr", 4, 0.3], ["bullhead", 3, 0.1], ["trout", 7, 0]] },
 ];
 
 SCENES.push(...LOOK_SCENES);
@@ -383,7 +389,7 @@ async function splatter(salmon, extreme, set, scene, list, index, extra, errors)
   for (const e of live()) {
     const dir = e.position.clone().sub(fish.position).normalize();
     for (let i = 0; i < 40 && !e.dead; i++) {
-      combat.projectiles.fire({ owner: 0, weapon: "piu", position: e.position.clone().addScaledVector(dir, -1.2), velocity: dir.clone().multiplyScalar(30), damage: 4, radius: 0.05, life: 0.2, size: 0.1, tint: [10, 1.1, 0.6] });
+      combat.projectiles.fire({ owner: 0, weapon: scene.kill ?? "piu", position: e.position.clone().addScaledVector(dir, -1.2), velocity: dir.clone().multiplyScalar(30), damage: 4, radius: 0.05, life: 0.2, size: 0.1, tint: [10, 1.1, 0.6] });
       await salmon.run(1 / 30);
       if (i === 0 && n === 0) await picture(`${scene.name}-treffer`);
     }

@@ -48,7 +48,7 @@ Der Schaden wächst mit der Körperlänge, eine frühe Waffe bleibt also brauchb
 
 | Stufe | Waffe | Gefühl | Platz | Splatter / Klang |
 |---|---|---|---|---|
-| Dottersackbrut (ab Schlupf) | Kompaktlaser* | präzise rote Pulse, Hitze statt Munition, bleibt ein Leben lang brauchbar | Rücken Mitte, auf der Schiene | Dampfperlen, rote Wölkchen, Larven platzen gelbgrün / scharfes „tsiu“ |
+| Dottersackbrut (ab Schlupf) | Kompaktlaser* | gehalten abwechselnd rote Pulse und ein Dauerstrahl; je größer der Fisch, desto weniger Pulse und desto länger der Strahl; Hitze statt Munition, bleibt ein Leben lang brauchbar | Rücken Mitte, auf der Schiene | tötet sauber: Der Fisch treibt mit verbranntem Loch auf; Dampfperlen, rote Wölkchen / scharfes „tsiu“, der Strahl summt |
 | Brütling | Abgesägte Doppelflinte* | zwei Riesenknalle aus nächster Nähe, dann klappt sie auf und lädt nach | Rücken rechts | Kleinzeug zerplatzt in Brocken, der Rest fliegt weg, Hülsen sinken / tiefes „BUMM“, Klacken |
 | Sömmerling | Revolver-Granatwerfer* | Granaten, die das Wasser schnell bremst: kurzer Bogen, prallen von Steinen in Verstecke | Rücken rechts | Kiesring, Fische fliegen in Stücken auseinander / hohles „tunk“, dumpfes „WUMM“ |
 | Jährling (beim alten König) | Katana* | schnelle Hiebe vor der Schnauze, Sprint-Schnitt mit der Leertaste, Konter gegen zustoßende Räuber | Rücken links, Griff nach vorn | zwei Hälften mit roten Bändern / „shiing“, nasses „schlk“ |
@@ -66,6 +66,7 @@ Der Schaden wächst mit der Körperlänge, eine frühe Waffe bleibt also brauchb
 | Laichlachs | Kettensäge | hochdrehen und in die Horde rammen: ein Sägefisch mit Zweitakter | Bauch, Schwert unter dem Kinn | Dauerstrahl aus rotem Nebel und Brocken / Zweitakt-Kreischen |
 
 **Regeln.**
+- Große Waffen zerreißen, präzise töten (27.09.): Flinte, Granatwerfer, Minigun, Torpedos, Raketen, Minen, Panzerbüchse, Granatharpune, Schiffskanone und Kettensäge zerfetzen ihr Opfer in viele Stücke, egal wie groß es ist. Laser, Katana, Nodachi, Partikelstrahler und Lichtbogenwerfer töten nur, und das Opfer treibt bauchoben auf. Der Flammenwerfer verkohlt es, dann treibt es ebenfalls auf.
 - Schussbahnen wie im Wasser: Kugeln, Schrot, Granaten und Kanonenkugeln verlieren schnell an Tempo, treffen nur auf kurze Distanz und sinken dann ab. Strahlen und Blitze fliegen gerade, Raketen und Torpedos haben einen Antrieb und ziehen Blasen.
 - Energie- und Motorwaffen werden heiß.
 - Feuerwaffen haben Magazine, die sich von selbst nachladen. Keine Waffe wird leer, und Munition gibt es nicht zu sammeln.
