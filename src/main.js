@@ -1586,7 +1586,7 @@ async function start() {
     el.className = className;
     el.innerHTML = '<svg viewBox="0 0 40 26"><path d="M5 22 20 6l15 16" /></svg><span class="name"></span>';
     threatBox.append(el);
-    return { el, svg: el.firstChild, name: el.lastChild, key: null, on: false, hunt: false, coil: false, title: "", fade: "", move: "", turn: "" };
+    return { el, svg: el.firstChild, name: el.lastChild, key: null, taken: false, on: false, hunt: false, coil: false, title: "", fade: "", move: "", turn: "" };
   }
   // On the ring, towards (x, y) from the middle of the screen, and turned that way.
   function pointArrow(arrow, x, y) {
@@ -1605,6 +1605,8 @@ async function start() {
     if (title !== arrow.title) arrow.name.textContent = arrow.title = title;
   }
   const arrows = Array.from({ length: 4 }, () => arrowElement("threat"));
+  // (Which arrow each shown threat has this frame, in the list's order.)
+  const shownArrows = [];
   const threatList = [];
   const threatAt = new THREE.Vector3();
   const warned = new WeakMap();
@@ -1618,19 +1620,32 @@ async function start() {
     const shown = Math.min(list.length, arrows.length);
     // A hunter keeps its arrow while it is among the four shown (the list is made afresh
     // each frame, the hunters' keys stay), so an arrow changes its name and colour only
-    // when its hunter changes; one newly shown takes an arrow left free.
-    for (const arrow of arrows) {
-      let kept = false;
-      for (let i = 0; i < shown; i++) if (list[i].key === arrow.key) kept = true;
-      if (!kept) arrow.key = null;
-    }
+    // when its hunter changes; one newly shown takes an arrow left free. A key may stand
+    // for several hunters (a mod's enemies of one kind can share one): each of them still
+    // gets an arrow of its own.
+    for (const arrow of arrows) arrow.taken = false;
     for (let i = 0; i < shown; i++) {
-      const th = list[i];
-      let arrow = arrows.find((a) => a.key !== null && a.key === th.key);
-      if (!arrow) {
-        arrow = arrows.find((a) => a.key === null);
-        arrow.key = th.key ?? th;
-      }
+      const key = list[i].key ?? list[i];
+      shownArrows[i] = null;
+      for (const arrow of arrows)
+        if (!arrow.taken && arrow.key === key) {
+          arrow.taken = true;
+          shownArrows[i] = arrow;
+          break;
+        }
+    }
+    for (let i = 0; i < shown; i++)
+      if (!shownArrows[i])
+        for (const arrow of arrows)
+          if (!arrow.taken) {
+            arrow.taken = true;
+            arrow.key = list[i].key ?? list[i];
+            shownArrows[i] = arrow;
+            break;
+          }
+    for (let i = 0; i < shown; i++) {
+      const th = list[i],
+        arrow = shownArrows[i];
       threatAt.copy(th.position);
       if (th.above) threatAt.y += 6;
       threatAt.project(camera);
@@ -1657,7 +1672,8 @@ async function start() {
         hud.tip("warn", "<b>Gefahr!</b> Die Pfeile am Bildrand zeigen, wo dich ein Jäger im Blick hat: gelb – er hat dich bemerkt, rot – er jagt dich. Pulsiert der Pfeil, stößt er gleich zu: jetzt zur Seite ausweichen!", 11);
     }
     for (const arrow of arrows)
-      if (arrow.key === null) {
+      if (!arrow.taken) {
+        arrow.key = null;
         arrowClass(arrow, "on", false);
         arrowClass(arrow, "hunt", false);
         arrowClass(arrow, "coil", false);
