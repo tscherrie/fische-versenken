@@ -180,6 +180,8 @@ export function createSound() {
     bpm = 64,
     nextBeat = 0,
     beating = false,
+    // Whether the heart beats at all (an extension may leave it out: heartbeat()).
+    heartOn = true,
     // A strike about to come, as the warnings last had it; and while the heart beats, the
     // pulse of the hunter nearest to striking, played with each beat (see warn()).
     warnDanger = false,
@@ -697,6 +699,11 @@ export function createSound() {
     buses() {
       return ready() ? { context, water: nodes.water, surface: nodes.surface, air: nodes.air, ui: nodes.ui } : null;
     },
+    // For extensions: the heart on or off. Off, it never beats (nor ducks the river), and a
+    // hunter's pulses keep their own time.
+    heartbeat(on) {
+      heartOn = !!on;
+    },
     start() {
       if (!enabled) return;
       if (!context && !build()) return;
@@ -1211,7 +1218,7 @@ export function createSound() {
       // (Spawning: calm, slowing from 90 to 40 over four seconds, until the veil.)
       const calm = clock - calmFrom < 6;
       if (calm) heartUntil = Math.max(heartUntil, clock + 4);
-      beating = clock < heartUntil;
+      beating = heartOn && clock < heartUntil;
       const fading = Math.min(1, (heartUntil - clock) / 4);
       if (beating) {
         const target = calm ? 90 - 50 * Math.min(1, (clock - calmFrom) / 4) : threat ? 110 : fading < 1 ? 60 : 72;
