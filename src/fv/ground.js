@@ -6,16 +6,20 @@
 // only those over the point's own cell need looking at.
 //
 // Gathering is the costly part (the pebbles are looked up cell by cell), so it is done again
-// only when the fish has moved on a little, or now and then for what streams in and out. A
-// height is exactly what a scan of everything gathered would give: a stone goes into every
-// cell its footprint test can pass in, and a point outside the cells is answered by the scan.
+// only when the fish has moved on a little, when the gravel has been laid anew round it, or
+// now and then for what streams in and out. A height is exactly what a scan of everything
+// gathered would give: a stone goes into every cell its footprint test can pass in, and a
+// point outside the cells is answered by the scan.
 
 // The ground is gathered again once the fish has moved this far (u) -- a respawn or a jump
 // always is that far -- and it is gathered this much wider than asked, so that everything
-// within the asked reach of where the fish is now was among what was gathered.
+// within the asked reach of where the fish is now was among what was gathered. (Just inside
+// the reach, within a pebble's radius of it -- a quarter of a unit round an alevin -- a height
+// can still differ from one on a gathering at the fish itself: the two take in different
+// pebbles from just beyond the reach, and those reach in over their radius.)
 const MOVE = 0.5;
-// ...and at least this often (s), so that the stones of river blocks streaming in or out, and
-// gravel being laid or thinned out, are picked up while the fish keeps still.
+// ...and at least this often (s), so that the stones of river blocks streaming in or out are
+// picked up while the fish keeps still.
 const EVERY = 1;
 // The side of a cell (u).
 const CELL = 1;
@@ -47,6 +51,18 @@ export function createGround({ terrain, pebbles }) {
     cz = NaN,
     span = NaN,
     when = NaN;
+  // The gravel as it was last put up to be drawn when the ground was gathered: the sum of its
+  // meshes' upload counters, and of how many pebbles they drew. The gravel does not keep
+  // still while the fish swims: pebbles.js lays the cells ahead of it and drops those behind
+  // each time it crosses into another of its small cells (a few tenths of a unit round an
+  // alevin), and thins the stones out as it grows. It puts each such change up to be drawn in
+  // the step it makes it, before combat's step, so a change here means that the pebbles round
+  // the fish are not those gathered any more. (Only a laying that overruns its few
+  // milliseconds a frame -- all of it laid afresh when the fish outgrows the size of its cells
+  // -- goes up later, with the frame that finishes it or every sixth: until then the crawlers
+  // walk on the gravel as it is drawn.)
+  let laid = NaN,
+    drawn = NaN;
 
   // Every stone gathered, into `packed`, from index `at` on.
   function pack(list, at) {
@@ -140,13 +156,23 @@ export function createGround({ terrain, pebbles }) {
     // Gather what lies within `reach` of `center` (a Vector3), if it is time to: called each
     // step with the game's clock `time` (s; without it, it gathers every time).
     refresh(center, reach, time) {
+      const meshes = pebbles?.meshes;
+      let uploads = 0,
+        count = 0;
+      if (meshes)
+        for (let n = 0; n < meshes.length; n++) {
+          uploads += meshes[n].instanceMatrix.version;
+          count += meshes[n].count;
+        }
       const dx = center.x - cx,
         dz = center.z - cz;
-      if (reach === span && dx * dx + dz * dz < MOVE * MOVE && time >= when && time - when < EVERY) return;
+      if (reach === span && uploads === laid && count === drawn && dx * dx + dz * dz < MOVE * MOVE && time >= when && time - when < EVERY) return;
       cx = center.x;
       cz = center.z;
       span = reach;
       when = time;
+      laid = uploads;
+      drawn = count;
       terrain.collidersNear(center.x, center.z, reach + MOVE, stones);
       gravel.length = 0;
       pebbles?.near?.(center, reach + MOVE, gravel);
