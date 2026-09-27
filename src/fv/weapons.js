@@ -461,10 +461,8 @@ export function createFiring(ctx) {
   // the splatter and the kill want to know (mode, point, power, burst, cut, ...).
   function damage(owner, e, amount, dir, point, weapon, gory = true, info = null) {
     if (e.dead || !(amount > 0)) return false;
-    // (A stun outlasts the flinch of the hits that follow it.)
-    const stagger = e.stagger ?? 0;
+    // (A stun outlasts the flinch of the hits that follow it: enemies.hit keeps the longer.)
     const sunk = enemies.hit(e, amount, dir, owner);
-    if (!sunk && stagger > e.stagger) e.stagger = stagger;
     const s = stat(weapon);
     s.hits++;
     s.damage += amount;

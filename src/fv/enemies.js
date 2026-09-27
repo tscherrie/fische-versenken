@@ -381,7 +381,9 @@ export function createEnemies(scene, { random }) {
       const e = list[i];
       if (e.dead) {
         drift(e, dt, time, hooks.ground);
-        if (e.corpse > CORPSE_SECONDS || e.eaten) {
+        // (A burst body goes once the splatter has faded it out: at once, unless it keeps
+        // e.shown above 0 for a moment.)
+        if (e.corpse > CORPSE_SECONDS || (e.eaten && !e.burst) || (e.burst && !(e.shown > 0))) {
           list.splice(i, 1);
           continue;
         }
@@ -467,6 +469,24 @@ export function createEnemies(scene, { random }) {
     }
   }
 
+  // Where an enemy's body is and how it lies, as one matrix (`out`), for the crowds and for
+  // whatever is strapped to it or drawn in its place (models.js, the larvae): along its
+  // heading, rolled belly up when it is stunned or dead (a corpse rocking a little), scaled
+  // to its size, shrinking away at the end of a corpse's time, and by `e.shown` (0..1, the
+  // splatter's) while a burst body fades behind its cloud.
+  function pose(e, out) {
+    axisZ.crossVectors(e.heading, UP);
+    if (axisZ.lengthSq() < 1e-6) axisZ.set(0, 0, 1);
+    axisZ.normalize();
+    axisY.crossVectors(axisZ, e.heading).normalize();
+    basis.makeBasis(e.heading, axisY, axisZ);
+    quaternion.setFromRotationMatrix(basis);
+    if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled + (e.dead ? 0.12 * Math.sin(e.corpse * 1.7 + e.id) : 0)));
+    const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
+    const k = (e.size / MODEL_LENGTH) * fade * (e.shown ?? 1);
+    return out.compose(e.position, quaternion, scale.set(k, k, k));
+  }
+
   // Kinds with models of their own (`render`) are drawn by those, once they are in; the
   // stand-in body shows them meanwhile.
   const drawnElsewhere = new Set();
@@ -476,20 +496,11 @@ export function createEnemies(scene, { random }) {
       if (drawnElsewhere.has(e.kind)) continue;
       const crowd = crowds[e.kind];
       const slot = (slots[e.kind] = (slots[e.kind] ?? -1) + 1);
-      axisZ.crossVectors(e.heading, UP);
-      if (axisZ.lengthSq() < 1e-6) axisZ.set(0, 0, 1);
-      axisZ.normalize();
-      axisY.crossVectors(axisZ, e.heading).normalize();
-      basis.makeBasis(e.heading, axisY, axisZ);
-      quaternion.setFromRotationMatrix(basis);
-      if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled + (e.dead ? 0.12 * Math.sin(e.corpse * 1.7 + e.id) : 0)));
-      const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
-      const k = (e.size / MODEL_LENGTH) * fade;
-      matrix.compose(e.position, quaternion, scale.set(k, k, k));
-      crowd.body.setMatrixAt(slot, matrix);
+      crowd.body.setMatrixAt(slot, pose(e, matrix));
       const coiled = e.mode === "coil" || e.mode === "aim";
       const amplitude = e.dead ? 0 : coiled ? 0.95 : 0.3 + Math.min(0.5, (e.speed / e.size) * 0.4);
-      crowd.swim.setXYZW(slot, e.phase, amplitude, 0, e.mode === "lurk" ? 0.5 : 0.1);
+      // (A dead body hangs as limp as the splatter says: e.limp bends its spine.)
+      crowd.swim.setXYZW(slot, e.phase, amplitude, e.dead ? (e.limp ?? 0) : 0, e.mode === "lurk" ? 0.5 : 0.1);
       crowd.fin.setX(slot, e.finPhase);
       crowd.mouth.setX(slot, e.gape);
     }
@@ -503,7 +514,8 @@ export function createEnemies(scene, { random }) {
     e.hp -= damage;
     e.lastHitBy = by;
     e.hitAt = clockNow;
-    e.stagger = 0.12;
+    // (A hit makes it flinch, but never cuts short a longer stun.)
+    e.stagger = Math.max(e.stagger ?? 0, 0.12);
     if (dir) e.position.addScaledVector(dir, Math.min(0.3, 0.04 * e.size));
     // Woken: an ambusher hit on the bed goes for whoever shot it.
     if (e.mode === "lurk") {
@@ -533,6 +545,7 @@ export function createEnemies(scene, { random }) {
     spawn,
     update,
     hit,
+    pose,
     count,
     reset,
     snout,

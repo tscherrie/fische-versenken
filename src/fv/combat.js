@@ -252,7 +252,7 @@ export function createCombat(game) {
     const f = player.fish;
     if (player.down) return;
     for (const e of enemies.list) {
-      if (e.eaten || e.size > 1.1 * f.length) continue;
+      if (e.eaten || e.burst || e.size > 1.1 * f.length) continue;
       if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
         if (!e.dead) {
