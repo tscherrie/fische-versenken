@@ -16,8 +16,8 @@ const SINK = 0.45;
 // A round at rest lies there this long, then goes (the look fades it out over this time).
 export const REST = 8;
 
-// The fields a round carries, with their values for a new one (the gun sets what it needs
-// after spawn()).
+// The fields a round carries, at their values for a new one (fire() puts what the gun gives
+// in their place).
 const NO_TINT = [7, 3.2, 0.7];
 function blank(p) {
   p.source = null;
@@ -120,29 +120,32 @@ export function createHostile({ capacity = 160 } = {}) {
     p.restAt = p.spentAge;
   }
 
-  // A new round from `position` along `velocity` (both copied), fired by the enemy `source`
-  // from the gun `weapon` (an id), at `s` along the river. The record comes back with every
-  // field at its default: the gun sets what it needs (cause, damage, drag, radius, life, size,
-  // tint, stretch).
-  function spawn(source, weapon, position, velocity, s = null) {
+  // A new round, from `o`: the enemy that fired it (`source`), the gun (`weapon`, an id),
+  // `position` and `velocity`, `s` along the river, and the gun's `cause`, `damage`, `drag`,
+  // `radius`, `life`, `size`, `tint` and `stretch` (a field left out keeps its default).
+  // Nothing of `o` is kept, the round being a record from the pool, so a gun can hand in the
+  // same object for every pellet. This is the only way in, so that whoever wraps `fire` (the
+  // look's bench counts the rounds there) sees every round.
+  function fire(o) {
     const p = blank(free.pop() ?? evict());
-    p.source = source;
-    p.weapon = weapon;
-    p.position.copy(position);
-    p.last.copy(position);
-    p.velocity.copy(velocity);
+    p.source = o.source ?? null;
+    p.weapon = o.weapon ?? null;
+    p.cause = o.cause ?? null;
+    p.damage = o.damage ?? p.damage;
+    p.drag = o.drag ?? p.drag;
+    p.radius = o.radius ?? p.radius;
+    p.life = o.life ?? p.life;
+    p.size = o.size ?? p.size;
+    p.tint = o.tint ?? p.tint;
+    p.stretch = o.stretch ?? p.stretch;
+    p.position.copy(o.position);
+    p.last.copy(o.position);
+    p.velocity.copy(o.velocity);
     p.speed0 = p.velocity.length();
-    p.river.s = s;
+    p.river.s = o.s ?? null;
     p.river.u = 0;
     p.born = ++born;
     live.push(p);
-    return p;
-  }
-  // The same with the fields given in one object (for tests and rare shots; a field left
-  // undefined keeps its default).
-  function fire(o) {
-    const p = spawn(o.source ?? null, o.weapon ?? null, o.position, o.velocity, o.s ?? null);
-    for (const k in o) if (k !== "position" && k !== "velocity" && k !== "s" && k !== "source" && k !== "weapon" && o[k] !== undefined) p[k] = o[k];
     return p;
   }
 
@@ -247,7 +250,6 @@ export function createHostile({ capacity = 160 } = {}) {
 
   return {
     live,
-    spawn,
     fire,
     update,
     reset() {
