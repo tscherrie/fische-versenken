@@ -242,7 +242,7 @@ export function createCombat(game) {
     }
     sfx.sunk(e.size);
     // What it leaves in the water is the splatter's (gore.js); here only the air it had.
-    gore.kill(e, dir, weapon, info);
+    gore.kill(e, dir, weapon, info, player?.fish.length);
     fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(4 + 2 * e.size), size: 0.01 + 0.008 * e.size, spread: e.size * 0.3, random: look });
   }
 
@@ -368,12 +368,13 @@ export function createCombat(game) {
     firing.draw(local);
     projectiles.draw();
     // The enemies' rounds; a spent one, sinking, is only a faint glint until it gets a look
-    // of its own.
-    for (const p of hostile.live) {
-      if (p.rested) continue;
-      const k = p.spent ? 0.06 : 1;
-      fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
-    }
+    // of its own (then the look draws them all: fx.drawsRounds).
+    if (!fx.drawsRounds)
+      for (const p of hostile.live) {
+        if (p.rested) continue;
+        const k = p.spent ? 0.06 : 1;
+        fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
+      }
     for (const item of pickups.items) if (item.state === "idle") fx.add(item.x, item.y + Math.sin(item.age * 2) * 0.05, item.z, item.size * 0.5, 2.2, 2.4, 2.8, 1);
     fx.end();
     smoke.frame();

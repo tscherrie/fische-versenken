@@ -468,7 +468,7 @@ export function createFiring(ctx) {
     const s = stat(weapon);
     s.hits++;
     s.damage += amount;
-    if (gory) gore.hit(e, point ?? e.position, dir ?? UP, weapon, info);
+    if (gory) gore.hit(e, point ?? e.position, dir ?? UP, weapon, info, lengthOf(owner));
     if (isLocal(owner) && !sunk && gory) hud.hit(false);
     if (sunk) {
       s.kills++;
@@ -1373,7 +1373,7 @@ export function createFiring(ctx) {
       }
     }
     // (The beam's hum, when the sound has one.)
-    if (player.local) sfx.beam?.(beaming, a.heat[a.back] ?? 0, player.fish.length);
+    if (player.local) sfx.hold?.("beam", beaming, a.heat[a.back] ?? 0, player.fish.length);
     dashCheck(player);
     // A weapon that has cooled enough clicks back on.
     for (const id in a.locked) {
@@ -1498,7 +1498,7 @@ export function createFiring(ctx) {
         r.point.divideScalar(r.n);
         r.dir.normalize();
         const pellets = WEAPONS[r.weapon]?.pellets ?? 9;
-        gore.hit(r.e, r.point, r.dir, r.weapon, { mode: "pellets", pellets: r.n, power: (r.n / pellets) * r.power, point: r.point.clone() });
+        gore.hit(r.e, r.point, r.dir, r.weapon, { mode: "pellets", pellets: r.n, power: (r.n / pellets) * r.power, point: r.point.clone() }, lengthOf(r.owner));
         if (isLocal(r.owner)) hud.hit(false);
       }
       r.e = null;
@@ -1568,7 +1568,8 @@ export function createFiring(ctx) {
     if (camera) camera.getWorldPosition(eye);
     const tall = 2 * Math.tan(((camera?.fov ?? 62) * Math.PI) / 360);
     for (const p of projectiles.live) {
-      if (p.solid) continue;
+      // (A spent pellet no longer glows; once the look draws the rounds, it draws them all.)
+      if (p.solid || p.spent || (p.water && fx.drawsRounds)) continue;
       const k = Math.min(1, Math.max(0, p.age / p.life));
       let r = p.tint[0],
         g = p.tint[1],
@@ -1691,6 +1692,8 @@ export function createFiring(ctx) {
     // (Brighter and wider in its first moment, as it strikes.)
     const strike = 1 + 0.8 * Math.max(0, 1 - b.age / 0.08);
     const width = w.size(L) * 0.8 * strike;
+    // (Once the look has a beam of its own, it draws it.)
+    if (fx.beam) return fx.beam(muzzle, b.to, width, w.tint, w.core, b.age, b.what);
     const n = Math.min(40, Math.max(8, Math.ceil(length / Math.max(0.15, 0.5 * L))));
     const seg = length / n;
     const facing = beamDir.dot(forward);
