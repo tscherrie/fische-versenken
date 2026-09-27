@@ -69,6 +69,27 @@ export function createCombat(game) {
     keys.insertBefore(item, keys.children[3] ?? null);
   }
   const local = players[0];
+  // For trying the weapons out: ?weapon=<id> (and ?belly=<id>) starts with them, and then the
+  // number keys 1-9 put the weapons there are on the fish, one after another.
+  const query = game.query;
+  const tryout = query.has("weapon") || query.has("belly");
+  if (tryout) {
+    const a = local.arsenal;
+    if (WEAPONS[query.get("weapon")]) a.back = query.get("weapon");
+    if (query.has("belly")) a.belly = WEAPONS[query.get("belly")] ? query.get("belly") : null;
+    a.ensure?.(a.back);
+    a.ensure?.(a.belly);
+    window.addEventListener("keydown", (event) => {
+      const n = Number(event.key);
+      const ids = Object.keys(WEAPONS);
+      if (!(n >= 1 && n <= ids.length)) return;
+      const id = ids[n - 1];
+      const place = WEAPONS[id].place === "belly" && fish.stage >= 5 ? "belly" : "back";
+      a[place] = id;
+      a.ensure?.(id);
+      hud.say(WEAPONS[id].title, "", 1.2);
+    });
+  }
   // What holds the triggers: the mouse buttons, the tests, and on a phone the auto-fire.
   const trigger = { back: false, belly: false, test: false, auto: false };
   // On a phone the weapons fire themselves (auto-fire): per place, whether they do now.
