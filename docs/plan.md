@@ -122,9 +122,9 @@ Lachse sind nie Ziel, auch die Rivalen nicht; die zwicken hier nicht mehr. Vöge
 
 **Koop-Skalierung:** Gegner ×(1 + 0,7·(n−1)) bei n Spielern im Raum, höchstens 120 in einer Gegend. Das gilt auch, wenn jemand tot oder weit weg ist: allein ist man einfach schwächer. Boss-Lebenspunkte ×(1 + 0,75·(n−1)). Gegner greifen den nächsten Spieler an, nie gebündelt den Schwächsten.
 
-## 4a. Die Waffen der Gegner (Vorschlag)
+## 4a. Die Waffen der Gegner (abgesegnet)
 
-Jede Gegnerart trägt eine feste Waffe, festgeschnallt wie beim Lachs. Nahkämpfer holen sichtbar aus; Fernkämpfer zielen kurz (der Moment zum Ausweichen) und schießen Kugeln, die das Wasser bremst.
+Jede Gegnerart trägt eine feste Waffe, festgeschnallt wie beim Lachs. Vögel und Säugetiere sterben und zerplatzen wie die Fische (der Angler bleibt unberührt, nur seine Schnur reißt). Nahkämpfer holen sichtbar aus; Fernkämpfer zielen kurz (der Moment zum Ausweichen) und schießen Kugeln, die das Wasser bremst.
 
 | Gegner | Waffe | Art |
 |---|---|---|

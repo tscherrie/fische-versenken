@@ -47,8 +47,9 @@ const WORDS = [
   ["Gelbrandkäferlarve", "Diving beetle larva", "龙虱幼虫", "ゲンゴロウの幼虫", "Ларва на плавач"],
   ["Von einer Libellenlarve gepackt", "Seized by a dragonfly larva", "被一只蜻蜓幼虫抓住", "ヤゴに捕まった", "Хваната от ларва на водно конче"],
   ["Von einer Gelbrandkäferlarve zerrissen", "Torn apart by a diving beetle larva", "被一只龙虱幼虫撕碎", "ゲンゴロウの幼虫に引き裂かれた", "Разкъсана от ларва на плавач"],
-  ["Fangmaske", "Grasping mask", "捕获面罩", "捕獲マスク", "Хватателна маска"],
-  ["Saugzangen", "Sucking jaws", "吸管颚", "吸い込み顎", "Смучещи челюсти"],
+  ["Springmesser", "Switchblade", "弹簧刀", "飛び出しナイフ", "Автоматичен нож"],
+  ["Nagelpistole", "Nail gun", "射钉枪", "ネイルガン", "Пистолет за пирони"],
+  ["Von einer Gelbrandkäferlarve festgenagelt", "Nailed by a diving beetle larva", "被一只龙虱幼虫钉住", "ゲンゴロウの幼虫に釘付けにされた", "Закована от ларва на плавач"],
   [
     "<b>Larven im Kies!</b> Libellen- und Gelbrandkäferlarven kriechen auf die Brut zu. Halt dich mit S im Kies fest und schieß sie mit der linken Maustaste weg.",
     "<b>Larvae in the gravel!</b> Dragonfly and diving beetle larvae are crawling toward the brood. Hold on in the gravel with S and shoot them away with the left mouse button.",

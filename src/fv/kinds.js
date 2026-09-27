@@ -141,7 +141,7 @@ export const KINDS = {
     turn: 3,
     coil: 0.35,
     regions: {},
-    weapon: { id: "mask", title: "Fangmaske", kind: "melee", damage: 0.09 },
+    weapon: { id: "switchblade", title: "Springmesser", kind: "melee", damage: 0.09 },
   },
   beetleLarva: {
     title: "Gelbrandkäferlarve",
@@ -165,6 +165,6 @@ export const KINDS = {
     turn: 2.6,
     coil: 0.4,
     regions: {},
-    weapon: { id: "mandibles", title: "Saugzangen", kind: "melee", damage: 0.14 },
+    weapon: { id: "nailgun", title: "Nagelpistole", kind: "ranged", range: [0.8, 3], tell: 0.45, burst: 3, interval: 0.16, pellets: 1, spread: 0.06, speed: 9, drag: 2.4, damage: 0.05, reload: 2.2, cause: "Von einer Gelbrandkäferlarve festgenagelt" },
   },
 };
