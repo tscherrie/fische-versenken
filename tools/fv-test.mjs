@@ -10,9 +10,10 @@
 // detail; the scenes' own addresses carry neither, so each scene then gets a Chrome of its
 // own, opened at its address. --timing adds what combat.step and combat.frame cost to each
 // report (src/fv/dev/scenes-look.js). Scenes marked manual (the bench, which takes minutes;
-// tools/fv-bench.mjs drives it) run only when named in --only.
+// tools/fv-bench.mjs drives it) run only when named in --only. Stopped (Ctrl-C, a kill), it
+// takes its Chromes and its server down with it.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -32,6 +33,11 @@ if (!set) {
 const port = Number(option("port") || 8150);
 const only = option("only");
 const quality = option("quality");
+// (An unknown quality would quietly run at the game's fallback while the report names it.)
+if (quality && !["eco", "balanced", "detail", "ultra"].includes(quality)) {
+  console.error(`unknown quality ${quality} (eco, balanced, detail or ultra)`);
+  process.exit(1);
+}
 const webgl = args.includes("--webgl");
 const timing = args.includes("--timing");
 const { SCENES } = await import(join(root, "src/fv/dev/scenes.js"));
@@ -46,22 +52,53 @@ async function reachable() {
     return false;
   }
 }
-let server = null;
+// What this process started, taken down again however it ends: the server, and the Chrome
+// running now with its profile folder. Chrome runs in a process group of its own (spawned
+// detached), so its helpers go with it; any left over are found by the profile folder named
+// in their command lines, which is this run's alone.
+const started = { server: null, chrome: null, profile: null };
+function killChrome(chrome, profile, signal) {
+  if (chrome && chrome.exitCode === null && chrome.signalCode === null)
+    try {
+      process.kill(-chrome.pid, signal);
+    } catch {}
+  if (signal === "SIGKILL" && profile)
+    try {
+      execFileSync("pkill", ["-KILL", "-f", `--user-data-dir=${profile}`], { stdio: "ignore" });
+    } catch {}
+}
+let stopping = false;
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"])
+  process.once(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    console.error(`${signal}: stopping Chrome and the server`);
+    if (started.chrome) await close(started.chrome, started.profile);
+    started.server?.kill();
+    process.exit(130);
+  });
+process.on("exit", () => {
+  killChrome(started.chrome, started.profile, "SIGKILL");
+  started.server?.kill("SIGKILL");
+});
+
 if (!(await reachable())) {
-  server = spawn(process.execPath, [join(root, "tools/capture-server.mjs"), String(port)], { stdio: "ignore" });
+  started.server = spawn(process.execPath, [join(root, "tools/capture-server.mjs"), String(port)], { stdio: "ignore" });
   for (let i = 0; i < 50 && !(await reachable()); i++) await new Promise((r) => setTimeout(r, 100));
 }
 
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const profile = await mkdtemp(join(tmpdir(), "extreme-test-"));
 // (--xname=value: passed on as ?xname=value, for the scenes: --xback=<weapon> --xbelly=<weapon>.)
 const extra = (query) => {
   for (const a of args) if (a.startsWith("--x")) query.set(a.slice(2).split("=")[0], a.split("=")[1] ?? "");
   if (timing) query.set("xtiming", "");
   return query;
 };
-function launch(url) {
-  return spawn(
+// A Chrome of its own for each launch, with a profile folder of its own: one still shutting
+// down would otherwise be handed the next scene's address by Chrome's single-instance lock.
+async function launch(url) {
+  const profile = await mkdtemp(join(tmpdir(), "extreme-test-"));
+  const chrome = spawn(
     CHROME,
     [
       ...(args.includes("--headed") ? [] : ["--headless=new"]),
@@ -80,13 +117,19 @@ function launch(url) {
       "--autoplay-policy=no-user-gesture-required",
       url,
     ],
-    { stdio: "ignore" },
+    { stdio: "ignore", detached: true },
   );
+  Object.assign(started, { chrome, profile });
+  return chrome;
 }
-async function close(chrome) {
-  const closed = new Promise((r) => chrome.once("exit", r));
-  chrome.kill();
+// Chrome asked to go, made to after 5 s, and its profile folder removed.
+async function close(chrome, profile = started.profile) {
+  const closed = chrome.exitCode !== null || chrome.signalCode !== null ? Promise.resolve() : new Promise((r) => chrome.once("exit", r));
+  killChrome(chrome, profile, "SIGTERM");
   await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
+  killChrome(chrome, profile, "SIGKILL");
+  if (started.chrome === chrome) started.chrome = null;
+  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
 }
 // One scene's address, as sceneURL in scenes.js makes it, with the renderer and the quality
 // asked for; `only` keeps the page from going on to the next scene.
@@ -97,11 +140,11 @@ function sceneURL(scene) {
   return `http://localhost:${port}/?${extra(q)}`;
 }
 
-const started = Date.now();
+const begun = Date.now();
 const report = (scene) => join(root, "shots", set, `${scene.name}.json`);
 const done = async (scene) => {
   try {
-    return (await stat(report(scene))).mtimeMs > started;
+    return (await stat(report(scene))).mtimeMs > begun;
   } catch {
     return false;
   }
@@ -131,7 +174,7 @@ async function wait(scenes) {
 }
 if (webgl || quality) {
   for (const scene of list) {
-    const chrome = launch(sceneURL(scene));
+    const chrome = await launch(sceneURL(scene));
     const ok = await wait([scene]);
     await close(chrome);
     if (!ok) break;
@@ -139,12 +182,12 @@ if (webgl || quality) {
 } else {
   const query = extra(new URLSearchParams({ capture: "1", fvtest: set }));
   if (names) query.set("only", names);
-  const chrome = launch(`http://localhost:${port}/?${query}`);
+  const chrome = await launch(`http://localhost:${port}/?${query}`);
   await wait(list);
   await close(chrome);
 }
-server?.kill();
-await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+started.server?.kill();
+started.server = null;
 const ms = (s) => (s ? `${s.mean.toFixed(3)} ms (p90 ${s.p90.toFixed(3)}, max ${s.max.toFixed(3)})` : "–");
 for (const scene of list) {
   try {
