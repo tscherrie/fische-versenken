@@ -1,130 +1,169 @@
 # Combat bench: webgpu, detail
 
-apple metal-3 · WebGPU · quality detail · canvas 1280×720, scene drawn at 1280×720 · one step of 16.7 ms per frame · 5 repeats of 120 frames · three r186 · clock step 0.1 ms
+apple metal-3 · WebGPU · quality detail · canvas 1280×720, scene drawn at 1280×720 · one step of 16.7 ms per frame · 5 repeats of 120 frames, 32 blocks for everything timed in turns · three r186 · clock step 0.1 ms
 
-Place: s 2503.6, u 0, water 12 u deep, a parr of 1 u; camera fixed behind and above it. The fight is kept at 40 enemies, 150 players' shots and 60 enemy shots in flight, topped up before every step; 12 % of the players' shots are aimed at an enemy, and the enemies have 4× their hit points, which keeps the kills to a rate a fight of four players might see. Without the fight, combat's step and frame are not run at all.
+Place: s 2503.6, u 0, water 12 u deep, a parr of 1 u 7.02 u above the bed (the fish held there, and held at its size to the end), the camera fixed behind and above it. Two fights are held there, topped up before every step: **four players** -- 40 enemies firing their own guns at their own pace and 28 laser bolts in the water, as many as four players firing the laser without pause keep there (a bolt lives reach / speed = 0.71 s at this size, and comes every 0.11 s) -- and the **stress case**, 40 enemies, 150 players' shots and 60 enemy rounds in flight (the bench fires the rounds, far more than the enemies do). 12 % of the players' shots are aimed at an enemy, and the enemies have 4× their hit points, which keeps the kills to a steady rate. Without the fight, combat's step and frame are not run at all.
 
-Held in the first repeat (mean, min–max per frame): enemies alive 39 (37–40), dead ones 6 (2–9), players' shots 146 (98–151), enemy shots flying 61 (31–66), spent and sinking 99 (93–129), lying on the bed 0 (0–0), glow points 375 (320–444), bubbles 422 (264–480); 57 hits and 4.5 kills a second, and 271 players' shots fired a second to keep their number up (medians of the repeats).
+| held (first repeat: mean, min–max a frame) | four players | stress case |
+|---|---:|---:|
+| enemies alive | 40 (39–40) | 40 (38–40) |
+| dead ones (cleared 0.5 s after the kill) | 1 (0–1) | 2 (0–4) |
+| simulated but not drawn (past a kind's crowd) | 0 (0–0) | 0 (0–0) |
+| players' shots | 27 (25–29) | 145 (103–150) |
+| enemy rounds flying | 10 (5–17) | 63 (26–70) |
+| … spent and sinking | 28 (17–37) | 97 (90–134) |
+| … lying on the bed | 0 (0–0) | 0 (0–0) |
+| glow points / bubbles | 87 (58–106) / 104 (93–114) | 391 (339–485) / 462 (313–480) |
+| hits / kills a second (median of the repeats) | 25 / 1.0 | 80 / 6.0 |
+| players' shots fired by the bench a second | 50 | 285 |
+| enemy rounds fired a second: by the bench / by the enemies | 0 / 7 | 112 / 8 |
+
+## Verdict
+
+- **Card** (stress case, combat's meshes shown against hidden in turns, all pairs of the repeats together): 0.463 (95 % 0.425 … 0.500, 160 pairs) ms against 1.5 ms: **within**. Per repeat 0.400 … 0.625 ms. The same method with nothing shown or hidden (A/A): 0.013 (95 % -0.037 … 0.050, 160 pairs) ms.
+- **Script, four players:** combat.step + combat.frame 0.974 ms (repeats 0.924 … 1.020) against 1 ms: **within**; with everything else the fight costs the script (the firing the bench does for the game, the threat list, the page's style and layout, handing combat's meshes to the card) 1.381 ms (1.359 … 1.464): **over**. The slowest tenth of the frames take over 1.100 ms for step and frame, the slowest 1.200 ms.
+- **Script, stress case:** combat.step + combat.frame 1.456 ms (repeats 1.435 … 1.488) against 1 ms: **over**; with everything else the fight costs the script (the firing the bench does for the game, the threat list, the page's style and layout, handing combat's meshes to the card) 1.915 ms (1.846 … 1.940): **over**. The slowest tenth of the frames take over 1.600 ms for step and frame, the slowest 1.800 ms.
 
 ## Fight minus no fight
 
-|  | no fight | fight | difference | difference over the repeats |
-|---|---:|---:|---:|---:|
-| Card: combat's meshes, shown against hidden (ms) | – | – | +0.650 | 0.337 … 0.875 |
-| Card: whole fight against no fight, back to back (ms) | 12.38 | 9.57 | +0.40 | -2.80 … 1.83 |
-| Whole frames back to back, script and card (ms) | 9.62 | 8.55 | −0.04 | -1.06 … 0.84 |
-| combat.step + combat.frame (ms) | 0.000 | 1.155 | +1.155 | 1.137 … 1.216 |
-| Script of the frame: world step + combat.frame + draw (ms) | 5.71 | 7.11 | +1.41 | 1.27 … 1.87 |
-| … of it the world step, with combat.step (ms) | 1.13 | 2.26 | +1.13 | 1.12 … 1.31 |
-| … of it the page's style and layout (ms) | 0.000 | 0.221 | +0.221 | 0.202 … 0.246 |
-| … of it the draw's script (ms) | 4.50 | 4.46 | −0.03 | -0.16 … 0.20 |
-| Left on the heap a frame (KB) | 98 | 172 | +120 | -400 … 181 |
-| Draw calls of combat's meshes, shown against hidden | – | – | +12 | 12 … 12 |
-| Triangles of combat's meshes, shown against hidden | – | – | +143757 | 114392 … 143811 |
-| Draw calls of the whole frame (medians; the scene's own count varies) | 221 | 233 | +12 | -8 … 44 |
-| Triangles of the whole frame (medians) | 3100163 | 3153871 | +79354 | -204662 … 406888 |
-
-Script times are means of the middle 80 % of the frames (the clock steps by 0.1 ms), the parts below plain means. combat.step alone 1.111 ms, combat.frame 0.043 ms; the slowest tenth of the frames take over 1.300 ms for both.
-
-How: WebGPU: frames drawn back to back, then device.queue.onSubmittedWorkDone(). The card, not the script, held up the frames drawn back to back. While it ran, 4 other headless Chromes were open on this machine (load 163.9 / 132.5 / 136.8): they share the card, which is why the whole fight against the whole calm, seconds apart, scatters so, and why the card's verdict goes by combat's meshes shown and hidden in turn, in batches of a few frames, the median of the paired differences.
-
-**Verdict:** card 0.650 ms against 1.5 ms: **within**; script (combat.step + combat.frame) 1.155 ms against 1 ms: **over**. With what the fight adds to the world step, the page's layout and the draw's script, the frame's script grows by 1.41 ms (**over** the 1 ms, counted that way).
-
-## Where combat's script time goes (ms per frame, median of the repeats)
-
-| part | ms | share of combat.step + frame | per unit |
-|---|---:|---:|---:|
-| enemies.update (thinking, moving, drawing the crowds) | 0.206 | 18 % | 4.66 µs an enemy |
-| projectiles.update (with hits: enemies.hit, gore.hit, fx.burst) | 0.624 | 54 % | 4.29 µs a shot |
-| hostile.update (enemy shots, with hits on the player) | 0.161 | 14 % | 1.01 µs a round |
-| aim.update | 0.023 | 2 % |  |
-| director.update | 0.003 | 0 % |  |
-| terrain.collidersNear (stones for the shots) | 0.060 | 5 % |  |
-| rest of combat.step (firing, bosses, rules, fx.update, gore.update, corpses) | 0.034 | 3 % |  |
-| combat.frame (hud and health bars, fx.begin/add/end, models, gore.frame) | 0.043 | 4 % |  |
-| outside them: the threat list (signals.js, asked for by the game's own step) | 0.012 | – |  |
-| outside them: handing combat's meshes to the card (the draw's script, paired) | 0.262 | – |  |
-
-The river lookups on their own (µs a call, on the fight as it stood: 147 shots, 47 enemies): a shot's locate + bed + level 0.86 (locate 0.29, bed 0.45, level 0.14); an enemy's current + locate + bed + level 1.49 (current 0.50); terrain.collidersNear 0.044 ms a call, 194 stones returned.
-
-On lists of their own (600 at a time, µs a step each): an enemy round flying at the fish 1.437, spent and sinking 1.146, lying on the bed 0.056; a players' shot flying along the river 4.028, without the bed and surface lookup 2.569 (tested against 194 stones and the enemies of the fight).
-
-The players' shots with parts swapped out (ms a frame, one measurement each):
-
-| projectiles.update | projectiles.update | collidersNear | both | combat.step | shots |
-|---|---:|---:|---:|---:|---:|
-| as it is | 0.653 | 0.076 | 0.729 | 1.258 | 146 |
-| a copy of it, to check the copy | 0.645 | 0.074 | 0.719 | 1.216 | 146 |
-| the copy without the bed and surface lookup | 0.452 | 0.082 | 0.533 | 1.056 | 146 |
-| the copy with each shot looking every other step | 0.588 | 0.077 | 0.665 | 1.192 | 146 |
-| the copy with the stones sorted into 2 u cells each step | 0.710 | 0.078 | 0.788 | 1.320 | 146 |
-| the copy with the stones sorted into cells once, while they stay the same | 0.569 | 0.078 | 0.648 | 1.197 | 146 |
-| as it is, with no stones at all | 0.473 | 0.006 | 0.479 | 1.063 | 146 |
-
-The bed and surface lookup: 0.193 ms a frame at 146 shots, 1.32 µs a shot. The stones (collidersNear and the test of every shot against every stone): 0.250 ms; sorted into cells each step, 0.309 ms, sorted once, 0.168 ms.
-
-The page's style and layout with the fight on, parts of the HUD taken off the page (ms a frame, one measurement each):
-
-| page | style and layout | combat.frame | script of the frame |
-|---|---:|---:|---:|
-| as it is | 0.237 | 0.048 | 7.58 |
-| without the health bars (#foes) | 0.196 | 0.052 | 7.63 |
-| without combat's HUD (#xh, #callout, #arsenal, #foes, #bossbar) | 0.125 | 0.044 | 7.30 |
-| … and without the game's threat arrows (#threats) | 0.000 | 0.049 | 7.13 |
-
-Enemy records all of one shape (every field the combat code adds later given at spawn, in one order) against as they are, twice in turn after a fresh set of enemies: combat.step 1.211 against 1.220 ms, enemies.update 0.191 against 0.203, projectiles.update 0.695 against 0.669, heap 140 against 138 KB a frame.
-
-Left on the heap for the collector, KB a frame (calls in which it collected are missed, so these are lower bounds): the whole frame 377; combat.step 692.4, combat.frame 7.6, enemies.update 48.4, projectiles.update 595.8, hostile.update 24.7, aim.update 3.1, director.update 1.0, collidersNear 3.6, the threat list 6.6.
-
-## Where the card's time goes (each part of combat shown against hidden, ms)
-
-| part | costs | middle half of the batches |
+| script, ms a frame (median of the repeats, their range) | four players | stress case |
 |---|---:|---:|
-| Combat bullhead | 0.263 | -1.688 … 1.387 |
-| Combat troutParr | 1.375 | -0.138 … 2.425 |
-| Combat trout | 0.150 | -0.100 … 0.462 |
-| Combat dragonflyLarva | 0.250 | -0.050 … 1.075 |
-| Combat beetleLarva | -0.050 | -0.100 … 0.087 |
-| Combat glow | 0.125 | -0.200 … 0.375 |
-| Combat bubbles | -0.025 | -0.200 … 0.275 |
+| combat.step + combat.frame | +0.974 (0.924 … 1.020) | +1.456 (1.435 … 1.488) |
+| the firing the bench does for the game (projectiles.fire, the enemies' guns) | +0.001 (0.001 … 0.002) | +0.006 (0.003 … 0.007) |
+| the threat list (signals.js, asked for by the game's own step) | +0.012 (0.007 … 0.018) | +0.013 (0.008 … 0.017) |
+| the page's style and layout (fight against no fight) | +0.172 (0.166 … 0.217) | +0.196 (0.193 … 0.211) |
+| handing combat's meshes to the card (paired, stress case) | +0.213 (0.175 … 0.275) | +0.213 (0.175 … 0.275) |
+| **all of it** | +1.381 (1.359 … 1.464) | +1.915 (1.846 … 1.940) |
+| (seconds apart, noisy:) the frame's whole script | +1.46 (1.21 … 1.51) | +1.93 (1.87 … 2.00) |
+| (seconds apart, noisy:) … of it the draw's script | +0.23 (0.12 … 0.25) | +0.23 (0.20 … 0.27) |
 
-The parts are timed one after another, so they need not add up to the whole exactly; a part near zero costs less than the noise.
+Script times are means of the middle 80 % of the frames (the clock steps by 0.1 ms), the firing and the threat list plain means. Card: combat's meshes add +12 draw calls and +51242 triangles (shown against hidden). Whole fight against no fight, seconds apart (noisy): the card drawing frames back to back 7.66 → 7.96 ms, whole frames back to back 7.75 → 8.06 ms.
 
-## The fight scaled (one measurement each)
+How: WebGPU: frames drawn back to back, then device.queue.onSubmittedWorkDone(). The card, not the script, held up the frames drawn back to back. While it ran (7 minutes), 3 other headless Chromes were open on this machine (load 15.6 / 13.7 / 32.3): they share the card, which is why only what is timed in turns, in short blocks, is taken for a verdict.
 
-| enemies | shots (held) | enemy shots flying / spent / on the bed | combat.step | combat.frame | enemies | projectiles | hostile | card (meshes) | calls | hits/s | kills/s |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 10 (10) | 150 (146) | 60 (62 / 98 / 0) | 1.023 | 0.044 | 0.089 | 0.590 | 0.188 | 0.712 | 232 | 38 | 3.5 |
-| 20 (22) | 150 (146) | 60 (61 / 99 / 0) | 1.137 | 0.057 | 0.137 | 0.642 | 0.187 | 1.075 | 233 | 65 | 5.0 |
-| 40 (38) | 150 (146) | 60 (62 / 98 / 0) | 1.337 | 0.048 | 0.228 | 0.771 | 0.187 | 0.375 | 233 | 44 | 5.0 |
-| 80 (79) | 150 (146) | 60 (61 / 99 / 0) | 1.771 | 0.055 | 0.364 | 1.064 | 0.161 | 2.175 | 238 | 71 | 2.5 |
-| 40 (40) | 50 (49) | 60 (61 / 98 / 0) | 0.859 | 0.047 | 0.207 | 0.291 | 0.197 | 0.588 | 239 | 21 | 1.0 |
-| 40 (37) | 300 (293) | 60 (61 / 99 / 0) | 2.017 | 0.054 | 0.218 | 1.481 | 0.185 | 0.425 | 239 | 74 | 5.0 |
-| 40 (39) | 150 (146) | 0 (8 / 11 / 0) | 1.312 | 0.048 | 0.226 | 0.882 | 0.036 | 0.250 | 239 | 73 | 6.5 |
-| 40 (36) | 150 (146) | 120 (120 / 40 / 0) | 1.499 | 0.064 | 0.217 | 0.934 | 0.194 | 1.125 | 239 | 62 | 6.5 |
-| 40 (40) | 0 (0) | 0 (9 / 15 / 0) | 0.320 | 0.018 | 0.203 | 0.000 | 0.052 | 1.475 | 238 | 0 | 0.0 |
-| 0 (combat running empty) | 0 (0) | 0 (0 / 0 / 0) | 0.019 | 0.000 | 0.006 | 0.001 | 0.000 | – | 226 | 0 | 0.0 |
+## Where combat's script time goes (ms a frame, plain means, median of the repeats)
 
-enemies.update ≈ 0.026 + 6.02 µs·n + -0.022 µs·n² (n enemies alive): at 40 that is 241 µs growing with the number and -35 µs growing with its square (the pairs of separate() and striking()).
+| part | four players | share | per unit | stress case | share | per unit |
+|---|---:|---:|---:|---:|---:|---:|
+| enemies.update (thinking, moving, the crawlers' heights on the ground, drawing the crowds) | 0.484 | 50 % | 11.93 µs an enemy | 0.403 | 28 % | 9.58 µs an enemy |
+| projectiles.update (with hits: enemies.hit, gore.hit, fx.burst) | 0.132 | 14 % | 4.84 µs a shot | 0.571 | 39 % | 3.93 µs a shot |
+| hostile.update (enemy rounds, with hits on the player) | 0.032 | 3 % | 0.80 µs a round | 0.088 | 6 % | 0.55 µs a round |
+| aim.update | 0.021 | 2 % |  | 0.017 | 1 % |  |
+| director.update | 0.003 | 0 % |  | 0.003 | 0 % |  |
+| pickups.update | 0.002 | 0 % |  | 0.003 | 0 % |  |
+| the stones for the shots (terrain.collidersNear) | 0.010 | 1 % |  | 0.013 | 1 % |  |
+| the crawlers' ground gathered (ground.refresh: collidersNear and pebbles.near within 12 u) | 0.221 | 23 % |  | 0.219 | 15 % |  |
+| rest of combat.step (firing, bosses, rules, fx.update, gore.update, corpses) | 0.038 | 4 % |  | 0.104 | 7 % |  |
+| combat.frame (hud and health bars, fx.begin/add/end, models, gore.frame) | 0.032 | 3 % |  | 0.038 | 3 % |  |
+| combat.step + combat.frame | 0.974 | 100 % |  | 1.458 | 100 % |  |
 
-(80 enemies: past a kind's crowd they are moved and tested but not drawn, so the card's number there is too low.)
+The river lookups on their own (µs a call, on the stress case as it stood: 149 shots, 42 enemies): a shot's locate + bed + level 0.69 (locate 0.25, bed 0.40, level 0.09); an enemy's current + locate + bed + level 1.35 (current 0.56); terrain.collidersNear 0.026 ms a call, 194 stones returned.
 
-## Spent enemy bullets over 45 s of fight
+On lists of their own (600 at a time, µs a step each; the rounds made spent and laid on the bed through hostile.js's own path): an enemy round flying at the fish 0.938, spent and sinking 0.243, lying on the bed 0.049; a players' shot flying along the river 3.618, without the bed and surface lookup 2.444 (tested against 194 stones and the enemies of the fight).
 
-| s | flying | spent, sinking | on the bed | oldest spent (s) | hostile.update (ms) | combat.step (ms) | enemies (dead) | shots | bubbles | heap (MB) |
+## What the proposals save (timed in turns)
+
+Each variant against what it replaces, in 32 blocks of 6 frames (off, on, on, off, then the other way round): the median change of combat.step, with the middle half of the blocks; negative saves. The variants for the shots are copies of projectiles.js's update, timed against a plain copy of it; the copy itself against the original: −0.010 ms (-0.030 … 0.010). Every variant gives the same hits, stones, grounds and heights as the code it stands for.
+
+| proposal | fight | change of combat.step (ms) | middle half |
+|---|---:|---:|---:|
+| Each players' shot looks up the bed and the surface every other step (for the game: with the crossing found between two looks; at Eco's 50 ms step a bolt goes 4 u between them) | stress case | −0.090 | -0.110 … -0.070 |
+| The stones near the fish sorted into 2 u cells, again only when the list of stones changes; a shot tests only the stones of its cell | stress case | −0.140 | -0.170 … -0.120 |
+| The living enemies sorted into 2 u cells once a step; a shot tests only the enemies its step can reach | stress case | −0.010 | -0.040 … 0.010 |
+| The living enemies' middles and sizes in flat arrays once a step, for the first test of every shot against every enemy (the records, of many shapes, read only for those near) | stress case | −0.140 | -0.190 … -0.110 |
+| Every other lookup, stone cells and enemy arrays together | stress case | −0.320 | -0.340 … -0.300 |
+| The same three together | four players | −0.050 | -0.070 … -0.030 |
+| The crawlers' ground gathered again only once the fish has moved (0.5 u), not every step | four players | −0.210 | -0.230 … -0.180 |
+| A crawler's height looked up among the stones and pebbles of its 1 u cell only, sorted into cells whenever the ground is gathered | four players | +0.020 | 0.000 … 0.050 |
+| Both for the ground: gathered when the fish has moved, sorted into cells then | four players | −0.490 | -0.510 … -0.470 |
+| Everything together: the three for the shots, both for the ground | four players | −0.560 | -0.590 … -0.520 |
+
+The page's style and layout with parts of the HUD taken off the page (display: none) in turns against as it is (stress case, ms a frame; what writing them by transform alone could save at most):
+
+| taken off | style and layout | middle half |
+|---|---:|---:|
+| the health bars (#foes, moved by transform since main's 96c98ec) | −0.030 | -0.050 … -0.010 |
+| all of combat's HUD (#xh, #callout, #arsenal, #foes, #bossbar) | −0.060 | -0.070 … -0.040 |
+| the game's threat arrows (#threats, base game: Next's to change) | −0.070 | -0.080 … -0.040 |
+
+Enemy records all of one shape (every field the combat code adds later given at spawn, in one order) against as they are, twice in turn after a fresh set of enemies: combat.step 1.455 against 1.429 ms, enemies.update 0.409 against 0.373, projectiles.update 0.574 against 0.584.
+
+## What the script allocates (stress case)
+
+Chrome's sampling heap profiler over 120 frames, counting what the collector had already taken too: 1773 KB a frame in all; within combat.step 1222.8, combat.frame 8.1, projectiles.update 241.4, enemies.update 879.2, hostile.update 16.5, hud.bars 2.1, fx.update 12.0 KB (callees included). Where it is allocated (KB a frame, the site itself):
+
+| site | KB a frame |
+|---|---:|
+| height (ground.js:19) | 806.0 |
+| update (projectiles.js:79) | 217.8 |
+| update (life.js:1447) | 89.1 |
+| subarray (native) | 59.8 |
+| near (pebbles.js:250) | 49.9 |
+| _update (three.webgpu.js:33882) | 48.6 |
+| drawLocal (minimap.js:138) | 36.7 |
+| update (life.js:430) | 22.8 |
+| meters.gravel.fn (scenes-look.js:346) | 21.1 |
+| split (anatomy.js:2084) | 19.4 |
+| update (life.js:836) | 17.1 |
+| riverBed (course.js:757) | 17.1 |
+| add (native) | 16.4 |
+| update (enemies.js:370) | 14.5 |
+| update (three.webgpu.js:16605) | 12.5 |
+
+## Combat's meshes (stress case, each part shown against hidden)
+
+| part | draw calls | triangles |
+|---|---:|---:|
+| Combat bullhead | +2 | +10688 |
+| Combat bullhead far | +1 | +480 |
+| Combat troutParr | +2 | +24696 |
+| Combat troutParr far | +1 | +1680 |
+| Combat trout | +2 | +13720 |
+| Combat trout far | +0 | +0 |
+| Combat dragonflyLarva | +0 | +0 |
+| Combat dragonflyLarva far | +1 | +720 |
+| Combat beetleLarva | +0 | +0 |
+| Combat beetleLarva far | +1 | +480 |
+| Combat glow | +1 | +734 |
+| Combat bubbles | +1 | +960 |
+
+(What one part costs the card alone is below the noise of timing it on a shared machine; the card's verdict is for all of them together.)
+
+## The fight scaled (one measurement each: for the shape of the growth)
+
+| enemies | shots (held) | enemy rounds asked / flying / spent / on the bed | combat.step | combat.frame | enemies | projectiles | hostile | draw calls | hits/s | kills/s |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 60 | 98 | 0 | 1.5 | 0.177 | 1.287 | 45 (5) | 149 | 389 | 223 |
-| 5 | 59 | 101 | 0 | 1.7 | 0.190 | 1.480 | 48 (8) | 145 | 480 | 246.1 |
-| 10 | 45 | 115 | 0 | 1.6 | 0.183 | 1.672 | 45 (5) | 144 | 479 | 255 |
-| 15 | 64 | 96 | 0 | 1.5 | 0.183 | 1.465 | 44 (4) | 146 | 480 | 262.8 |
-| 20 | 60 | 100 | 0 | 1.5 | 0.177 | 1.402 | 44 (5) | 142 | 480 | 274.6 |
-| 25 | 67 | 92 | 0 | 1.3 | 0.195 | 1.480 | 45 (9) | 149 | 480 | 261.6 |
-| 30 | 55 | 105 | 0 | 1.6 | 0.177 | 1.473 | 45 (6) | 146 | 480 | 252.5 |
-| 35 | 57 | 103 | 0 | 1.5 | 0.163 | 1.340 | 43 (3) | 146 | 473 | 280.2 |
-| 40 | 60 | 97 | 1 | 1.7 | 0.162 | 1.367 | 44 (5) | 142 | 480 | 281.2 |
-| 45 | 60 | 98 | 0 | 1.5 | 0.170 | 1.387 | 45 (5) | 140 | 480 | 246 |
+| 10 (10) | 150 (146) | 60 / 61 / 99 / 0 | 1.025 | 0.024 | 0.166 | 0.368 | 0.122 | +10 | 21 | 3.0 |
+| 20 (22) | 150 (146) | 60 / 60 / 100 / 0 | 1.191 | 0.042 | 0.273 | 0.468 | 0.097 | +11 | 27 | 3.5 |
+| 40 (40) | 150 (146) | 60 / 61 / 99 / 0 | 1.472 | 0.026 | 0.407 | 0.591 | 0.106 | +12 | 54 | 3.5 |
+| 80 (77, 35 not drawn) | 150 (145) | 60 / 61 / 99 / 0 | 2.190 | 0.033 | 0.776 | 0.927 | 0.097 | +12 | 101 | 6.0 |
+| 40 (40) | 28 (27) | 60 / 61 / 99 / 0 | 1.079 | 0.025 | 0.514 | 0.138 | 0.098 | +12 | 18 | 1.0 |
+| 40 (40) | 50 (48) | 60 / 61 / 99 / 0 | 1.107 | 0.021 | 0.482 | 0.209 | 0.104 | +12 | 38 | 1.5 |
+| 40 (39) | 300 (293) | 60 / 60 / 99 / 0 | 1.981 | 0.037 | 0.417 | 1.109 | 0.098 | +12 | 62 | 7.5 |
+| 40 (39) | 150 (146) | 0 / 9 / 17 / 0 | 1.406 | 0.034 | 0.412 | 0.602 | 0.027 | +12 | 55 | 6.0 |
+| 40 (40) | 150 (146) | 120 / 122 / 38 / 0 | 1.545 | 0.037 | 0.443 | 0.594 | 0.133 | +12 | 59 | 5.0 |
+| 40 (40) | 0 (0) | 0 / 6 / 11 / 0 | 0.816 | 0.009 | 0.512 | 0.001 | 0.027 | +12 | 0 | 0.0 |
+| 0 (combat running empty) | 0 (0) | 0 / 0 / 0 / 0 | 0.015 | 0.000 | 0.012 | 0.000 | 0.000 | – | 0 | 0.0 |
 
-The list held at most 160 rounds, 100 of them spent and sinking and 0 on the bed on average; no spent round was older than 1.8 s, so some reached the bed: the full list lets the oldest go first. Nothing piles up without bound. At 1.15 µs a step each (the lists of their own, above), the spent ones cost 0.115 ms a step.
+enemies.update ≈ 0.099 + 6.98 µs·n + 0.024 µs·n² (n enemies alive): at 40 that is 279 µs growing with the number and 39 µs growing with its square (the pairs of separate() and striking()).
+
+projectiles.update grows by 3.66 µs a shot at 40 enemies (27 → 293 shots).
+
+(80 enemies: past a kind's crowd they are moved and tested but not drawn, so the draw calls there are too few.)
+
+## Enemy rounds over 30 s of the fight of four players, the fish held low over the bed
+
+| s | fired in that second | flying | spent, sinking | on the bed | oldest spent (s) | longest on the bed (s) | hostile.update (ms) | combat.step (ms) | enemies (dead) | heap (MB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 12 | 8 | 37 | 3 | 1.6 | 0.5 | 0.042 | 0.870 | 41 (2) | 243.7 |
+| 5 | 7 | 0 | 51 | 25 | 5.6 | 4.5 | 0.030 | 0.978 | 44 (4) | 262 |
+| 10 | 24 | 8 | 51 | 60 | 10.6 | 7.8 | 0.058 | 1.038 | 42 (2) | 264.8 |
+| 15 | 7 | 2 | 58 | 34 | 10.9 | 7.9 | 0.058 | 1.022 | 42 (2) | 244.8 |
+| 20 | 10 | 7 | 46 | 54 | 11.8 | 7.9 | 0.040 | 0.982 | 40 (2) | 256.2 |
+| 25 | 25 | 5 | 58 | 36 | 11.9 | 7.0 | 0.060 | 1.020 | 42 (3) | 267.4 |
+| 30 | 4 | 2 | 49 | 37 | 11.1 | 7.9 | 0.047 | 1.017 | 42 (5) | 227.7 |
+
+The enemies fired 15.5 rounds a second on their own. The list held at most 119 rounds (capacity 160); up to 66 lay on the bed at once, in 30 of 30 seconds, the longest 8.0 s (they go after 8 s there, or at 12 s old). hostile.update took 0.042 ms a step (median of the seconds). Nothing piles up without bound.
 
 ## Console
 
@@ -132,10 +171,12 @@ No errors.
 
 1 different warnings:
 
-- rendering: Calling [RenderPassEncoder (unlabeled)].Draw with an index count of 0 is unusual. (http://localhost:8170/)
+- rendering: Calling [RenderPassEncoder (unlabeled)].Draw with an index count of 0 is unusual. (http://localhost:8182/)
+
+(The draws with an index count of 0 come from the base game's warm-up render at start-up -- two transparent objects with an empty index in each pass, the mirror's too, which never sees combat -- not from combat.)
 
 Left aside, the development server's and not the game's:
 
-- network: Failed to load resource: the server responded with a status of 404 (Not Found) (http://localhost:8170/_vercel/insights/script.js)
+- network: Failed to load resource: the server responded with a status of 404 (Not Found) (http://localhost:8182/_vercel/insights/script.js)
 
-Pictures: bench-webgpu-detail-kampf.jpg (the fight) and -ohne.jpg (the same place without it).
+Pictures: bench-webgpu-detail-kampf.jpg (the stress case) and -ohne.jpg (the same place without it).
