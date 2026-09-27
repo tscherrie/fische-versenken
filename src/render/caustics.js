@@ -122,7 +122,11 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   const landed = q.sub(wave.xy.mul((1 - 1 / 1.333) * 1).mul(river.causticParams.z));
   const before = varying(q);
   const after = varying(landed);
-  material.vertexNode = vec4(landed.div(TILE).mul(2).sub(1), 0, 1);
+  // Into the map the way causticLight reads it, the texture's row v holding what landed at
+  // z = v * TILE: a render target's first row (v = 0) is at the top of clip space (y = +1),
+  // so z runs down it. (Drawn with z running up, the net was the mirror image of the one the
+  // ripples overhead make, and in a bend it slid across the river instead of down it.)
+  material.vertexNode = vec4(landed.x.div(TILE).mul(2).sub(1), landed.y.div(TILE).mul(-2).add(1), 0, 1);
   material.fragmentNode = Fn(() => {
     const areaBefore = abs(dFdx(before).x.mul(dFdy(before).y).sub(dFdx(before).y.mul(dFdy(before).x)));
     const areaAfter = abs(dFdx(after).x.mul(dFdy(after).y).sub(dFdx(after).y.mul(dFdy(after).x)));
