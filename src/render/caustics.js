@@ -6,7 +6,7 @@ import { FLOW_DIRECTION, river, waterTime } from "./water.js";
 //
 // A gently rippled surface acts as a sheet of weak lenses: every patch of it tilts the
 // sunlight passing through by an angle proportional to its slope, so a bundle of rays that
-// started parallel converges under a trough and spreads under a crest. At some depth below,
+// started parallel converges under a crest and spreads under a trough. At some depth below,
 // the bundles cross, and the bright folded lines where they cross are the net seen dancing
 // on a sandy bed. That construction is done here once a frame for one periodic tile of
 // surface: a fine grid over the tile is moved to where its light lands at the focal depth,
@@ -115,11 +115,13 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
     depthTest: false,
     depthWrite: false,
   });
-  // Small-slope refraction: a ray through a patch tilted by the slope s leaves it bent by
-  // (1 - 1/n) s, and carries that bend down to the focal depth.
+  // Small-slope refraction: sunlight coming straight down through a patch whose height
+  // rises along s (the gradient) leaves it bent by (1 - 1/n) s, toward the rising side, and
+  // carries that bend down to the focal depth. A crest, rising to it from every side, is the
+  // converging lens: the bright lines lie under the crests one sees.
   const q = positionGeometry.xy;
   const wave = surfaceWaves(q, waterTime, roughness);
-  const landed = q.sub(wave.xy.mul((1 - 1 / 1.333) * 1).mul(river.causticParams.z));
+  const landed = q.add(wave.xy.mul(1 - 1 / 1.333).mul(river.causticParams.z));
   const before = varying(q);
   const after = varying(landed);
   // Into the map the way causticLight reads it, the texture's row v holding what landed at
