@@ -49,7 +49,8 @@ export function createGravel({ random, hud }) {
             const reach = range(4, 7);
             const s = fish.river.s + Math.cos(angle) * reach;
             const u = Math.max(c.thalweg - c.half * 0.8, Math.min(c.thalweg + c.half * 0.8, fish.river.u + Math.sin(angle) * reach));
-            if (level(s) - bed(s, u) < 0.3) continue;
+            const floor = bed(s, u);
+            if (level(s) - floor < 0.3 || floor > fish.position.y + 0.6 || floor < fish.position.y - 4) continue;
             enemies.spawn(kind, s, u);
           }
         }
