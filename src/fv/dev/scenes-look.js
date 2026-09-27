@@ -723,46 +723,58 @@ async function measure(ctx, here, name, undo) {
     return out;
   }
   // A few frames as timedFrames runs them, for measuring in turns: combat.step and its
-  // parts, and the page's style and layout.
+  // parts, and the page's style and layout. combat.step and the layout go without the slowest
+  // frame of the few: a collection, or another program getting the processor, lands in one
+  // frame and would outweigh what is measured.
+  const lean = (list) => (list.reduce((a, b) => a + b, 0) - Math.max(...list)) / (list.length - 1);
   async function segment(n) {
     const before = {};
     for (const key of PARTS) before[key] = meters[key].sum;
-    let layout = 0;
+    const steps = [],
+      layouts = [];
     for (let i = 0; i < n; i++) {
       keep();
       await sync();
+      const s0 = meters.step.sum;
       salmon.step(dt);
       extreme.frame(dt);
       const t = now();
       void habitat.offsetWidth;
-      layout += now() - t;
+      layouts.push(now() - t);
+      steps.push(meters.step.sum - s0);
       salmon.draw(dt);
     }
-    const out = { layout: layout / n };
-    for (const key of PARTS) out[key] = (meters[key].sum - before[key]) / n;
+    const out = { step: lean(steps), layout: lean(layouts) };
+    for (const key of PARTS) if (key !== "step") out[key] = (meters[key].sum - before[key]) / n;
     return out;
   }
   // Something switched on and off in short blocks of frames -- off, on, on, off, then the
   // other way round -- so whatever else the machine is doing meanwhile weighs on both alike:
-  // the median of the paired differences (on minus off) of `metric`, with the middle half.
+  // the median of the paired differences (on minus off) of `metric`, with the middle half,
+  // and what combat.step, its parts and the layout took on and off (means, to see where a
+  // change lands).
   async function inTurns(set, metric, n = 6) {
     const diffs = [];
+    const sums = { on: {}, off: {} };
     for (let k = 0; k < blocks; k++) {
       let a = 0,
         b = 0;
       for (const on of k % 2 ? [true, false, false, true] : [false, true, true, false]) {
         set(on);
-        const v = metric(await segment(n));
+        const x = await segment(n);
+        const v = metric(x);
         if (on) b += v / 2;
         else a += v / 2;
+        const into = sums[on ? "on" : "off"];
+        for (const key in x) into[key] = (into[key] ?? 0) + x[key] / (2 * blocks);
       }
       diffs.push(b - a);
       await nextTask();
     }
     set(false);
-    return quartiles(diffs);
+    const round = (o) => Object.fromEntries(Object.entries(o).map(([key, v]) => [key, +v.toFixed(4)]));
+    return { ...quartiles(diffs), on: round(sums.on), off: round(sums.off) };
   }
-
   // Frames drawn back to back and then waited for (the scene as it stands, drawn again):
   // what a frame costs the card, as long as the card and not the script is what holds it
   // up. `submit` is the script's share; near `gpu`, the script was the bottleneck instead.

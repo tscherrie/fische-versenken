@@ -19,7 +19,7 @@
 // from the reports already there.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -796,6 +796,8 @@ function summary(r) {
 }
 
 async function summaries(list) {
+  // (A run that failed before the page wrote anything leaves no folder to write into.)
+  await mkdir(out, { recursive: true });
   const all = [];
   for (const config of list) {
     const name = `bench-${config}`;
