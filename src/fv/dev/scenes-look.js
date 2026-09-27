@@ -225,7 +225,7 @@ async function measure(ctx, here, name, undo) {
   // falls in course.js do, shares V8's hidden classes with them, and making one here sent
   // level() -- which goes over the falls for every shot, round and fish -- into a loop of code
   // thrown away and built again, which doubled what projectiles.update costs.)
-  const place = { length: +L.toFixed(2), depth: +(level(spot.s) - bed(spot.s, spot.u)).toFixed(2), height: +(anchor.y - bed(spot.s, spot.u)).toFixed(2), s: +spot.s.toFixed(1), u: +spot.u.toFixed(2) };
+  const place = { length: +L.toFixed(2), stage: fish.stage, progress: +fish.progress.toFixed(3), depth: +(level(spot.s) - bed(spot.s, spot.u)).toFixed(2), height: +(anchor.y - bed(spot.s, spot.u)).toFixed(2), s: +spot.s.toFixed(1), u: +spot.u.toFixed(2) };
   const floorHere = bed(spot.s, spot.u);
   const eye = anchor.clone().addScaledVector(heading, -(3.5 + 2 * L));
   locate(eye.x, eye.z, fish.river.s, spot);
@@ -236,10 +236,17 @@ async function measure(ctx, here, name, undo) {
   look.pitch = 0;
   // (Changed by the soak, which holds the fish low over the bed for a while.)
   let holdY = anchor.y;
+  // The fish does not grow either. Kills feed it (combat's reward), and so do corpses eaten
+  // and time: in a minute of the stress case a parr grows by half a stage, and a bigger fish
+  // fires faster bolts that reach farther, and past 1.6 u the gravel the crawlers walk on is
+  // no longer laid -- the fight would change under the bench as it went on.
+  const stage = fish.stage,
+    progress = fish.progress;
   function pin() {
     fish.position.set(anchor.x, holdY, anchor.z);
     fish.velocity.set(0, 0, 0);
     fish.energy = 1;
+    fish.progress = progress;
   }
   // Nothing of the fight may end it: the fish is out of reach of harm (the hits still land
   // and show), and the director sends nobody of its own. (The director's hold is not undone:
@@ -1267,6 +1274,8 @@ async function measure(ctx, here, name, undo) {
   await settle(0.5);
   await salmon.capture(`${set}/${name}-ohne`, 1280, 720);
 
+  // (That the fish kept its size to the end.)
+  place.held = fish.stage === stage && Math.abs(fish.length - L) < 0.01;
   return { config, place, load: { stress: STRESS, four: FOUR, boltLife: +(piu.reach(L) / piu.speed(L)).toFixed(3), boltInterval: piu.interval, aimShare, hpScale, capped: shotsCapped }, crowds: crowd, runs, groups, lookups, rounds, swaps, hud, shapes, heapFrames, scaled, soak };
 }
 
