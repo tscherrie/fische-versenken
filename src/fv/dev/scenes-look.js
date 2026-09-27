@@ -30,15 +30,17 @@ const nextTask = () =>
   });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Whether combat.step is running right now: a function the base game calls as well (the
-// stones near a point) is timed only for combat's own calls.
-const inside = { step: false };
+// Whether combat.step, or the local player's weapons in it, are running right now: a
+// function the base game calls as well (the stones near a point) is timed only for combat's
+// own calls, and a call made inside a part timed already is not timed twice.
+const inside = { step: false, firing: false };
 
 // A method replaced by one that adds up how long it takes. `fn` is what it calls, and can be
-// swapped for a variant while the timing stays in place. `marksStep`: this is combat.step, and
-// calls made during it count as combat's. `onlyInStep`: calls from outside combat.step (the
-// base game's own) go to the original, untimed and never to a variant.
-function meter(object, key, { marksStep = false, onlyInStep = false } = {}) {
+// swapped for a variant while the timing stays in place. `marks`: a key of `inside` set while
+// the call runs ("step": this is combat.step). `onlyInStep`: calls from outside combat.step
+// (the base game's own) go to the original, untimed and never to a variant. `notIn`: calls
+// made while that key of `inside` is set go to `fn` untimed.
+function meter(object, key, { marks = null, onlyInStep = false, notIn = null } = {}) {
   const m = {
     fn: object[key],
     sum: 0,
@@ -53,12 +55,13 @@ function meter(object, key, { marksStep = false, onlyInStep = false } = {}) {
   // (apply with `arguments` passes on however many there are, without an array per call.)
   object[key] = function () {
     if (onlyInStep && !inside.step) return original.apply(this, arguments);
+    if (notIn && inside[notIn]) return m.fn.apply(this, arguments);
     const t = performance.now();
-    if (marksStep) inside.step = true;
+    if (marks) inside[marks] = true;
     try {
       return m.fn.apply(this, arguments);
     } finally {
-      if (marksStep) inside.step = false;
+      if (marks) inside[marks] = false;
       m.sum += performance.now() - t;
       m.calls++;
     }
@@ -285,7 +288,7 @@ async function measure(ctx, here, name, undo) {
   };
   undo.push(() => (combat.enemies.update = enemyUpdate));
   const meters = {
-    step: meter(combat, "step", { marksStep: true }),
+    step: meter(combat, "step", { marks: "step" }),
     frame: meter(combat, "frame"),
     enemies: meter(combat.enemies, "update"),
     projectiles: meter(combat.projectiles, "update"),
@@ -293,10 +296,17 @@ async function measure(ctx, here, name, undo) {
     aim: meter(combat.aim, "update"),
     director: meter(combat.director, "update"),
     pickups: meter(combat.pickups, "update"),
+    // (The local player's weapons, through weapons.js's verbs -- the laser's pulses and its
+    // beam, which burns along a ray -- and what they leave to the step after the enemies have
+    // moved; the powder smoke.)
+    firing: meter(combat.firing, "fire", { marks: "firing" }),
+    after: meter(combat.firing, "after"),
+    smoke: meter(combat.smoke, "update"),
     // (The stones near a point and the gravel: the base game asks for them in its own step
     // as well, so only combat's calls are counted -- the shots' stones, and the crawlers'
-    // ground since the larvae walk on stones and gravel.)
-    colliders: meter(terrain, "collidersNear", { onlyInStep: true }),
+    // ground since the larvae walk on stones and gravel; the laser's beam asks for them too,
+    // counted with the weapons.)
+    colliders: meter(terrain, "collidersNear", { onlyInStep: true, notIn: "firing" }),
     gravel: meter(extreme.game.pebbles, "near", { onlyInStep: true }),
     // (signals.js lays Extreme's enemies into the game's threat list, which the game asks
     // for in its own step, outside combat.step.)
@@ -319,7 +329,7 @@ async function measure(ctx, here, name, undo) {
   const groundTry = { kept: false, cells: false };
   const gathered = { stones: null, gravel: null, x: NaN, z: NaN, reach: -1, version: 0 };
   // (The last stones asked for before enemies.update: the ground's, once the gravel follows.)
-  const asked = { out: null, x: 0, z: 0, reach: 0, same: false };
+  const asked = { out: null, x: 0, z: 0, reach: 0, same: false, time: 0 };
   const keptGravel = [];
   const collidersNear = meters.colliders.fn,
     pebblesNear = meters.gravel.fn;
@@ -340,10 +350,11 @@ async function measure(ctx, here, name, undo) {
     asked.reach = reach;
     asked.same = same;
     const result = same ? out : collidersNear.apply(this, arguments);
-    meters.groundStones.sum += now() - t;
+    asked.time = now() - t;
     return result;
   };
   meters.gravel.fn = function (position, reach, out) {
+    meters.groundStones.sum += asked.time;
     if (!asked.same) {
       gathered.stones = asked.out;
       gathered.gravel = out;
@@ -496,7 +507,8 @@ async function measure(ctx, here, name, undo) {
   ];
   const muzzle = new THREE.Vector3();
   const velocity = new THREE.Vector3();
-  const shot = { owner: 0, weapon: "piu", position: muzzle, velocity, damage: 0, radius: 0, life: 0, size: 0, tint: null, stretch: 0, s: 0 };
+  // (The fields weapons.js's bolt() gives a laser bolt.)
+  const shot = { owner: 0, weapon: "piu", position: muzzle, velocity, damage: 0, radius: 0, life: 0, size: 0, tint: null, core: null, stretch: 0, shooter: 1, s: 0 };
   let fired = 0;
   // The script time of the firing the bench does for the game (projectiles.fire, and the
   // enemies' guns through the game's own enemyShoots): outside combat.step here, inside it or
@@ -525,7 +537,9 @@ async function measure(ctx, here, name, undo) {
     shot.life = piu.reach(L) / speed;
     shot.size = piu.size(L);
     shot.tint = piu.tint;
+    shot.core = piu.core ?? null;
     shot.stretch = piu.stretch;
+    shot.shooter = L;
     shot.s = fish.river.s;
     const t = now();
     combat.projectiles.fire(shot);
@@ -622,7 +636,7 @@ async function measure(ctx, here, name, undo) {
   for (const key of SERIES) series[key] = new Float64Array(Math.max(frames, 1));
   const queries = [];
   const kinds = {};
-  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "colliders", "gravel", "groundStones", "threats"];
+  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "firing", "after", "smoke", "colliders", "gravel", "groundStones", "threats"];
   // Frames timed one by one, each begun with the card idle, so the script's time is not
   // held up by the card: the world's step, combat's frame, the draw.
   async function timedFrames(n) {
@@ -815,10 +829,12 @@ async function measure(ctx, here, name, undo) {
     }
     return +median(walls).toFixed(3);
   }
-  // Combat's meshes, by part: each kind's crowd (body, fins, far fish), the glow, the bubbles.
+  // Combat's meshes, by part: each kind's crowd (body, fins, far fish), the glow, the
+  // bubbles, the blood and the gibs, the smoke, the grenades, and the players' gear (the
+  // weapons and harnesses of models.js, "FV gear", drawn in the mirror and the shadows too).
   const parts = new Map();
   scene.traverse((o) => {
-    if (!o.name?.startsWith("Combat")) return;
+    if (!o.name?.startsWith("Combat") && o.name !== "FV gear") return;
     const key = o.name.replace(/ fins$/, "");
     if (!parts.has(key)) parts.set(key, []);
     parts.get(key).push(o);
@@ -946,7 +962,7 @@ async function measure(ctx, here, name, undo) {
   // ?xhold: the bench stops here and hands its parts to the console (window.bench), to try
   // things out by hand; it reports nothing.
   if (here.has("xhold")) {
-    window.bench = { setLoad, settle, drain, keep, frame, timedFrames, segment, inTurns, backToBack, fullFrames, pairedCost, counted, condition, combatOn, oneShape, meters, load, sync, parts, everything, STRESS, FOUR, OFF, groundTry, gathered, cellGround, binGround, hooks: () => hooks, projectileUpdate: (options) => projectileUpdate(THREE, combat.projectiles.live, course, options) };
+    window.bench = { setLoad, settle, drain, keep, frame, timedFrames, segment, inTurns, backToBack, fullFrames, pairedCost, counted, condition, combatOn, oneShape, meters, load, sync, parts, everything, STRESS, FOUR, OFF, groundTry, gathered, cellGround, binGround, hooks: () => hooks, projectileUpdate: (options) => projectileUpdate(THREE, combat.projectiles.live, course, { giveBack: meters.projectiles.fn, ...options }) };
     await new Promise(() => {});
   }
 
@@ -1102,7 +1118,7 @@ async function measure(ctx, here, name, undo) {
     terrain.collidersNear(fish.position.x, fish.position.z, piu.reach(L) + 4, stones);
     for (const [key, update] of [
       ["shot", shots.update],
-      ["shotNoLookup", projectileUpdate(THREE, shots.live, course, { lookup: false })],
+      ["shotNoLookup", projectileUpdate(THREE, shots.live, course, { lookup: false, giveBack: shots.update })],
     ]) {
       let total = 0;
       for (let pass = 0; pass < passes; pass++) {
@@ -1135,17 +1151,18 @@ async function measure(ctx, here, name, undo) {
   const swaps = {};
   const original = meters.projectiles.fn;
   const live = combat.projectiles.live;
-  const copy = projectileUpdate(THREE, live, course);
+  const variant = (options = {}) => projectileUpdate(THREE, live, course, { giveBack: original, ...options });
+  const copy = variant();
   const byStep = (x) => x.step;
   const swapShots = (fn, against = copy) => (on) => (meters.projectiles.fn = on ? fn : against);
-  const together = projectileUpdate(THREE, live, course, { every: 2, cells: "kept", enemyArrays: true });
+  const together = variant({ every: 2, cells: "kept", enemyArrays: true });
   setLoad(STRESS);
   await settle(1);
   swaps.copy = await inTurns(swapShots(copy, original), byStep);
-  swaps.lookupHalf = await inTurns(swapShots(projectileUpdate(THREE, live, course, { every: 2 })), byStep);
-  swaps.stoneCells = await inTurns(swapShots(projectileUpdate(THREE, live, course, { cells: "kept" })), byStep);
-  swaps.enemyCells = await inTurns(swapShots(projectileUpdate(THREE, live, course, { enemyCells: true })), byStep);
-  swaps.enemyArrays = await inTurns(swapShots(projectileUpdate(THREE, live, course, { enemyArrays: true })), byStep);
+  swaps.lookupHalf = await inTurns(swapShots(variant({ every: 2 })), byStep);
+  swaps.stoneCells = await inTurns(swapShots(variant({ cells: "kept" })), byStep);
+  swaps.enemyCells = await inTurns(swapShots(variant({ enemyCells: true })), byStep);
+  swaps.enemyArrays = await inTurns(swapShots(variant({ enemyArrays: true })), byStep);
   swaps.together = await inTurns(swapShots(together), byStep);
   combat.hostile.reset();
   setLoad(FOUR);
@@ -1284,10 +1301,42 @@ async function measure(ctx, here, name, undo) {
 // enemy or a stone or its time is up), with that lookup every `every` steps, with the stones
 // sorted into cells, with the enemies sorted into cells, and with the enemies' middles and
 // sizes in flat arrays.
-function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, cells = false, every = 1, enemyCells = false, enemyArrays = false } = {}) {
+//
+// The shot records are projectiles.js's pool, which a copy cannot reach: the records it takes
+// out of the list are handed back after each step through `giveBack`, the original update,
+// run on them alone with their time up (it drops such a record into the pool and does
+// nothing else). Without it (records not from the pool) they are simply let go.
+const NOTHING = Object.freeze({ enemies: Object.freeze([]), stones: Object.freeze([]) });
+function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, cells = false, every = 1, enemyCells = false, enemyArrays = false, giveBack = null } = {}) {
   const tail = new THREE.Vector3();
   const head = new THREE.Vector3();
   const from = new THREE.Vector3();
+  const end = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const gone = [],
+    staying = [];
+  function drop(i) {
+    const p = live[i];
+    live[i] = live[live.length - 1];
+    live.pop();
+    gone.push(p);
+  }
+  function handBack() {
+    if (giveBack && gone.length) {
+      staying.length = 0;
+      for (const p of live) staying.push(p);
+      live.length = 0;
+      for (const p of gone) {
+        p.age = Infinity;
+        p.fuse = false;
+        live.push(p);
+      }
+      giveBack(0, NOTHING);
+      live.length = 0;
+      for (const p of staying) live.push(p);
+    }
+    gone.length = 0;
+  }
   // The stones in cells of CELL units, each stone in every cell its outline reaches, sorted
   // afresh each step: a shot then tests only the stones of the cell its end is in.
   const CELL = 2;
@@ -1381,7 +1430,7 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
   let best = null,
     bestS = 2;
   function test(p, e, dt) {
-    if (e.dead) return;
+    if (e.dead || (p.pierce && p.passed.has(e))) return;
     const reach = e.size * 0.6 + p.radius;
     const dx = e.position.x - from.x,
       dz = e.position.z - from.z;
@@ -1394,7 +1443,7 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
       bestS = along;
     }
   }
-  return function update(dt, { enemies, stones, onEnemy, onGround, onStone }) {
+  return function update(dt, { enemies, stones, onEnemy, onGround, onStone, onBounce, onExpire }) {
     if (cells && (cells !== "kept" || stones.length !== sortedLength || stones[0] !== sortedFirst)) {
       sort(stones);
       sortedLength = stones.length;
@@ -1406,41 +1455,66 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
       const p = live[i];
       p.age += dt;
       if (p.age >= p.life) {
-        live.splice(i, 1);
+        if (p.fuse) onExpire?.(p);
+        drop(i);
         continue;
       }
+      if (p.rested) continue;
       from.copy(p.position);
-      p.position.addScaledVector(p.velocity, dt);
-      best = null;
-      bestS = 2;
-      if (enemyArrays) {
-        const fx = from.x,
-          fz = from.z,
-          r = p.radius,
-          sx = Math.abs(p.velocity.x * dt),
-          sz = Math.abs(p.velocity.z * dt);
-        for (let j = 0; j < packed; j++) {
-          const size = asize[j];
-          const reach = 1.6 * size + r;
-          if (Math.abs(ax[j] - fx) > reach + sx || Math.abs(az[j] - fz) > reach + sz) continue;
-          // (The whole test again, on the record: it may have died to an earlier shot of this step.)
-          test(p, refs[j], dt);
-        }
-      } else if (!enemyCells) for (const e of enemies) test(p, e, dt);
-      else if (enx) {
-        const mx = ereach + p.radius + Math.abs(p.velocity.x * dt),
-          mz = ereach + p.radius + Math.abs(p.velocity.z * dt);
-        const ix0 = Math.max(0, Math.floor((from.x - mx - ex0) / ECELL)),
-          ix1 = Math.min(enx - 1, Math.floor((from.x + mx - ex0) / ECELL)),
-          iz0 = Math.max(0, Math.floor((from.z - mz - ez0) / ECELL)),
-          iz1 = Math.min(enz - 1, Math.floor((from.z + mz - ez0) / ECELL));
-        for (let ix = ix0; ix <= ix1; ix++) for (let iz = iz0; iz <= iz1; iz++) for (const e of bins[ix * enz + iz]) test(p, e, dt);
+      p.last.copy(p.position);
+      if (p.drag) p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
+      if (p.water) {
+        if (!p.spent && p.velocity.lengthSq() < 0.0625 * p.speed0 * p.speed0) p.spent = true;
+        if (p.spent) p.velocity.y += (-0.45 - p.velocity.y) * (1 - Math.exp(-dt * 2));
       }
-      if (best) {
-        p.position.lerpVectors(from, p.position, bestS);
-        live.splice(i, 1);
-        onEnemy?.(p, best);
-        continue;
+      p.position.addScaledVector(p.velocity, dt);
+      if (p.gravity) {
+        p.position.y -= 0.5 * p.gravity * dt * dt;
+        p.velocity.y -= p.gravity * dt;
+      }
+      p.spin += dt * 14;
+      if (!p.ghost && !p.spent) {
+        best = null;
+        bestS = 2;
+        if (enemyArrays) {
+          const fx = from.x,
+            fz = from.z,
+            r = p.radius,
+            sx = Math.abs(p.velocity.x * dt),
+            sz = Math.abs(p.velocity.z * dt);
+          for (let j = 0; j < packed; j++) {
+            const size = asize[j];
+            const reach = 1.6 * size + r;
+            if (Math.abs(ax[j] - fx) > reach + sx || Math.abs(az[j] - fz) > reach + sz) continue;
+            // (The whole test again, on the record: it may have died to an earlier shot of this step.)
+            test(p, refs[j], dt);
+          }
+        } else if (!enemyCells) for (const e of enemies) test(p, e, dt);
+        else if (enx) {
+          const mx = ereach + p.radius + Math.abs(p.velocity.x * dt),
+            mz = ereach + p.radius + Math.abs(p.velocity.z * dt);
+          const ix0 = Math.max(0, Math.floor((from.x - mx - ex0) / ECELL)),
+            ix1 = Math.min(enx - 1, Math.floor((from.x + mx - ex0) / ECELL)),
+            iz0 = Math.max(0, Math.floor((from.z - mz - ez0) / ECELL)),
+            iz1 = Math.min(enz - 1, Math.floor((from.z + mz - ez0) / ECELL));
+          for (let ix = ix0; ix <= ix1; ix++) for (let iz = iz0; iz <= iz1; iz++) for (const e of bins[ix * enz + iz]) test(p, e, dt);
+        }
+        if (best) {
+          if (p.pierce > 0) {
+            p.pierce--;
+            p.passed.add(best);
+            end.copy(p.position);
+            p.position.lerpVectors(from, end, bestS);
+            onEnemy?.(p, best);
+            p.position.copy(end);
+            p.damage *= p.pierceKeep;
+          } else {
+            p.position.lerpVectors(from, p.position, bestS);
+            onEnemy?.(p, best);
+            drop(i);
+            continue;
+          }
+        }
       }
       let struck = null;
       for (const c of cells ? grid.get(cellOf(p.position.x, p.position.z)) ?? none : stones) {
@@ -1453,17 +1527,34 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
         if (Math.abs(ox) > rx + rz || Math.abs(oz) > rx + rz) continue;
         const cs = c.cos ?? 1,
           sn = c.sin ?? 0;
-        const ax = (ox * cs - oz * sn) / rx,
-          ay = oy / ry,
-          az = (ox * sn + oz * cs) / rz;
-        if (ax * ax + ay * ay + az * az < 1) {
+        const ax1 = (ox * cs - oz * sn) / rx,
+          ay1 = oy / ry,
+          az1 = (ox * sn + oz * cs) / rz;
+        if (ax1 * ax1 + ay1 * ay1 + az1 * az1 < 1) {
           struck = c;
+          const gx = ax1 / rx,
+            gy = ay1 / ry,
+            gz = az1 / rz;
+          normal.set(gx * cs + gz * sn, gy, -gx * sn + gz * cs).normalize();
           break;
         }
       }
       if (struck) {
-        live.splice(i, 1);
+        if (p.ghost) {
+          drop(i);
+          continue;
+        }
+        if (p.bounce && p.bounces < p.maxBounces) {
+          p.bounces++;
+          p.position.copy(from);
+          const vn = p.velocity.dot(normal);
+          if (vn < 0) p.velocity.addScaledVector(normal, -(1 + p.bounce) * vn);
+          p.velocity.multiplyScalar(0.8);
+          onBounce?.(p, "stone");
+          continue;
+        }
         onStone?.(p, struck);
+        drop(i);
         continue;
       }
       if (!lookup) continue;
@@ -1473,13 +1564,38 @@ function projectileUpdate(THREE, live, { bed, level, locate }, { lookup = true, 
       // surface: at Eco's 50 ms step a bolt goes 4 u between two of them.)
       if (every > 1 && Math.round(p.age / dt) % every) continue;
       locate(p.position.x, p.position.z, p.river.s, p.river);
-      if (p.position.y < bed(p.river.s, p.river.u)) {
-        live.splice(i, 1);
+      const floor = bed(p.river.s, p.river.u);
+      if (p.position.y < floor) {
+        if (p.spent) {
+          p.position.y = floor;
+          p.velocity.set(0, 0, 0);
+          p.rested = true;
+          continue;
+        }
+        if (p.ghost) {
+          p.position.y = floor + 0.01;
+          p.velocity.y = Math.abs(p.velocity.y) * 0.2;
+          continue;
+        }
+        if (p.bounce && p.bounces < p.maxBounces) {
+          p.bounces++;
+          p.position.y = floor + 0.005;
+          p.velocity.y = Math.abs(p.velocity.y) * p.bounce;
+          p.velocity.x *= 0.7;
+          p.velocity.z *= 0.7;
+          onBounce?.(p, "bed");
+          continue;
+        }
         onGround?.(p);
+        drop(i);
         continue;
       }
-      if (p.position.y > level(p.river.s) + 0.05) live.splice(i, 1);
+      if (p.position.y > level(p.river.s) + p.sky) {
+        drop(i);
+        continue;
+      }
     }
+    handBack();
   };
 }
 

@@ -461,11 +461,14 @@ function quadratic(points) {
 // The parts of combat.step timed on their own (plain means; the rest is step minus them).
 // The stones near a point are asked for twice in a step: for the crawlers' ground (with the
 // gravel) and for the shots; the page tells the ground's apart.
-const STEP_PARTS = ["enemies", "projectiles", "hostile", "aim", "director", "pickups", "shotStones", "ground"];
+const STEP_PARTS = ["enemies", "projectiles", "hostile", "firing", "after", "smoke", "aim", "director", "pickups", "shotStones", "ground"];
 const PART_NAMES = {
   enemies: "enemies.update (thinking, moving, the crawlers' heights on the ground, drawing the crowds)",
   projectiles: "projectiles.update (with hits: enemies.hit, gore.hit, fx.burst)",
   hostile: "hostile.update (enemy rounds, with hits on the player)",
+  firing: "firing.fire (the local player's weapons: the laser's pulses, and its beam's ray)",
+  after: "firing.after (thrown and stunned enemies, fire, the katana's cuts)",
+  smoke: "smoke.update (powder smoke, silt)",
   aim: "aim.update",
   director: "director.update",
   pickups: "pickups.update",
@@ -649,8 +652,8 @@ function summary(r) {
       ["part", ...loads.flatMap((k) => [loadName[k], "share", "per unit"])],
       [
         ...STEP_PARTS.map((p) => [PART_NAMES[p], ...loads.flatMap((k) => [f(d[k].parts[p], 3), share(k, d[k].parts[p]), unit(k, p)])]),
-        ["rest of combat.step (firing, bosses, rules, fx.update, gore.update, corpses)", ...loads.flatMap((k) => [f(d[k].rest, 3), share(k, d[k].rest), ""])],
-        ["combat.frame (hud and health bars, fx.begin/add/end, models, gore.frame)", ...loads.flatMap((k) => [f(d[k].parts.frame, 3), share(k, d[k].parts.frame), ""])],
+        ["rest of combat.step (bosses, rules, the shots' trails, fx.update, gore.update, corpses)", ...loads.flatMap((k) => [f(d[k].rest, 3), share(k, d[k].rest), ""])],
+        ["combat.frame (hud and health bars, the weapons' models, the shots' glows, smoke.frame, gore.frame)", ...loads.flatMap((k) => [f(d[k].parts.frame, 3), share(k, d[k].parts.frame), ""])],
         ["combat.step + combat.frame", ...loads.flatMap((k) => [f(d[k].parts.step + d[k].parts.frame, 3), "100 %", ""])],
       ],
     ),
@@ -797,6 +800,8 @@ function summary(r) {
   lines.push(errors.length ? `${errors.length} errors:\n\n${errors.slice(0, 8).map((e) => `- ${e.replace(/\n/g, " ")}`).join("\n")}` : "No errors.");
   if (warnings.length) lines.push(`\n${warnings.length} different warnings:\n\n${warnings.slice(0, 8).map((w) => `- ${w.replace(/\n/g, " ")}`).join("\n")}`);
   if (warnings.some((w) => /index count of 0/.test(w))) lines.push("\n(The draws with an index count of 0 come from the base game's warm-up render at start-up -- two transparent objects with an empty index in each pass, the mirror's too, which never sees combat -- not from combat.)");
+  const empty = Object.entries(r.groups ?? {}).filter(([, v]) => v.calls > 0 && v.triangles === 0).map(([k]) => k);
+  if (empty.length && warnings.some((w) => /vertex count of 0/.test(w))) lines.push(`\n(Draws with nothing in them in the stress case, a draw call each and no triangles: ${empty.join(", ")}.)`);
   const aside = r.console?.environment ?? [];
   if (aside.length) lines.push(`\nLeft aside, the development server's and not the game's:\n\n${aside.map((w) => `- ${w}`).join("\n")}`);
   lines.push("");
@@ -877,7 +882,8 @@ async function summaries(list) {
     ["hostile.update", (x) => x.parts.hostile],
     ["the crawlers' ground gathered (collidersNear, pebbles.near)", (x) => x.parts.ground],
     ["the stones for the shots (collidersNear)", (x) => x.parts.shotStones],
-    ["aim, director, pickups", (x) => x.parts.aim + x.parts.director + x.parts.pickups],
+    ["the local player's weapons (firing.fire, firing.after)", (x) => x.parts.firing + x.parts.after],
+    ["aim, director, pickups, smoke", (x) => x.parts.aim + x.parts.director + x.parts.pickups + x.parts.smoke],
     ["rest of combat.step", (x) => x.rest],
     ["combat.frame", (x) => x.parts.frame],
     ["firing done for the game by the bench", (x) => mid(x.forced)],
