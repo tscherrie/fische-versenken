@@ -7,6 +7,7 @@
 // The game moves only in fixed steps here (salmon.run), so a scene comes out the same way
 // every time.
 
+import { createGround } from "../ground.js";
 import { LOOK_SCENES, runLook } from "./scenes-look.js";
 
 export const SCENES = [
@@ -23,6 +24,10 @@ export const SCENES = [
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
   { name: "kiesbett-wehrlos", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 60, still: true, nofire: true },
+  // The crawlers' ground (ground.js) against the ground as it was first built -- everything
+  // within reach gathered afresh each step and scanned whole -- in the redd, for `ground`
+  // seconds: the larvae crawl in unopposed for the first half, then the alevin shoots.
+  { name: "boden", stage: "alevin", at: null, season: "spring", hour: 11, ground: 40, spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5]] },
   // The old king in his pool: a yearling comes in and fights him (the pilot).
   { name: "koenig", stage: "yearling", at: 690, season: "summer", hour: 13, pilot: 60 },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
@@ -68,6 +73,9 @@ export const SCENES = [
   // pictures).
   { name: "perf-flammen", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3.2, perf: [1.5, 3], pictures: [3.1], spawn: [["troutParr", 2.2, -0.5], ["troutParr", 2.5, 0], ["troutParr", 2.2, 0.5], ["troutParr", 2.8, -0.25], ["troutParr", 2.8, 0.25], ["trout", 6, 0]] },
   { name: "perf-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, weapon: "granate", seconds: 3, perf: [1.4, 2.8], pictures: [2.9], spawn: [["troutParr", 6, -0.8], ["troutParr", 6.5, 0], ["troutParr", 6, 0.8], ["bullhead", 5.5, 0.3], ["trout", 9, 0]] },
+  // What the crawlers cost: the redd full of larvae (as many as may crawl at once, as with
+  // four players), all round the alevin and crawling in, nobody firing so that none drop out.
+  { name: "perf-kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, weapon: "piu", fire: false, seconds: 6, perf: [3, 6], pictures: [5.9], spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", 6, -3.5], ["dragonflyLarva", 3.5, -4.5], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["dragonflyLarva", 2, 5], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5], ["beetleLarva", 4, -1], ["beetleLarva", -6, 1]] },
   // The effects' own looks, held still in front of the eye: smoke of each kind, and a blast.
   { name: "fx-probe", stage: "parr", at: 2500, season: "summer", hour: 15, probe: true },
   // The numbers: one target that cannot sink, held still at a distance (in fish lengths),
@@ -186,6 +194,7 @@ async function runScene(salmon, extreme, query) {
       await nextTask();
       if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
     } });
+  if (scene.ground) return groundCheck(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.weapon) return weapon(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.pilot) return pilot(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.closeup) return closeup(salmon, extreme, set, scene, list, index, extra, errors, query);
@@ -402,6 +411,176 @@ async function splatter(salmon, extreme, set, scene, list, index, extra, errors)
   await salmon.run(4);
   await picture(`${scene.name}-spaeter`);
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "end", sunk: combat.enemies.list.filter((e) => e.dead).length }], errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
+// The height of the ground as ground.js first gave it: the highest of `floor` and the tops of
+// all the stones and pebbles gathered, each looked at.
+function scanGround(lists, x, z, floor) {
+  let top = floor;
+  for (const list of lists)
+    for (const c of list) {
+      const rx = c.rx ?? c.r,
+        rz = c.rz ?? c.r,
+        ry = c.ry ?? c.r;
+      const ox = x - c.x,
+        oz = z - c.z;
+      if (Math.abs(ox) > rx + rz || Math.abs(oz) > rx + rz) continue;
+      const cs = c.cos ?? 1,
+        sn = c.sin ?? 0;
+      const ax = (ox * cs - oz * sn) / rx,
+        az = (ox * sn + oz * cs) / rz;
+      const inside = 1 - ax * ax - az * az;
+      if (inside <= 0) continue;
+      const y = c.y + ry * Math.sqrt(inside);
+      if (y > top) top = y;
+    }
+  return top;
+}
+
+// The crawlers' ground against that plain scan, with everything within 12 u of the fish
+// gathered afresh for it each step (as combat gathered it before): every height a crawler
+// asks for, and every half second a few hundred random points round the alevin -- within
+// 11 u, where the two must agree to the last bit, and counted apart from 11 to 12 u ("edge")
+// and from 12 to 16 u ("outer": beyond the old gathering, where the two have each gathered
+// only part of what lies there). At the end both are timed on the heights the crawlers asked
+// for, and on gathering.
+async function groundCheck(salmon, extreme, set, scene, list, index, extra, errors) {
+  const { fish, look, held } = salmon;
+  const combat = extreme.combat;
+  const { terrain, pebbles } = extreme.game;
+  const lists = [[], []];
+  const gather = (center) => {
+    terrain.collidersNear(center.x, center.z, 12, lists[0]);
+    lists[1].length = 0;
+    pebbles?.near?.(center, 12, lists[1]);
+  };
+  const result = { asked: 0, askedDiffer: 0, askedMaxDiff: 0, askedFarthest: 0, points: 0, pointsDiffer: 0, pointsMaxDiff: 0, edge: 0, edgeDiffer: 0, outer: 0, outerDiffer: 0, steps: 0 };
+  // (Who asks the gravel for its pebbles, how far round and how often: combat's ground among
+  // them shows how often it really gathers.)
+  const askers = new Map();
+  const pebblesNear = pebbles?.near;
+  if (pebblesNear)
+    pebbles.near = (center, reach, out) => {
+      if (out !== lists[1]) askers.set(out, { reach: +reach.toFixed(2), calls: (askers.get(out)?.calls ?? 0) + 1 });
+      return pebblesNear.call(pebbles, center, reach, out);
+    };
+  // (The heights asked, kept for timing: x, z, floor.)
+  const asked = new Float64Array(3 * 8192);
+  let ground = null,
+    height = null;
+  const compare = (x, z, floor, h, key) => {
+    const before = scanGround(lists, x, z, floor);
+    if (!Object.is(h, before)) result[`${key}Differ`]++;
+    result[`${key}MaxDiff`] = Math.max(result[`${key}MaxDiff`], Math.abs(h - before));
+  };
+  // Combat's own ground, found in what it hands the enemies, is watched while they ask.
+  const update = combat.enemies.update;
+  combat.enemies.update = function (dt, time, players, hooks) {
+    if (hooks.ground && !ground) {
+      ground = hooks.ground;
+      height = ground.height;
+      ground.height = (x, z, floor) => {
+        const h = height(x, z, floor);
+        const i = 3 * (result.asked++ % 8192);
+        asked[i] = x;
+        asked[i + 1] = z;
+        asked[i + 2] = floor;
+        result.askedFarthest = Math.max(result.askedFarthest, +Math.hypot(x - fish.position.x, z - fish.position.z).toFixed(2));
+        compare(x, z, floor, h, "asked");
+        return h;
+      };
+    }
+    if (hooks.ground) {
+      gather(fish.position);
+      result.steps++;
+    }
+    return update.call(this, dt, time, players, hooks);
+  };
+  // (A stream of its own for the points, so the game's never moves.)
+  let seed = 0x9e3779b9;
+  const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const steer = () => {
+    held.add("KeyS");
+    const live = combat.enemies.list.filter((e) => !e.dead);
+    const near = live.length ? live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a)) : null;
+    if (near) {
+      const d = near.position.clone().sub(fish.position);
+      look.yaw = Math.atan2(d.z, d.x);
+      look.pitch = Math.max(-0.7, Math.min(0.7, Math.atan2(d.y, Math.hypot(d.x, d.z))));
+    }
+    combat.fire(!!near && t > scene.ground / 2);
+  };
+  let t = 0;
+  for (; t < scene.ground; t += 0.5) {
+    await salmon.run(0.5, steer);
+    if (!ground) continue;
+    gather(fish.position);
+    for (let k = 0; k < 400; k++) {
+      const far = k >= 300;
+      const r = far ? 11 + 5 * random() : 11 * Math.sqrt(random()),
+        a = random() * Math.PI * 2;
+      const x = fish.position.x + Math.cos(a) * r,
+        z = fish.position.z + Math.sin(a) * r,
+        floor = fish.position.y - 2 * random();
+      const h = height(x, z, floor);
+      if (far) {
+        const key = r < 12 ? "edge" : "outer";
+        result[key]++;
+        if (!Object.is(h, scanGround(lists, x, z, floor))) result[`${key}Differ`]++;
+      } else {
+        result.points++;
+        compare(x, z, floor, h, "points");
+      }
+    }
+    if (t === 10) {
+      extreme.frame(1 / 60);
+      await salmon.capture(`${set}/${scene.name}`, 1280, 720);
+    }
+  }
+  held.delete("KeyS");
+  combat.fire(false);
+  if (pebblesNear) pebbles.near = pebblesNear;
+  // The timing: the heights the crawlers asked for, by the plain scan and by the cells, the
+  // median of five rounds; then gathering, both ways (the cells' gathering forced each time).
+  const timing = {};
+  if (ground) {
+    gather(fish.position);
+    const n = Math.min(result.asked, 8192);
+    const median = (runs) => runs.sort((p, q) => p - q)[2];
+    const time = (fn) => {
+      const runs = [];
+      for (let round = 0; round < 5; round++) {
+        const t0 = performance.now();
+        let sum = 0;
+        for (let i = 0; i < n; i++) sum += fn(asked[3 * i], asked[3 * i + 1], asked[3 * i + 2]);
+        runs.push(((performance.now() - t0) * 1000) / n);
+        // (The sum is looked at, so that the work cannot be left out.)
+        if (sum === 0.123) console.log(sum);
+      }
+      return +median(runs).toFixed(3);
+    };
+    timing.heights = n;
+    timing.scanMicros = time((x, z, floor) => scanGround(lists, x, z, floor));
+    timing.cellsMicros = time(height);
+    const fresh = createGround({ terrain, pebbles });
+    const gathers = (fn) => {
+      const runs = [];
+      for (let round = 0; round < 5; round++) {
+        const t0 = performance.now();
+        for (let i = 0; i < 20; i++) fn();
+        runs.push((performance.now() - t0) / 20);
+      }
+      return +median(runs).toFixed(3);
+    };
+    timing.gatherScanMs = gathers(() => gather(fish.position));
+    timing.gatherCellsMs = gathers(() => fresh.refresh(fish.position, 12));
+    timing.stones = lists[0].length;
+    timing.pebbles = lists[1].length;
+  }
+  const record = [{ label: "ground", ...result, askers: [...askers.values()], timing }];
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
 }

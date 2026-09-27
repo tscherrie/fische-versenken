@@ -326,9 +326,10 @@ export function createCombat(game) {
         sfx.pickup?.(id);
       },
     });
-    // (The stones for the crawlers, gathered once, only while there are crawlers about.)
+    // (The stones for the crawlers, only while there are crawlers about, and gathered again
+    // only once the fish has moved on or a second has gone by: ground.js.)
     const crawling = enemies.list.some((e) => e.spec.crawls);
-    if (crawling) ground.refresh(fish.position, 12);
+    if (crawling) ground.refresh(fish.position, 12, game.now.time);
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
