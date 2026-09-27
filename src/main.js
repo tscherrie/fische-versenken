@@ -2847,6 +2847,9 @@ async function start() {
     // compile gains nothing: the card does one thing after the other either way.)
     // (Drawn once, everything showing: that builds every pipeline, in the background on
     // WebGPU. The renderer's compileAsync cannot yet build them for a target of our own.)
+    // (The caustic net first, so that its pass is built here too and the draw below sees a
+    // real net.)
+    caustics.render();
     renderer.setRenderTarget(post.main);
     renderer.shadowMap.needsUpdate = true;
     renderer.render(scene, camera);

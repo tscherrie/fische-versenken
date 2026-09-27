@@ -80,6 +80,12 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
     depthBuffer: false,
   });
   target.texture.name = "Caustic net";
+  // Made a render target on the card now. Were it first touched by a draw that samples it
+  // (the warm-up draws everything before the first frame), three would make it a plain
+  // texture there and replace it at the first render(); a material three does not re-check,
+  // one with no node properties of its own (the nets' gear, the eggs), would go on using the
+  // destroyed one, and that frame's scene would be lost to a validation error.
+  renderer.initRenderTarget(target);
   river.causticMap.value = target.texture;
   river.causticParams.value.x = TILE;
 
