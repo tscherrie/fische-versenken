@@ -129,7 +129,13 @@ async function close(chrome, profile = started.profile) {
   await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
   killChrome(chrome, profile, "SIGKILL");
   if (started.chrome === chrome) started.chrome = null;
-  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+  // (A helper still going down can write into the profile after it is removed, leaving an
+  // empty folder behind: removed again until it stays gone.)
+  for (let i = 0; i < 4; i++) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+    if (!(await stat(profile).catch(() => null))) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 // One scene's address, as sceneURL in scenes.js makes it, with the renderer and the quality
 // asked for; `only` keeps the page from going on to the next scene.

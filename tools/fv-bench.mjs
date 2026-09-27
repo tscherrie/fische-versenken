@@ -72,8 +72,17 @@ async function stopAll() {
   }
   started.server?.kill();
   started.server = null;
-  if (started.profile) await rm(started.profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+  if (started.profile) await removeProfile(started.profile);
   started.profile = null;
+}
+// (A helper still going down can write into the profile after it is removed, leaving an
+// empty folder behind: removed again until it stays gone.)
+async function removeProfile(profile) {
+  for (let i = 0; i < 4; i++) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+    if (!(await stat(profile).catch(() => null))) return;
+    await sleep(500);
+  }
 }
 let stopping = false;
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"])
