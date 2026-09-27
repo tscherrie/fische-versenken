@@ -82,13 +82,13 @@ For the owner (combat code):
 1. **The crawlers' ground (fv/ground.js).** Gather it again only once the fish has moved (0.5 u), and look up heights in 1 u cells sorted when it is gathered. Together these save **0.45–0.49 ms** at four players. Separately:
    - gathering only after a move saves 0.16–0.21 ms;
    - cells alone cost 0.01–0.03 ms, because sorting about 1900 pebbles every step costs what the cells save.
-   
+
    height() also allocates 0.7–0.9 MB a frame at its own line. Its array literal and the iterators it makes on every call are the likely source, and two plain loops would avoid them.
 2. **The players' shots (fv/projectiles.js).** Each of these was checked to give the same hits:
    - stones sorted into 2 u cells, redone only when the list changes: 0.11–0.14 ms at the stress case;
    - the enemies' positions and sizes in flat arrays for the first test of each shot-enemy pair: 0.10–0.14 ms (the enemy records come in about ten shapes);
    - the bed and surface lookup every other step: 0.06–0.09 ms, but the crossing between two lookups must be found, since at Eco's 50 ms step a bolt travels 4 u between them.
-   
+
    All three together save **0.27–0.32 ms** at the stress case and 0.04–0.06 ms at four players. Sorting the enemies into cells (a broad phase) saves nothing at 40 enemies.
 3. **Everything together, four players:** **0.52–0.56 ms** saved. combat.step + combat.frame would drop to about 0.41–0.47 ms, and everything the fight costs the script to about 0.82–0.99 ms, which is within budget on all three configurations, WebGL 2 only just.
 4. **projectiles.update allocations:** it allocates 0.24–0.28 MB a frame at the stress case, most of it at its own line (projectiles.js:79), about 1.6–1.9 KB per shot per step. The cause is not pinned down; boxed numbers, such as the module-level `along`, are one suspect.
@@ -101,7 +101,7 @@ For Next (base game):
    - **Trigger:** a record of five fields beginning with `s`, made anywhere, shares V8's hidden classes with them. The bench's own place record did this.
    - **Effect:** V8 then threw level()'s compiled code away in a loop wherever it was inlined. There were 477 "instance migration failed" deopts at course.js:511 in 25 s, inlined into projectiles.js:144 and hostile.js:144. projectiles.update went from 0.58–0.66 ms to 1.26–1.64 ms at the stress case, and the world's whole step grew by about 0.7 ms.
    - **Fix:** with the falls rebuilt as records of one shape (every field in one order from the start), the loop ends at once.
-   
+
    The bench no longer makes such a record, but the game could one day by accident. This is a cheap robustness fix in Next.
 8. **"Draw with an index count of 0":** it comes only from the warm-up render at start-up: base-game transparent objects with an empty index, two per pass. It is not from combat.
 
