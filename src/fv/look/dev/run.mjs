@@ -39,7 +39,8 @@ const cdpPort = Number(option("cdp") || 8173);
 const only = option("only")?.split(",");
 const { LOOK_SCENES } = await import(join(root, "src/fv/dev/scenes-look.js"));
 const { SCENES } = await import(join(root, "src/fv/dev/scenes.js"));
-const list = only ? SCENES.filter((s) => only.includes(s.name)) : LOOK_SCENES;
+// (Without --only, the scenes that take minutes -- the bench, the long redd runs -- are left out.)
+const list = only ? SCENES.filter((s) => only.includes(s.name)) : LOOK_SCENES.filter((s) => !s.manual);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Is a server on the port, and is it this tree's? (null: nothing there; false: someone else's.)

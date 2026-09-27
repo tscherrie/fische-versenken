@@ -1,0 +1,5338 @@
+{
+ "name": "bench-webgl2-detail",
+ "set": "bench",
+ "config": {
+  "renderer": "webgl2",
+  "quality": "detail",
+  "light": false,
+  "dt": 0.0167,
+  "repeats": 5,
+  "frames": 120,
+  "blocks": 32,
+  "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)",
+  "canvas": [
+   1280,
+   720
+  ],
+  "post": [
+   1280,
+   720
+  ],
+  "timerResolution": 0.1,
+  "glTimer": true,
+  "three": "186",
+  "agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+ },
+ "place": {
+  "length": 1,
+  "stage": 4,
+  "progress": 0,
+  "depth": 12.02,
+  "height": 7.04,
+  "s": 2503.6,
+  "u": 0,
+  "held": true
+ },
+ "load": {
+  "stress": {
+   "enemies": 40,
+   "shots": 150,
+   "hostile": 60
+  },
+  "four": {
+   "enemies": 40,
+   "shots": 28,
+   "hostile": 0,
+   "natural": true
+  },
+  "boltLife": 0.714,
+  "boltInterval": 0.11,
+  "aimShare": 0.12,
+  "hpScale": 4,
+  "capped": false
+ },
+ "crowds": {
+  "bullhead": 10,
+  "troutParr": 18,
+  "trout": 5,
+  "king": 1,
+  "dragonflyLarva": 8,
+  "beetleLarva": 4
+ },
+ "runs": [
+  {
+   "ref": {
+    "world": {
+     "n": 120,
+     "mean": 1.0542,
+     "trimmed": 1.0417,
+     "median": 1,
+     "p90": 1.1,
+     "min": 0.9,
+     "max": 1.9
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.0017,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.0325,
+     "trimmed": 0.0271,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.2
+    },
+    "draw": {
+     "n": 120,
+     "mean": 5.815,
+     "trimmed": 5.749,
+     "median": 5.8,
+     "p90": 7.5,
+     "min": 4.4,
+     "max": 8.2
+    },
+    "total": {
+     "n": 120,
+     "mean": 6.9033,
+     "trimmed": 6.8448,
+     "median": 6.9,
+     "p90": 8.5,
+     "min": 5.4,
+     "max": 9.3
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 0.0017,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "combat": {
+     "n": 120,
+     "mean": 0.0017,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "calls": 191,
+    "triangles": 2041691,
+    "glTimer": {
+     "n": 119,
+     "mean": 16.6385,
+     "trimmed": 16.3045,
+     "median": 15.9576,
+     "p90": 19.7937,
+     "min": 13.5504,
+     "max": 27.9696
+    },
+    "parts": {
+     "step": 0.0017,
+     "frame": 0,
+     "enemies": 0,
+     "projectiles": 0,
+     "hostile": 0,
+     "aim": 0,
+     "director": 0,
+     "pickups": 0,
+     "firing": 0,
+     "after": 0,
+     "smoke": 0,
+     "colliders": 0,
+     "gravel": 0,
+     "groundStones": 0,
+     "threats": 0.0025,
+     "forced": 0
+    },
+    "counts": {
+     "enemies": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "corpses": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "flying": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "spent": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "bubbles": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     }
+    },
+    "events": {
+     "hitsPerSecond": 0,
+     "killsPerSecond": 0,
+     "firedPerSecond": 0,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 0
+    },
+    "b2b": {
+     "gpu": 8.797,
+     "submit": 5.52,
+     "runs": [
+      8.887,
+      8.738,
+      8.797
+     ]
+    },
+    "full": 9.478
+   },
+   "stress": {
+    "world": {
+     "n": 120,
+     "mean": 3.8992,
+     "trimmed": 3.8188,
+     "median": 3.6,
+     "p90": 5.2,
+     "min": 2.8,
+     "max": 6.2
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.2617,
+     "trimmed": 0.2604,
+     "median": 0.3,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.3367,
+     "trimmed": 0.324,
+     "median": 0.3,
+     "p90": 0.5,
+     "min": 0.1,
+     "max": 1.6
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.7933,
+     "trimmed": 6.7208,
+     "median": 6.8,
+     "p90": 8.7,
+     "min": 5,
+     "max": 9.3
+    },
+    "total": {
+     "n": 120,
+     "mean": 11.2908,
+     "trimmed": 11.2469,
+     "median": 11.3,
+     "p90": 13.4,
+     "min": 8.6,
+     "max": 14.6
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 2.74,
+     "trimmed": 2.6479,
+     "median": 2.3,
+     "p90": 4.1,
+     "min": 1.8,
+     "max": 4.9
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.2617,
+     "trimmed": 0.2604,
+     "median": 0.3,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "combat": {
+     "n": 120,
+     "mean": 3.0017,
+     "trimmed": 2.9146,
+     "median": 2.6,
+     "p90": 4.3,
+     "min": 2,
+     "max": 5.2
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0183,
+     "trimmed": 0.0104,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 203,
+    "triangles": 2102379,
+    "glTimer": {
+     "n": 119,
+     "mean": 23.5316,
+     "trimmed": 23.1264,
+     "median": 22.5113,
+     "p90": 32.1689,
+     "min": 10.5812,
+     "max": 42.0626
+    },
+    "parts": {
+     "step": 2.74,
+     "frame": 0.2617,
+     "enemies": 0.4583,
+     "projectiles": 1.24,
+     "hostile": 0.1108,
+     "aim": 0.0225,
+     "director": 0,
+     "pickups": 0.005,
+     "firing": 0.0583,
+     "after": 0.0058,
+     "smoke": 0.0058,
+     "colliders": 0.0308,
+     "gravel": 0.2375,
+     "groundStones": 0.0133,
+     "threats": 0.0183,
+     "forced": 0.0183
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.4,
+      "min": 37,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 3,
+      "min": 0,
+      "max": 7
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 145.7,
+      "min": 107,
+      "max": 150
+     },
+     "flying": {
+      "mean": 61,
+      "min": 39,
+      "max": 69
+     },
+     "spent": {
+      "mean": 98.8,
+      "min": 91,
+      "max": 121
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 489.9,
+      "min": 435,
+      "max": 535
+     },
+     "bubbles": {
+      "mean": 311.2,
+      "min": 193,
+      "max": 371
+     }
+    },
+    "events": {
+     "hitsPerSecond": 71,
+     "killsPerSecond": 5.5,
+     "firedPerSecond": 260,
+     "roundsForcedPerSecond": 106.5,
+     "roundsNaturalPerSecond": 12
+    },
+    "b2b": {
+     "gpu": 20.455,
+     "submit": 6.035,
+     "runs": [
+      22.597,
+      19.55,
+      20.455
+     ]
+    },
+    "full": 20.875,
+    "meshes": {
+     "cost": 0.3625,
+     "low": 0.075,
+     "high": 0.7,
+     "diffs": [
+      0.2,
+      0.9875,
+      -0.3625,
+      1.125,
+      -0.6,
+      1.2375,
+      0.9375,
+      1.2625,
+      0.325,
+      0.075,
+      0.1125,
+      1.175,
+      -1.5,
+      -2.5875,
+      0.725,
+      -0.3125,
+      0.5625,
+      0.0875,
+      0.7,
+      -0.1,
+      0.5,
+      0.6875,
+      -0.2375,
+      -0.2625,
+      0.525,
+      0.4125,
+      0.475,
+      0.1875,
+      0.3,
+      0.2375,
+      0.6625,
+      0.3625
+     ],
+     "shown": 11.562,
+     "hidden": 11.337,
+     "script": 0.55,
+     "calls": 19,
+     "triangles": 57714
+    },
+    "aa": {
+     "cost": 0.0125,
+     "low": -0.075,
+     "high": 0.15,
+     "diffs": [
+      0,
+      -0.125,
+      0.1625,
+      -0.1875,
+      0.1,
+      0.05,
+      0.075,
+      -0.1125,
+      0.15,
+      -0.0625,
+      0.0125,
+      -0.1625,
+      0.025,
+      -0.025,
+      0.2875,
+      0.075,
+      0.2125,
+      -0.0375,
+      0.225,
+      -0.1625,
+      -0.0125,
+      0,
+      0.0625,
+      -0.175,
+      -0.0375,
+      -0.0875,
+      0.15,
+      -0.1,
+      0.2,
+      -0.075,
+      0.175,
+      0.0375
+     ],
+     "shown": 10.613,
+     "hidden": 10.6,
+     "script": -0.038
+    }
+   },
+   "four": {
+    "world": {
+     "n": 120,
+     "mean": 2.3892,
+     "trimmed": 2.3615,
+     "median": 2.3,
+     "p90": 2.8,
+     "min": 2,
+     "max": 3.3
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.1925,
+     "trimmed": 0.1906,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2575,
+     "trimmed": 0.2479,
+     "median": 0.2,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.9
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.0392,
+     "trimmed": 5.951,
+     "median": 5.8,
+     "p90": 7.8,
+     "min": 4.6,
+     "max": 8.6
+    },
+    "total": {
+     "n": 120,
+     "mean": 8.8783,
+     "trimmed": 8.7729,
+     "median": 8.6,
+     "p90": 10.8,
+     "min": 7,
+     "max": 12
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 1.2667,
+     "trimmed": 1.2396,
+     "median": 1.2,
+     "p90": 1.6,
+     "min": 0.9,
+     "max": 2.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.1917,
+     "trimmed": 0.1896,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "combat": {
+     "n": 120,
+     "mean": 1.4583,
+     "trimmed": 1.4292,
+     "median": 1.4,
+     "p90": 1.8,
+     "min": 1.1,
+     "max": 2.3
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0058,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 206,
+    "triangles": 2093111,
+    "glTimer": {
+     "n": 119,
+     "mean": 16.8109,
+     "trimmed": 16.7519,
+     "median": 16.62,
+     "p90": 19.1297,
+     "min": 12.0251,
+     "max": 21.6144
+    },
+    "parts": {
+     "step": 1.2667,
+     "frame": 0.1917,
+     "enemies": 0.4625,
+     "projectiles": 0.2008,
+     "hostile": 0.0567,
+     "aim": 0.0333,
+     "director": 0.0067,
+     "pickups": 0.0025,
+     "firing": 0.0308,
+     "after": 0.0042,
+     "smoke": 0.0033,
+     "colliders": 0.03,
+     "gravel": 0.2142,
+     "groundStones": 0.0167,
+     "threats": 0.0142,
+     "forced": 0.0058
+    },
+    "counts": {
+     "enemies": {
+      "mean": 40,
+      "min": 39,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 0.9,
+      "min": 0,
+      "max": 2
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 27.2,
+      "min": 24,
+      "max": 28
+     },
+     "flying": {
+      "mean": 6.8,
+      "min": 2,
+      "max": 12
+     },
+     "spent": {
+      "mean": 42.3,
+      "min": 31,
+      "max": 47
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 130.8,
+      "min": 104,
+      "max": 211
+     },
+     "bubbles": {
+      "mean": 85.6,
+      "min": 71,
+      "max": 105
+     }
+    },
+    "events": {
+     "hitsPerSecond": 25.5,
+     "killsPerSecond": 1.5,
+     "firedPerSecond": 49.5,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 9.5
+    }
+   }
+  },
+  {
+   "ref": {
+    "world": {
+     "n": 120,
+     "mean": 0.9883,
+     "trimmed": 0.9771,
+     "median": 1,
+     "p90": 1.1,
+     "min": 0.8,
+     "max": 1.5
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.0317,
+     "trimmed": 0.026,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.2
+    },
+    "draw": {
+     "n": 120,
+     "mean": 5.605,
+     "trimmed": 5.5333,
+     "median": 5.5,
+     "p90": 7,
+     "min": 4.3,
+     "max": 7.9
+    },
+    "total": {
+     "n": 120,
+     "mean": 6.625,
+     "trimmed": 6.5542,
+     "median": 6.5,
+     "p90": 8.1,
+     "min": 5.2,
+     "max": 9
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "combat": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "calls": 188,
+    "triangles": 2049237,
+    "glTimer": {
+     "n": 119,
+     "mean": 15.8382,
+     "trimmed": 15.5135,
+     "median": 15.223,
+     "p90": 18.4139,
+     "min": 13.4894,
+     "max": 31.5588
+    },
+    "parts": {
+     "step": 0.0008,
+     "frame": 0,
+     "enemies": 0,
+     "projectiles": 0,
+     "hostile": 0,
+     "aim": 0,
+     "director": 0,
+     "pickups": 0,
+     "firing": 0,
+     "after": 0,
+     "smoke": 0,
+     "colliders": 0,
+     "gravel": 0,
+     "groundStones": 0,
+     "threats": 0,
+     "forced": 0
+    },
+    "counts": {
+     "enemies": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "corpses": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "flying": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "spent": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "bubbles": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     }
+    },
+    "events": {
+     "hitsPerSecond": 0,
+     "killsPerSecond": 0,
+     "firedPerSecond": 0,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 0
+    },
+    "b2b": {
+     "gpu": 8.868,
+     "submit": 5.148,
+     "runs": [
+      8.945,
+      8.868,
+      8.83
+     ]
+    },
+    "full": 8.98
+   },
+   "stress": {
+    "world": {
+     "n": 120,
+     "mean": 3.51,
+     "trimmed": 3.324,
+     "median": 3,
+     "p90": 4.7,
+     "min": 2.6,
+     "max": 12.1
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.2392,
+     "trimmed": 0.2406,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2767,
+     "trimmed": 0.275,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.6
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.095,
+     "trimmed": 6.0271,
+     "median": 6.1,
+     "p90": 7.8,
+     "min": 4.6,
+     "max": 8.2
+    },
+    "total": {
+     "n": 120,
+     "mean": 10.1208,
+     "trimmed": 9.9302,
+     "median": 10,
+     "p90": 12.3,
+     "min": 7.8,
+     "max": 18.9
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 2.3842,
+     "trimmed": 2.2573,
+     "median": 1.9,
+     "p90": 3.5,
+     "min": 1.6,
+     "max": 6.8
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.2392,
+     "trimmed": 0.2406,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "combat": {
+     "n": 120,
+     "mean": 2.6233,
+     "trimmed": 2.499,
+     "median": 2.2,
+     "p90": 3.8,
+     "min": 1.8,
+     "max": 7.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0083,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 203,
+    "triangles": 2116111,
+    "glTimer": {
+     "n": 119,
+     "mean": 18.2572,
+     "trimmed": 17.8582,
+     "median": 17.6179,
+     "p90": 21.5027,
+     "min": 14.5019,
+     "max": 33.491
+    },
+    "parts": {
+     "step": 2.3842,
+     "frame": 0.2392,
+     "enemies": 0.4367,
+     "projectiles": 1.2008,
+     "hostile": 0.1133,
+     "aim": 0.0242,
+     "director": 0.0025,
+     "pickups": 0.0017,
+     "firing": 0.0483,
+     "after": 0.0025,
+     "smoke": 0.005,
+     "colliders": 0.0283,
+     "gravel": 0.2242,
+     "groundStones": 0.0133,
+     "threats": 0.0258,
+     "forced": 0.0083
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.1,
+      "min": 37,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 3.6,
+      "min": 1,
+      "max": 7
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 145.6,
+      "min": 114,
+      "max": 151
+     },
+     "flying": {
+      "mean": 61.3,
+      "min": 44,
+      "max": 68
+     },
+     "spent": {
+      "mean": 98.6,
+      "min": 92,
+      "max": 116
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 492,
+      "min": 429,
+      "max": 531
+     },
+     "bubbles": {
+      "mean": 365.3,
+      "min": 255,
+      "max": 442
+     }
+    },
+    "events": {
+     "hitsPerSecond": 76,
+     "killsPerSecond": 8,
+     "firedPerSecond": 265.5,
+     "roundsForcedPerSecond": 104.5,
+     "roundsNaturalPerSecond": 10.5
+    },
+    "b2b": {
+     "gpu": 9.483,
+     "submit": 5.678,
+     "runs": [
+      9.603,
+      9.445,
+      9.483
+     ]
+    },
+    "full": 11.497,
+    "meshes": {
+     "cost": 0.6,
+     "low": 0.4125,
+     "high": 0.775,
+     "diffs": [
+      0.3625,
+      1.2,
+      2.0125,
+      0.425,
+      0.7625,
+      0.4125,
+      0.75,
+      2.9625,
+      0.4125,
+      0.15,
+      0.325,
+      0.2875,
+      0.7375,
+      0.7375,
+      0.925,
+      0.3,
+      0.975,
+      0.425,
+      0.4875,
+      0.6,
+      0.775,
+      0.5125,
+      0.6875,
+      0.525,
+      0.6375,
+      0.475,
+      0.8,
+      0.5,
+      1,
+      0.3875,
+      0.6125,
+      0.2625
+     ],
+     "shown": 11.113,
+     "hidden": 10.387,
+     "script": 0.563,
+     "calls": 19,
+     "triangles": 55886
+    },
+    "aa": {
+     "cost": 0.0875,
+     "low": -0.1125,
+     "high": 0.1625,
+     "diffs": [
+      -0.05,
+      -0.1375,
+      0.1625,
+      -0.0625,
+      -0.1125,
+      -0.0375,
+      0.15,
+      -0.2125,
+      -0.075,
+      0.0125,
+      0.1625,
+      0.0125,
+      0.275,
+      0.1,
+      0.1625,
+      0.225,
+      0.1625,
+      0.1,
+      0.0875,
+      0.225,
+      -0.125,
+      -0.3125,
+      0.3875,
+      -0.35,
+      0.2875,
+      -0.1375,
+      0.1625,
+      -0.325,
+      0.4375,
+      0.0125,
+      0.175,
+      -0.3375
+     ],
+     "shown": 10.825,
+     "hidden": 10.775,
+     "script": 0.025
+    }
+   },
+   "four": {
+    "world": {
+     "n": 120,
+     "mean": 2.8908,
+     "trimmed": 2.8073,
+     "median": 2.8,
+     "p90": 3.4,
+     "min": 2.1,
+     "max": 6.4
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.1808,
+     "trimmed": 0.1771,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0,
+     "max": 0.3
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2933,
+     "trimmed": 0.2875,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.6
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.5175,
+     "trimmed": 6.4313,
+     "median": 6.5,
+     "p90": 8.3,
+     "min": 4.8,
+     "max": 9.4
+    },
+    "total": {
+     "n": 120,
+     "mean": 9.8825,
+     "trimmed": 9.775,
+     "median": 9.9,
+     "p90": 11.8,
+     "min": 7.6,
+     "max": 13.6
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 1.6458,
+     "trimmed": 1.5802,
+     "median": 1.6,
+     "p90": 2.1,
+     "min": 1.1,
+     "max": 4.4
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.1792,
+     "trimmed": 0.175,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0,
+     "max": 0.3
+    },
+    "combat": {
+     "n": 120,
+     "mean": 1.825,
+     "trimmed": 1.7625,
+     "median": 1.7,
+     "p90": 2.4,
+     "min": 1.2,
+     "max": 4.6
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.005,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2091695,
+    "glTimer": {
+     "n": 119,
+     "mean": 16.8764,
+     "trimmed": 16.3647,
+     "median": 15.8982,
+     "p90": 21.4079,
+     "min": 13.182,
+     "max": 29.5739
+    },
+    "parts": {
+     "step": 1.6458,
+     "frame": 0.1792,
+     "enemies": 0.6208,
+     "projectiles": 0.2467,
+     "hostile": 0.07,
+     "aim": 0.0242,
+     "director": 0.0025,
+     "pickups": 0.0017,
+     "firing": 0.0325,
+     "after": 0.0025,
+     "smoke": 0.0017,
+     "colliders": 0.0392,
+     "gravel": 0.235,
+     "groundStones": 0.0208,
+     "threats": 0.0175,
+     "forced": 0.005
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.8,
+      "min": 39,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 1.1,
+      "min": 0,
+      "max": 6
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 27.2,
+      "min": 25,
+      "max": 29
+     },
+     "flying": {
+      "mean": 10.2,
+      "min": 6,
+      "max": 15
+     },
+     "spent": {
+      "mean": 33.4,
+      "min": 25,
+      "max": 44
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 127.9,
+      "min": 93,
+      "max": 205
+     },
+     "bubbles": {
+      "mean": 112.4,
+      "min": 103,
+      "max": 124
+     }
+    },
+    "events": {
+     "hitsPerSecond": 13.5,
+     "killsPerSecond": 0.5,
+     "firedPerSecond": 47.5,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 11.5
+    }
+   }
+  },
+  {
+   "ref": {
+    "world": {
+     "n": 120,
+     "mean": 1.2075,
+     "trimmed": 1.1052,
+     "median": 1.1,
+     "p90": 1.2,
+     "min": 0.9,
+     "max": 10.6
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.045,
+     "trimmed": 0.0417,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.2
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.0375,
+     "trimmed": 5.9417,
+     "median": 5.8,
+     "p90": 7.7,
+     "min": 4.3,
+     "max": 11.4
+    },
+    "total": {
+     "n": 120,
+     "mean": 7.2908,
+     "trimmed": 7.1188,
+     "median": 7.1,
+     "p90": 9,
+     "min": 5.4,
+     "max": 17.9
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "combat": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "calls": 190,
+    "triangles": 2054425,
+    "glTimer": {
+     "n": 119,
+     "mean": 18.8759,
+     "trimmed": 18.64,
+     "median": 17.9847,
+     "p90": 24.7266,
+     "min": 13.5822,
+     "max": 27.1965
+    },
+    "parts": {
+     "step": 0.0008,
+     "frame": 0,
+     "enemies": 0,
+     "projectiles": 0,
+     "hostile": 0,
+     "aim": 0,
+     "director": 0,
+     "pickups": 0,
+     "firing": 0,
+     "after": 0,
+     "smoke": 0,
+     "colliders": 0,
+     "gravel": 0,
+     "groundStones": 0,
+     "threats": 0.0017,
+     "forced": 0
+    },
+    "counts": {
+     "enemies": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "corpses": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "flying": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "spent": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "bubbles": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     }
+    },
+    "events": {
+     "hitsPerSecond": 0,
+     "killsPerSecond": 0,
+     "firedPerSecond": 0,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 0
+    },
+    "b2b": {
+     "gpu": 8.915,
+     "submit": 5.375,
+     "runs": [
+      8.908,
+      8.915,
+      8.993
+     ]
+    },
+    "full": 9.27
+   },
+   "stress": {
+    "world": {
+     "n": 120,
+     "mean": 3.575,
+     "trimmed": 3.4677,
+     "median": 3.2,
+     "p90": 5,
+     "min": 2.6,
+     "max": 5.8
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.225,
+     "trimmed": 0.224,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2883,
+     "trimmed": 0.2781,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.7
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.21,
+     "trimmed": 6.125,
+     "median": 6.1,
+     "p90": 7.9,
+     "min": 4.7,
+     "max": 9.8
+    },
+    "total": {
+     "n": 120,
+     "mean": 10.2983,
+     "trimmed": 10.2052,
+     "median": 10.3,
+     "p90": 12,
+     "min": 8,
+     "max": 14.6
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 2.4067,
+     "trimmed": 2.2979,
+     "median": 2,
+     "p90": 3.8,
+     "min": 1.5,
+     "max": 4.6
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.2233,
+     "trimmed": 0.2219,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "combat": {
+     "n": 120,
+     "mean": 2.63,
+     "trimmed": 2.5208,
+     "median": 2.2,
+     "p90": 4,
+     "min": 1.7,
+     "max": 4.9
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0092,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2113807,
+    "glTimer": {
+     "n": 119,
+     "mean": 17.2121,
+     "trimmed": 16.983,
+     "median": 16.8086,
+     "p90": 20.4815,
+     "min": 14.0965,
+     "max": 23.55
+    },
+    "parts": {
+     "step": 2.4067,
+     "frame": 0.2233,
+     "enemies": 0.4358,
+     "projectiles": 1.205,
+     "hostile": 0.115,
+     "aim": 0.0167,
+     "director": 0.005,
+     "pickups": 0.0008,
+     "firing": 0.0475,
+     "after": 0.0025,
+     "smoke": 0.0058,
+     "colliders": 0.0383,
+     "gravel": 0.2275,
+     "groundStones": 0.0142,
+     "threats": 0.0192,
+     "forced": 0.0092
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.1,
+      "min": 36,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 2.2,
+      "min": 0,
+      "max": 5
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 145.4,
+      "min": 114,
+      "max": 150
+     },
+     "flying": {
+      "mean": 61.8,
+      "min": 34,
+      "max": 67
+     },
+     "spent": {
+      "mean": 98,
+      "min": 93,
+      "max": 125
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 494.2,
+      "min": 442,
+      "max": 540
+     },
+     "bubbles": {
+      "mean": 306.5,
+      "min": 200,
+      "max": 342
+     }
+    },
+    "events": {
+     "hitsPerSecond": 91,
+     "killsPerSecond": 5.5,
+     "firedPerSecond": 278.5,
+     "roundsForcedPerSecond": 109,
+     "roundsNaturalPerSecond": 9.5
+    },
+    "b2b": {
+     "gpu": 9.658,
+     "submit": 5.907,
+     "runs": [
+      9.75,
+      9.627,
+      9.658
+     ]
+    },
+    "full": 11.603,
+    "meshes": {
+     "cost": 0.85,
+     "low": 0.55,
+     "high": 1.6125,
+     "diffs": [
+      1.6125,
+      0.1,
+      4.0125,
+      3.25,
+      2.9125,
+      0.8375,
+      1,
+      0.275,
+      0.825,
+      0.45,
+      0.55,
+      1.6625,
+      0.45,
+      -0.225,
+      1.075,
+      0.525,
+      1.7375,
+      1.1,
+      0.55,
+      0.6625,
+      1.1375,
+      -2.2,
+      3.05,
+      1.6625,
+      1.3,
+      0.55,
+      1.175,
+      0.55,
+      0.85,
+      0.375,
+      0.875,
+      0.5625
+     ],
+     "shown": 14.125,
+     "hidden": 11.1,
+     "script": 0.563,
+     "calls": 19,
+     "triangles": 66926
+    },
+    "aa": {
+     "cost": 0.0375,
+     "low": -0.1875,
+     "high": 0.225,
+     "diffs": [
+      -0.1375,
+      -0.225,
+      1.6125,
+      0.0375,
+      0.225,
+      -0.1875,
+      0.275,
+      -0.1875,
+      -0.2375,
+      0.225,
+      0.1125,
+      -0.1125,
+      0.25,
+      -0.3625,
+      0.1875,
+      -0.225,
+      0.35,
+      0.0375,
+      0.4125,
+      -0.375,
+      0.275,
+      -0.4625,
+      0.3625,
+      -0.0125,
+      0.075,
+      -0.1625,
+      0.1125,
+      0.0625,
+      -0.1,
+      -0.1625,
+      0.225,
+      -0.225
+     ],
+     "shown": 11,
+     "hidden": 11.012,
+     "script": 0.088
+    }
+   },
+   "four": {
+    "world": {
+     "n": 120,
+     "mean": 2.3933,
+     "trimmed": 2.3698,
+     "median": 2.3,
+     "p90": 2.7,
+     "min": 2.1,
+     "max": 3.2
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.1625,
+     "trimmed": 0.1615,
+     "median": 0.2,
+     "p90": 0.2,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2558,
+     "trimmed": 0.2573,
+     "median": 0.3,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.5
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.0092,
+     "trimmed": 5.9437,
+     "median": 6.1,
+     "p90": 7.6,
+     "min": 4.6,
+     "max": 8
+    },
+    "total": {
+     "n": 120,
+     "mean": 8.8208,
+     "trimmed": 8.7615,
+     "median": 8.7,
+     "p90": 10.5,
+     "min": 7.2,
+     "max": 11.1
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 1.2483,
+     "trimmed": 1.2167,
+     "median": 1.2,
+     "p90": 1.5,
+     "min": 1,
+     "max": 2.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.1617,
+     "trimmed": 0.1604,
+     "median": 0.2,
+     "p90": 0.2,
+     "min": 0.1,
+     "max": 0.3
+    },
+    "combat": {
+     "n": 120,
+     "mean": 1.41,
+     "trimmed": 1.3792,
+     "median": 1.3,
+     "p90": 1.7,
+     "min": 1.1,
+     "max": 2.3
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0033,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2095895,
+    "glTimer": {
+     "n": 119,
+     "mean": 17.3668,
+     "trimmed": 17.0831,
+     "median": 16.8645,
+     "p90": 20.5913,
+     "min": 13.8867,
+     "max": 27.9525
+    },
+    "parts": {
+     "step": 1.2483,
+     "frame": 0.1617,
+     "enemies": 0.4658,
+     "projectiles": 0.1975,
+     "hostile": 0.0458,
+     "aim": 0.0325,
+     "director": 0.0017,
+     "pickups": 0.0042,
+     "firing": 0.03,
+     "after": 0.0033,
+     "smoke": 0.0042,
+     "colliders": 0.025,
+     "gravel": 0.2175,
+     "groundStones": 0.0133,
+     "threats": 0.015,
+     "forced": 0.0033
+    },
+    "counts": {
+     "enemies": {
+      "mean": 40,
+      "min": 39,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 0.3,
+      "min": 0,
+      "max": 1
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 27.1,
+      "min": 24,
+      "max": 29
+     },
+     "flying": {
+      "mean": 11.1,
+      "min": 9,
+      "max": 13
+     },
+     "spent": {
+      "mean": 37.5,
+      "min": 28,
+      "max": 49
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 125.2,
+      "min": 97,
+      "max": 182
+     },
+     "bubbles": {
+      "mean": 76,
+      "min": 67,
+      "max": 91
+     }
+    },
+    "events": {
+     "hitsPerSecond": 37,
+     "killsPerSecond": 1,
+     "firedPerSecond": 55.5,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 11.5
+    }
+   }
+  },
+  {
+   "ref": {
+    "world": {
+     "n": 120,
+     "mean": 1.0667,
+     "trimmed": 1.0573,
+     "median": 1.1,
+     "p90": 1.2,
+     "min": 0.9,
+     "max": 1.6
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.0542,
+     "trimmed": 0.049,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.2
+    },
+    "draw": {
+     "n": 120,
+     "mean": 5.6458,
+     "trimmed": 5.5708,
+     "median": 5.5,
+     "p90": 7.2,
+     "min": 4.4,
+     "max": 7.9
+    },
+    "total": {
+     "n": 120,
+     "mean": 6.7675,
+     "trimmed": 6.6958,
+     "median": 6.7,
+     "p90": 8.3,
+     "min": 5.5,
+     "max": 8.9
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 0.0017,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combat": {
+     "n": 120,
+     "mean": 0.0025,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "calls": 191,
+    "triangles": 2054919,
+    "glTimer": {
+     "n": 119,
+     "mean": 16.5013,
+     "trimmed": 16.2802,
+     "median": 15.8297,
+     "p90": 20.0885,
+     "min": 13.2563,
+     "max": 22.8755
+    },
+    "parts": {
+     "step": 0.0017,
+     "frame": 0.0008,
+     "enemies": 0,
+     "projectiles": 0,
+     "hostile": 0,
+     "aim": 0,
+     "director": 0,
+     "pickups": 0,
+     "firing": 0,
+     "after": 0,
+     "smoke": 0,
+     "colliders": 0,
+     "gravel": 0,
+     "groundStones": 0,
+     "threats": 0.0008,
+     "forced": 0
+    },
+    "counts": {
+     "enemies": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "corpses": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "flying": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "spent": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "bubbles": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     }
+    },
+    "events": {
+     "hitsPerSecond": 0,
+     "killsPerSecond": 0,
+     "firedPerSecond": 0,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 0
+    },
+    "b2b": {
+     "gpu": 9.02,
+     "submit": 5.375,
+     "runs": [
+      9.137,
+      9.01,
+      9.02
+     ]
+    },
+    "full": 9.16
+   },
+   "stress": {
+    "world": {
+     "n": 120,
+     "mean": 3.51,
+     "trimmed": 3.3417,
+     "median": 3,
+     "p90": 4.8,
+     "min": 2.7,
+     "max": 9.7
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.2208,
+     "trimmed": 0.225,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.295,
+     "trimmed": 0.2885,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.5
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.0842,
+     "trimmed": 6.0156,
+     "median": 6.1,
+     "p90": 7.5,
+     "min": 4.7,
+     "max": 8.6
+    },
+    "total": {
+     "n": 120,
+     "mean": 10.11,
+     "trimmed": 9.9583,
+     "median": 10,
+     "p90": 12.2,
+     "min": 8.1,
+     "max": 15.6
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 2.3575,
+     "trimmed": 2.2302,
+     "median": 1.9,
+     "p90": 3.6,
+     "min": 1.5,
+     "max": 5.3
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.2192,
+     "trimmed": 0.2229,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.4
+    },
+    "combat": {
+     "n": 120,
+     "mean": 2.5767,
+     "trimmed": 2.4469,
+     "median": 2.1,
+     "p90": 3.9,
+     "min": 1.7,
+     "max": 5.6
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.01,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2108219,
+    "glTimer": {
+     "n": 119,
+     "mean": 17.6392,
+     "trimmed": 17.1959,
+     "median": 17.0185,
+     "p90": 20.7912,
+     "min": 14.204,
+     "max": 31.197
+    },
+    "parts": {
+     "step": 2.3575,
+     "frame": 0.2192,
+     "enemies": 0.4358,
+     "projectiles": 1.2108,
+     "hostile": 0.0975,
+     "aim": 0.0117,
+     "director": 0.0033,
+     "pickups": 0.0017,
+     "firing": 0.0508,
+     "after": 0.0042,
+     "smoke": 0.0025,
+     "colliders": 0.0333,
+     "gravel": 0.2242,
+     "groundStones": 0.015,
+     "threats": 0.0167,
+     "forced": 0.01
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.6,
+      "min": 37,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 2.6,
+      "min": 0,
+      "max": 7
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 145.7,
+      "min": 118,
+      "max": 151
+     },
+     "flying": {
+      "mean": 61,
+      "min": 32,
+      "max": 66
+     },
+     "spent": {
+      "mean": 98.9,
+      "min": 94,
+      "max": 128
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 487.1,
+      "min": 439,
+      "max": 532
+     },
+     "bubbles": {
+      "mean": 317.3,
+      "min": 217,
+      "max": 376
+     }
+    },
+    "events": {
+     "hitsPerSecond": 63.5,
+     "killsPerSecond": 5,
+     "firedPerSecond": 256,
+     "roundsForcedPerSecond": 104,
+     "roundsNaturalPerSecond": 5.5
+    },
+    "b2b": {
+     "gpu": 9.428,
+     "submit": 5.7,
+     "runs": [
+      9.428,
+      9.528,
+      9.34
+     ]
+    },
+    "full": 11.145,
+    "meshes": {
+     "cost": 0.7375,
+     "low": 0.4375,
+     "high": 1,
+     "diffs": [
+      1.1,
+      0.7375,
+      0.7875,
+      0.5,
+      2,
+      -0.2,
+      -1.05,
+      0.825,
+      1,
+      0.3,
+      1.0125,
+      0.4,
+      0.6625,
+      0.5375,
+      0.9,
+      0.5,
+      0.625,
+      -0.2625,
+      0.4,
+      0.4,
+      1.3,
+      -0.2625,
+      0.65,
+      1.25,
+      0.8625,
+      0.4375,
+      0.9125,
+      0.85,
+      0.85,
+      1,
+      1,
+      0.6
+     ],
+     "shown": 11.05,
+     "hidden": 10.338,
+     "script": 0.688,
+     "calls": 19,
+     "triangles": 61754
+    },
+    "aa": {
+     "cost": 0.0125,
+     "low": -0.225,
+     "high": 0.1375,
+     "diffs": [
+      0.0875,
+      -0.2375,
+      0.05,
+      -0.2375,
+      0.1375,
+      -0.0625,
+      -0.575,
+      -0.375,
+      0.0625,
+      -0.2125,
+      0.1625,
+      -0.325,
+      -0.3125,
+      0.1125,
+      0.0625,
+      -0.2125,
+      0.2125,
+      -0.5875,
+      0.1375,
+      -0.1375,
+      0.1125,
+      -0.225,
+      0.65,
+      -0.1125,
+      0.3,
+      -0.225,
+      0.25,
+      -0.0875,
+      0.0125,
+      -0.1125,
+      0.1875,
+      0.1875
+     ],
+     "shown": 10.775,
+     "hidden": 10.85,
+     "script": -0.05
+    }
+   },
+   "four": {
+    "world": {
+     "n": 120,
+     "mean": 2.5092,
+     "trimmed": 2.4542,
+     "median": 2.4,
+     "p90": 2.8,
+     "min": 2.1,
+     "max": 5.8
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.2158,
+     "trimmed": 0.2135,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.8
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2825,
+     "trimmed": 0.2802,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.5
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.3675,
+     "trimmed": 6.2844,
+     "median": 6.4,
+     "p90": 8.1,
+     "min": 4.7,
+     "max": 9.6
+    },
+    "total": {
+     "n": 120,
+     "mean": 9.375,
+     "trimmed": 9.276,
+     "median": 9.3,
+     "p90": 11.1,
+     "min": 7.4,
+     "max": 13.7
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 1.3767,
+     "trimmed": 1.3281,
+     "median": 1.3,
+     "p90": 1.6,
+     "min": 1.1,
+     "max": 3.5
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.215,
+     "trimmed": 0.2125,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 0.8
+    },
+    "combat": {
+     "n": 120,
+     "mean": 1.5917,
+     "trimmed": 1.5469,
+     "median": 1.5,
+     "p90": 1.9,
+     "min": 1.2,
+     "max": 3.9
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0058,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 205,
+    "triangles": 2098839,
+    "glTimer": {
+     "n": 119,
+     "mean": 17.1671,
+     "trimmed": 16.7711,
+     "median": 16.5164,
+     "p90": 20.1424,
+     "min": 13.5807,
+     "max": 27.7182
+    },
+    "parts": {
+     "step": 1.3767,
+     "frame": 0.215,
+     "enemies": 0.5292,
+     "projectiles": 0.2083,
+     "hostile": 0.0633,
+     "aim": 0.0292,
+     "director": 0.0067,
+     "pickups": 0,
+     "firing": 0.0375,
+     "after": 0.0025,
+     "smoke": 0.0025,
+     "colliders": 0.0342,
+     "gravel": 0.2275,
+     "groundStones": 0.0175,
+     "threats": 0.015,
+     "forced": 0.0058
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.5,
+      "min": 39,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 0.8,
+      "min": 0,
+      "max": 2
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 26.9,
+      "min": 24,
+      "max": 28
+     },
+     "flying": {
+      "mean": 11.7,
+      "min": 8,
+      "max": 13
+     },
+     "spent": {
+      "mean": 39.4,
+      "min": 29,
+      "max": 51
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 127.7,
+      "min": 110,
+      "max": 161
+     },
+     "bubbles": {
+      "mean": 104.5,
+      "min": 93,
+      "max": 113
+     }
+    },
+    "events": {
+     "hitsPerSecond": 54,
+     "killsPerSecond": 1.5,
+     "firedPerSecond": 67,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 10.5
+    }
+   }
+  },
+  {
+   "ref": {
+    "world": {
+     "n": 120,
+     "mean": 1.2167,
+     "trimmed": 1.1604,
+     "median": 1.1,
+     "p90": 1.4,
+     "min": 0.9,
+     "max": 3.1
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.1625,
+     "trimmed": 0.0458,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 12.3
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.25,
+     "trimmed": 6.074,
+     "median": 6.2,
+     "p90": 8.2,
+     "min": 4.5,
+     "max": 11.5
+    },
+    "total": {
+     "n": 120,
+     "mean": 7.63,
+     "trimmed": 7.349,
+     "median": 7.4,
+     "p90": 9.9,
+     "min": 5.7,
+     "max": 19
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "combat": {
+     "n": 120,
+     "mean": 0.0008,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0
+    },
+    "calls": 188,
+    "triangles": 2055929,
+    "glTimer": {
+     "n": 119,
+     "mean": 19.2561,
+     "trimmed": 19.0867,
+     "median": 19.2692,
+     "p90": 24.2824,
+     "min": 13.699,
+     "max": 28.7293
+    },
+    "parts": {
+     "step": 0.0008,
+     "frame": 0,
+     "enemies": 0,
+     "projectiles": 0,
+     "hostile": 0,
+     "aim": 0,
+     "director": 0,
+     "pickups": 0,
+     "firing": 0,
+     "after": 0,
+     "smoke": 0,
+     "colliders": 0,
+     "gravel": 0,
+     "groundStones": 0,
+     "threats": 0.0033,
+     "forced": 0
+    },
+    "counts": {
+     "enemies": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "corpses": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "flying": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "spent": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "bubbles": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     }
+    },
+    "events": {
+     "hitsPerSecond": 0,
+     "killsPerSecond": 0,
+     "firedPerSecond": 0,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 0
+    },
+    "b2b": {
+     "gpu": 14.48,
+     "submit": 5.695,
+     "runs": [
+      16.03,
+      14.385,
+      14.48
+     ]
+    },
+    "full": 14.62
+   },
+   "stress": {
+    "world": {
+     "n": 120,
+     "mean": 3.98,
+     "trimmed": 3.825,
+     "median": 3.5,
+     "p90": 5.6,
+     "min": 2.6,
+     "max": 9
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.245,
+     "trimmed": 0.2427,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 1
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.3342,
+     "trimmed": 0.3208,
+     "median": 0.3,
+     "p90": 0.5,
+     "min": 0.1,
+     "max": 0.8
+    },
+    "draw": {
+     "n": 120,
+     "mean": 7.0692,
+     "trimmed": 6.975,
+     "median": 7.2,
+     "p90": 9.1,
+     "min": 5,
+     "max": 11.4
+    },
+    "total": {
+     "n": 120,
+     "mean": 11.6283,
+     "trimmed": 11.5042,
+     "median": 11.5,
+     "p90": 14.4,
+     "min": 8.4,
+     "max": 17.6
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 2.7125,
+     "trimmed": 2.5646,
+     "median": 2.2,
+     "p90": 4.2,
+     "min": 1.6,
+     "max": 6.5
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.2442,
+     "trimmed": 0.2417,
+     "median": 0.2,
+     "p90": 0.3,
+     "min": 0.1,
+     "max": 1
+    },
+    "combat": {
+     "n": 120,
+     "mean": 2.9567,
+     "trimmed": 2.8042,
+     "median": 2.4,
+     "p90": 4.5,
+     "min": 1.8,
+     "max": 6.8
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0133,
+     "trimmed": 0.0042,
+     "median": 0,
+     "p90": 0.1,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2114575,
+    "glTimer": {
+     "n": 119,
+     "mean": 40.4983,
+     "trimmed": 39.5658,
+     "median": 37.8425,
+     "p90": 56.5352,
+     "min": 21.5608,
+     "max": 94.8316
+    },
+    "parts": {
+     "step": 2.7125,
+     "frame": 0.2442,
+     "enemies": 0.4833,
+     "projectiles": 1.3858,
+     "hostile": 0.1333,
+     "aim": 0.0208,
+     "director": 0.0025,
+     "pickups": 0.0042,
+     "firing": 0.0617,
+     "after": 0.0042,
+     "smoke": 0,
+     "colliders": 0.0383,
+     "gravel": 0.2417,
+     "groundStones": 0.0158,
+     "threats": 0.025,
+     "forced": 0.0133
+    },
+    "counts": {
+     "enemies": {
+      "mean": 39.6,
+      "min": 37,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 2.5,
+      "min": 1,
+      "max": 6
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 145.5,
+      "min": 122,
+      "max": 150
+     },
+     "flying": {
+      "mean": 61.2,
+      "min": 38,
+      "max": 67
+     },
+     "spent": {
+      "mean": 98.3,
+      "min": 93,
+      "max": 122
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 491.8,
+      "min": 439,
+      "max": 539
+     },
+     "bubbles": {
+      "mean": 312.1,
+      "min": 194,
+      "max": 386
+     }
+    },
+    "events": {
+     "hitsPerSecond": 75.5,
+     "killsPerSecond": 5,
+     "firedPerSecond": 269,
+     "roundsForcedPerSecond": 108,
+     "roundsNaturalPerSecond": 9
+    },
+    "b2b": {
+     "gpu": 28.962,
+     "submit": 5.903,
+     "runs": [
+      30.442,
+      28.962,
+      25.607
+     ]
+    },
+    "full": 23.515,
+    "meshes": {
+     "cost": 0.9625,
+     "low": -0.0875,
+     "high": 1.675,
+     "diffs": [
+      1.675,
+      1.325,
+      0.9,
+      0.5875,
+      0.4375,
+      0.1375,
+      3.875,
+      -0.5125,
+      -0.0875,
+      1.375,
+      -0.1375,
+      -4.5375,
+      1.55,
+      0.975,
+      3.4375,
+      0.7,
+      -5.7,
+      1.825,
+      -1.175,
+      0.9625,
+      0.9625,
+      2.675,
+      0.2125,
+      1.5125,
+      -0.6375,
+      2.95,
+      -0.3,
+      2.9,
+      -0.3625,
+      1.85,
+      1.1625,
+      1.525
+     ],
+     "shown": 20.6,
+     "hidden": 20.075,
+     "script": 0.525,
+     "calls": 18,
+     "triangles": 56024
+    },
+    "aa": {
+     "cost": 0.1375,
+     "low": -0.7375,
+     "high": 0.7625,
+     "diffs": [
+      0.9375,
+      -0.7375,
+      0.1875,
+      1.2125,
+      0.5875,
+      0.4125,
+      -0.2875,
+      0.0125,
+      -0.875,
+      -0.25,
+      -0.7375,
+      -1.6,
+      0.8875,
+      -0.25,
+      -0.825,
+      0.5875,
+      0.7375,
+      -0.2625,
+      0.4125,
+      1.5125,
+      0.1375,
+      -0.85,
+      1.0875,
+      1.6,
+      -0.6875,
+      1.35,
+      -2,
+      -1.15,
+      -0.775,
+      0.7625,
+      -2.05,
+      0.425
+     ],
+     "shown": 15.837,
+     "hidden": 15.7,
+     "script": 0.013
+    }
+   },
+   "four": {
+    "world": {
+     "n": 120,
+     "mean": 2.43,
+     "trimmed": 2.3958,
+     "median": 2.4,
+     "p90": 2.8,
+     "min": 2.1,
+     "max": 3.3
+    },
+    "frame": {
+     "n": 120,
+     "mean": 0.1658,
+     "trimmed": 0.1656,
+     "median": 0.2,
+     "p90": 0.2,
+     "min": 0,
+     "max": 0.3
+    },
+    "layout": {
+     "n": 120,
+     "mean": 0.2792,
+     "trimmed": 0.2771,
+     "median": 0.3,
+     "p90": 0.4,
+     "min": 0.1,
+     "max": 0.5
+    },
+    "draw": {
+     "n": 120,
+     "mean": 6.5858,
+     "trimmed": 6.4875,
+     "median": 6.5,
+     "p90": 8.2,
+     "min": 4.9,
+     "max": 10.2
+    },
+    "total": {
+     "n": 120,
+     "mean": 9.4608,
+     "trimmed": 9.3729,
+     "median": 9.4,
+     "p90": 11.2,
+     "min": 7.5,
+     "max": 14
+    },
+    "combatStep": {
+     "n": 120,
+     "mean": 1.315,
+     "trimmed": 1.2854,
+     "median": 1.3,
+     "p90": 1.6,
+     "min": 1,
+     "max": 2.2
+    },
+    "combatFrame": {
+     "n": 120,
+     "mean": 0.1658,
+     "trimmed": 0.1656,
+     "median": 0.2,
+     "p90": 0.2,
+     "min": 0,
+     "max": 0.3
+    },
+    "combat": {
+     "n": 120,
+     "mean": 1.4808,
+     "trimmed": 1.4542,
+     "median": 1.4,
+     "p90": 1.8,
+     "min": 1.1,
+     "max": 2.5
+    },
+    "forced": {
+     "n": 120,
+     "mean": 0.0033,
+     "trimmed": 0,
+     "median": 0,
+     "p90": 0,
+     "min": 0,
+     "max": 0.1
+    },
+    "calls": 204,
+    "triangles": 2090907,
+    "glTimer": {
+     "n": 119,
+     "mean": 19.5421,
+     "trimmed": 19.4627,
+     "median": 19.6443,
+     "p90": 23.8093,
+     "min": 11.7274,
+     "max": 28.0057
+    },
+    "parts": {
+     "step": 1.315,
+     "frame": 0.1658,
+     "enemies": 0.5225,
+     "projectiles": 0.205,
+     "hostile": 0.0658,
+     "aim": 0.0325,
+     "director": 0.0008,
+     "pickups": 0.0025,
+     "firing": 0.0383,
+     "after": 0.0008,
+     "smoke": 0.0042,
+     "colliders": 0.0433,
+     "gravel": 0.2225,
+     "groundStones": 0.0175,
+     "threats": 0.0158,
+     "forced": 0.0033
+    },
+    "counts": {
+     "enemies": {
+      "mean": 40,
+      "min": 39,
+      "max": 40
+     },
+     "corpses": {
+      "mean": 0.3,
+      "min": 0,
+      "max": 1
+     },
+     "undrawn": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "shots": {
+      "mean": 27.2,
+      "min": 24,
+      "max": 29
+     },
+     "flying": {
+      "mean": 7.6,
+      "min": 1,
+      "max": 12
+     },
+     "spent": {
+      "mean": 42.3,
+      "min": 34,
+      "max": 51
+     },
+     "rested": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+     },
+     "glow": {
+      "mean": 133.8,
+      "min": 100,
+      "max": 205
+     },
+     "bubbles": {
+      "mean": 73.4,
+      "min": 66,
+      "max": 84
+     }
+    },
+    "events": {
+     "hitsPerSecond": 14,
+     "killsPerSecond": 0.5,
+     "firedPerSecond": 49.5,
+     "roundsForcedPerSecond": 0,
+     "roundsNaturalPerSecond": 7
+    }
+   }
+  }
+ ],
+ "groups": {
+  "Combat bullhead": {
+   "calls": 2,
+   "triangles": 13360
+  },
+  "Combat bullhead far": {
+   "calls": 1,
+   "triangles": 720
+  },
+  "Combat troutParr": {
+   "calls": 2,
+   "triangles": 30184
+  },
+  "Combat troutParr far": {
+   "calls": 1,
+   "triangles": 1440
+  },
+  "Combat trout": {
+   "calls": 2,
+   "triangles": 13720
+  },
+  "Combat trout far": {
+   "calls": 0,
+   "triangles": 0
+  },
+  "Combat dragonflyLarva": {
+   "calls": 0,
+   "triangles": 0
+  },
+  "Combat dragonflyLarva far": {
+   "calls": 1,
+   "triangles": 1200
+  },
+  "Combat beetleLarva": {
+   "calls": 0,
+   "triangles": 0
+  },
+  "Combat beetleLarva far": {
+   "calls": 1,
+   "triangles": 720
+  },
+  "Combat grenades": {
+   "calls": 0,
+   "triangles": 0
+  },
+  "Combat smoke": {
+   "calls": 2,
+   "triangles": 284
+  },
+  "Combat ribbons": {
+   "calls": 1,
+   "triangles": 0
+  },
+  "Combat glow": {
+   "calls": 1,
+   "triangles": 998
+  },
+  "Combat bubbles": {
+   "calls": 1,
+   "triangles": 776
+  },
+  "Combat blood": {
+   "calls": 1,
+   "triangles": 1380
+  },
+  "Combat specks": {
+   "calls": 1,
+   "triangles": 336
+  },
+  "Combat gibs": {
+   "calls": 0,
+   "triangles": 0
+  },
+  "FV gear": {
+   "calls": 2,
+   "triangles": 4910
+  }
+ },
+ "lookups": {
+  "shots": 148,
+  "enemies": 43,
+  "hostile": 160,
+  "shotLookup": 0.721,
+  "locate": 0.248,
+  "bed": 0.428,
+  "level": 0.09,
+  "enemyLookup": 1.318,
+  "current": 0.543,
+  "collidersNear": 0.012,
+  "stones": 194,
+  "sink": true
+ },
+ "rounds": {
+  "n": 600,
+  "states": {
+   "flying": {
+    "flying": 600,
+    "spent": 0,
+    "rested": 0
+   },
+   "spent": {
+    "flying": 0,
+    "spent": 600,
+    "rested": 0
+   },
+   "rested": {
+    "flying": 0,
+    "spent": 0,
+    "rested": 600
+   }
+  },
+  "flying": 0.819,
+  "spent": 0.083,
+  "rested": 0.021,
+  "shot": 5.646,
+  "shotNoLookup": 2.701,
+  "stones": 194
+ },
+ "swaps": {
+  "copy": {
+   "median": -0.36,
+   "low": -0.54,
+   "high": -0.29,
+   "n": 32,
+   "on": {
+    "step": 2.0125,
+    "layout": 0.2831,
+    "frame": 0.2396,
+    "enemies": 0.5216,
+    "projectiles": 0.7039,
+    "hostile": 0.1388,
+    "aim": 0.038,
+    "director": 0.0013,
+    "pickups": 0.0005,
+    "firing": 0.0526,
+    "after": 0.0034,
+    "smoke": 0.0057,
+    "colliders": 0.0464,
+    "gravel": 0.2388,
+    "groundStones": 0.0208,
+    "threats": 0.018
+   },
+   "off": {
+    "step": 2.4222,
+    "layout": 0.2863,
+    "frame": 0.2435,
+    "enemies": 0.5245,
+    "projectiles": 1.3203,
+    "hostile": 0.1323,
+    "aim": 0.0289,
+    "director": 0.0026,
+    "pickups": 0.0016,
+    "firing": 0.0534,
+    "after": 0.0034,
+    "smoke": 0.0034,
+    "colliders": 0.0529,
+    "gravel": 0.2365,
+    "groundStones": 0.0208,
+    "threats": 0.019
+   }
+  },
+  "lookupHalf": {
+   "median": -0.04,
+   "low": -0.15,
+   "high": -0.02,
+   "n": 32,
+   "on": {
+    "step": 1.8456,
+    "layout": 0.2812,
+    "frame": 0.2326,
+    "enemies": 0.4974,
+    "projectiles": 0.6005,
+    "hostile": 0.1268,
+    "aim": 0.0307,
+    "director": 0.0021,
+    "pickups": 0.0013,
+    "firing": 0.0451,
+    "after": 0.0034,
+    "smoke": 0.0031,
+    "colliders": 0.0404,
+    "gravel": 0.2268,
+    "groundStones": 0.0177,
+    "threats": 0.018
+   },
+   "off": {
+    "step": 1.9181,
+    "layout": 0.275,
+    "frame": 0.2255,
+    "enemies": 0.5039,
+    "projectiles": 0.6846,
+    "hostile": 0.119,
+    "aim": 0.0328,
+    "director": 0.0026,
+    "pickups": 0.0029,
+    "firing": 0.0469,
+    "after": 0.0031,
+    "smoke": 0.0034,
+    "colliders": 0.0404,
+    "gravel": 0.2169,
+    "groundStones": 0.0164,
+    "threats": 0.0154
+   }
+  },
+  "stoneCells": {
+   "median": -0.13,
+   "low": -0.2,
+   "high": -0.06,
+   "n": 32,
+   "on": {
+    "step": 1.9622,
+    "layout": 0.2916,
+    "frame": 0.2448,
+    "enemies": 0.6065,
+    "projectiles": 0.5919,
+    "hostile": 0.1289,
+    "aim": 0.0349,
+    "director": 0.0023,
+    "pickups": 0.0018,
+    "firing": 0.0568,
+    "after": 0.0047,
+    "smoke": 0.0042,
+    "colliders": 0.0427,
+    "gravel": 0.2552,
+    "groundStones": 0.0164,
+    "threats": 0.0211
+   },
+   "off": {
+    "step": 2.0822,
+    "layout": 0.2828,
+    "frame": 0.2526,
+    "enemies": 0.7057,
+    "projectiles": 0.7128,
+    "hostile": 0.1391,
+    "aim": 0.0367,
+    "director": 0.0031,
+    "pickups": 0.001,
+    "firing": 0.0625,
+    "after": 0.0042,
+    "smoke": 0.0031,
+    "colliders": 0.044,
+    "gravel": 0.2474,
+    "groundStones": 0.0187,
+    "threats": 0.0211
+   }
+  },
+  "enemyCells": {
+   "median": 0.02,
+   "low": -0.06,
+   "high": 0.06,
+   "n": 32,
+   "on": {
+    "step": 1.9766,
+    "layout": 0.2819,
+    "frame": 0.2349,
+    "enemies": 0.5458,
+    "projectiles": 0.6784,
+    "hostile": 0.1307,
+    "aim": 0.0305,
+    "director": 0.0034,
+    "pickups": 0.0021,
+    "firing": 0.0469,
+    "after": 0.0034,
+    "smoke": 0.0029,
+    "colliders": 0.0513,
+    "gravel": 0.2276,
+    "groundStones": 0.0232,
+    "threats": 0.0169
+   },
+   "off": {
+    "step": 1.9875,
+    "layout": 0.2884,
+    "frame": 0.2385,
+    "enemies": 0.5604,
+    "projectiles": 0.6831,
+    "hostile": 0.1299,
+    "aim": 0.0279,
+    "director": 0.0026,
+    "pickups": 0.0018,
+    "firing": 0.0557,
+    "after": 0.0029,
+    "smoke": 0.0018,
+    "colliders": 0.0414,
+    "gravel": 0.2247,
+    "groundStones": 0.0169,
+    "threats": 0.0195
+   }
+  },
+  "enemyArrays": {
+   "median": -0.16,
+   "low": -0.25,
+   "high": -0.07,
+   "n": 32,
+   "on": {
+    "step": 2.0891,
+    "layout": 0.33,
+    "frame": 0.2578,
+    "enemies": 0.6914,
+    "projectiles": 0.6,
+    "hostile": 0.1352,
+    "aim": 0.0372,
+    "director": 0.0023,
+    "pickups": 0.0042,
+    "firing": 0.0568,
+    "after": 0.0096,
+    "smoke": 0.0044,
+    "colliders": 0.0549,
+    "gravel": 0.275,
+    "groundStones": 0.0234,
+    "threats": 0.0193
+   },
+   "off": {
+    "step": 2.2738,
+    "layout": 0.3566,
+    "frame": 0.2625,
+    "enemies": 0.751,
+    "projectiles": 0.7888,
+    "hostile": 0.1427,
+    "aim": 0.0409,
+    "director": 0.0044,
+    "pickups": 0.0005,
+    "firing": 0.0563,
+    "after": 0.0055,
+    "smoke": 0.0034,
+    "colliders": 0.0615,
+    "gravel": 0.2742,
+    "groundStones": 0.0286,
+    "threats": 0.0221
+   }
+  },
+  "together": {
+   "median": -0.35,
+   "low": -0.38,
+   "high": -0.32,
+   "n": 32,
+   "on": {
+    "step": 1.6859,
+    "layout": 0.2862,
+    "frame": 0.2336,
+    "enemies": 0.5763,
+    "projectiles": 0.356,
+    "hostile": 0.1357,
+    "aim": 0.0323,
+    "director": 0.0031,
+    "pickups": 0.0021,
+    "firing": 0.0458,
+    "after": 0.001,
+    "smoke": 0.0031,
+    "colliders": 0.0487,
+    "gravel": 0.2456,
+    "groundStones": 0.0216,
+    "threats": 0.0198
+   },
+   "off": {
+    "step": 2.0441,
+    "layout": 0.2947,
+    "frame": 0.2401,
+    "enemies": 0.5727,
+    "projectiles": 0.6904,
+    "hostile": 0.1354,
+    "aim": 0.0323,
+    "director": 0.0044,
+    "pickups": 0.0016,
+    "firing": 0.0479,
+    "after": 0.0055,
+    "smoke": 0.0036,
+    "colliders": 0.0479,
+    "gravel": 0.2451,
+    "groundStones": 0.018,
+    "threats": 0.0188
+   }
+  },
+  "togetherFour": {
+   "median": -0.06,
+   "low": -0.12,
+   "high": 0,
+   "n": 32,
+   "on": {
+    "step": 1.2291,
+    "layout": 0.2559,
+    "frame": 0.1682,
+    "enemies": 0.5617,
+    "projectiles": 0.0878,
+    "hostile": 0.0745,
+    "aim": 0.0276,
+    "director": 0.0018,
+    "pickups": 0.0016,
+    "firing": 0.0456,
+    "after": 0.0049,
+    "smoke": 0.0034,
+    "colliders": 0.0492,
+    "gravel": 0.2292,
+    "groundStones": 0.0206,
+    "threats": 0.018
+   },
+   "off": {
+    "step": 1.2988,
+    "layout": 0.2559,
+    "frame": 0.1711,
+    "enemies": 0.5534,
+    "projectiles": 0.1477,
+    "hostile": 0.0708,
+    "aim": 0.026,
+    "director": 0.0018,
+    "pickups": 0.0026,
+    "firing": 0.0461,
+    "after": 0.0068,
+    "smoke": 0.0029,
+    "colliders": 0.0458,
+    "gravel": 0.232,
+    "groundStones": 0.0198,
+    "threats": 0.0198
+   }
+  },
+  "groundKept": {
+   "median": -0.23,
+   "low": -0.27,
+   "high": -0.18,
+   "n": 32,
+   "on": {
+    "step": 1.1278,
+    "layout": 0.2675,
+    "frame": 0.1701,
+    "enemies": 0.599,
+    "projectiles": 0.1458,
+    "hostile": 0.1023,
+    "aim": 0.0344,
+    "director": 0.0031,
+    "pickups": 0.0021,
+    "firing": 0.0427,
+    "after": 0.0031,
+    "smoke": 0.0018,
+    "colliders": 0.0391,
+    "gravel": 0.038,
+    "groundStones": 0.001,
+    "threats": 0.0143
+   },
+   "off": {
+    "step": 1.3634,
+    "layout": 0.2594,
+    "frame": 0.1781,
+    "enemies": 0.5961,
+    "projectiles": 0.1542,
+    "hostile": 0.099,
+    "aim": 0.0349,
+    "director": 0.0021,
+    "pickups": 0.001,
+    "firing": 0.0458,
+    "after": 0.0042,
+    "smoke": 0.0018,
+    "colliders": 0.0474,
+    "gravel": 0.2396,
+    "groundStones": 0.0201,
+    "threats": 0.0172
+   }
+  },
+  "groundCells": {
+   "median": -0.08,
+   "low": -0.14,
+   "high": -0.01,
+   "n": 32,
+   "on": {
+    "step": 1.4422,
+    "layout": 0.2816,
+    "frame": 0.1841,
+    "enemies": 0.6513,
+    "projectiles": 0.162,
+    "hostile": 0.0995,
+    "aim": 0.0393,
+    "director": 0.0018,
+    "pickups": 0.001,
+    "firing": 0.0474,
+    "after": 0.0049,
+    "smoke": 0.0026,
+    "colliders": 0.0518,
+    "gravel": 0.268,
+    "groundStones": 0.0219,
+    "threats": 0.0195
+   },
+   "off": {
+    "step": 1.5334,
+    "layout": 0.2987,
+    "frame": 0.1893,
+    "enemies": 0.7138,
+    "projectiles": 0.1594,
+    "hostile": 0.1094,
+    "aim": 0.0419,
+    "director": 0.0016,
+    "pickups": 0.0023,
+    "firing": 0.0555,
+    "after": 0.0049,
+    "smoke": 0.0036,
+    "colliders": 0.0576,
+    "gravel": 0.269,
+    "groundStones": 0.0232,
+    "threats": 0.0169
+   }
+  },
+  "groundBoth": {
+   "median": -0.61,
+   "low": -0.82,
+   "high": -0.53,
+   "n": 32,
+   "on": {
+    "step": 1.0409,
+    "layout": 0.3044,
+    "frame": 0.2138,
+    "enemies": 0.3487,
+    "projectiles": 0.1651,
+    "hostile": 0.124,
+    "aim": 0.0443,
+    "director": 0.0029,
+    "pickups": 0.0018,
+    "firing": 0.056,
+    "after": 0.0052,
+    "smoke": 0.0016,
+    "colliders": 0.0456,
+    "gravel": 0.0185,
+    "groundStones": 0.0003,
+    "threats": 0.0214
+   },
+   "off": {
+    "step": 1.6956,
+    "layout": 0.2972,
+    "frame": 0.2208,
+    "enemies": 0.7911,
+    "projectiles": 0.1724,
+    "hostile": 0.112,
+    "aim": 0.0451,
+    "director": 0.0026,
+    "pickups": 0.0023,
+    "firing": 0.0552,
+    "after": 0.0047,
+    "smoke": 0.0021,
+    "colliders": 0.0604,
+    "gravel": 0.2867,
+    "groundStones": 0.0214,
+    "threats": 0.0203
+   }
+  },
+  "allFour": {
+   "median": -0.85,
+   "low": -1.03,
+   "high": -0.68,
+   "n": 32,
+   "on": {
+    "step": 0.9291,
+    "layout": 0.3741,
+    "frame": 0.2266,
+    "enemies": 0.3898,
+    "projectiles": 0.1326,
+    "hostile": 0.1263,
+    "aim": 0.0417,
+    "director": 0.0039,
+    "pickups": 0.0016,
+    "firing": 0.056,
+    "after": 0.0039,
+    "smoke": 0.0042,
+    "colliders": 0.037,
+    "gravel": 0.0156,
+    "groundStones": 0.001,
+    "threats": 0.0279
+   },
+   "off": {
+    "step": 1.8062,
+    "layout": 0.3456,
+    "frame": 0.2089,
+    "enemies": 0.9753,
+    "projectiles": 0.187,
+    "hostile": 0.1237,
+    "aim": 0.0557,
+    "director": 0.0031,
+    "pickups": 0.0023,
+    "firing": 0.0732,
+    "after": 0.0029,
+    "smoke": 0.0031,
+    "colliders": 0.0609,
+    "gravel": 0.2885,
+    "groundStones": 0.0242,
+    "threats": 0.0208
+   }
+  }
+ },
+ "hud": {
+  "noBars": {
+   "median": -0.05,
+   "low": -0.12,
+   "high": -0.03,
+   "n": 32,
+   "on": {
+    "step": 2.8928,
+    "layout": 0.2728,
+    "frame": 0.2734,
+    "enemies": 0.6674,
+    "projectiles": 1.7344,
+    "hostile": 0.1495,
+    "aim": 0.0487,
+    "director": 0.0016,
+    "pickups": 0.0016,
+    "firing": 0.0555,
+    "after": 0.0135,
+    "smoke": 0.0042,
+    "colliders": 0.0557,
+    "gravel": 0.2664,
+    "groundStones": 0.0227,
+    "threats": 0.0253
+   },
+   "off": {
+    "step": 2.8575,
+    "layout": 0.3516,
+    "frame": 0.2763,
+    "enemies": 0.6633,
+    "projectiles": 1.7169,
+    "hostile": 0.1404,
+    "aim": 0.0406,
+    "director": 0.0039,
+    "pickups": 0.0016,
+    "firing": 0.0643,
+    "after": 0.0023,
+    "smoke": 0.0047,
+    "colliders": 0.056,
+    "gravel": 0.2836,
+    "groundStones": 0.0221,
+    "threats": 0.0273
+   }
+  },
+  "noCombatHud": {
+   "median": -0.11,
+   "low": -0.17,
+   "high": -0.06,
+   "n": 32,
+   "on": {
+    "step": 2.7053,
+    "layout": 0.2141,
+    "frame": 0.2589,
+    "enemies": 0.8721,
+    "projectiles": 1.5039,
+    "hostile": 0.1542,
+    "aim": 0.0313,
+    "director": 0.0031,
+    "pickups": 0.0013,
+    "firing": 0.0641,
+    "after": 0.0021,
+    "smoke": 0.0044,
+    "colliders": 0.0573,
+    "gravel": 0.2669,
+    "groundStones": 0.0245,
+    "threats": 0.0255
+   },
+   "off": {
+    "step": 2.6666,
+    "layout": 0.3334,
+    "frame": 0.4109,
+    "enemies": 0.6094,
+    "projectiles": 1.507,
+    "hostile": 0.1891,
+    "aim": 0.0339,
+    "director": 0.0018,
+    "pickups": 0.0016,
+    "firing": 0.0513,
+    "after": 0.0021,
+    "smoke": 0.0044,
+    "colliders": 0.0643,
+    "gravel": 0.2961,
+    "groundStones": 0.0294,
+    "threats": 0.0258
+   }
+  },
+  "noArrows": {
+   "median": -0.09,
+   "low": -0.13,
+   "high": -0.05,
+   "n": 32,
+   "on": {
+    "step": 2.7019,
+    "layout": 0.2103,
+    "frame": 0.2549,
+    "enemies": 0.5987,
+    "projectiles": 1.4906,
+    "hostile": 0.1414,
+    "aim": 0.0318,
+    "director": 0.0031,
+    "pickups": 0.0013,
+    "firing": 0.0451,
+    "after": 0.0031,
+    "smoke": 0.0031,
+    "colliders": 0.0523,
+    "gravel": 0.2484,
+    "groundStones": 0.0255,
+    "threats": 0.0185
+   },
+   "off": {
+    "step": 2.5728,
+    "layout": 0.3059,
+    "frame": 0.2672,
+    "enemies": 0.6102,
+    "projectiles": 1.2924,
+    "hostile": 0.1419,
+    "aim": 0.0362,
+    "director": 0.0018,
+    "pickups": 0.0016,
+    "firing": 0.0526,
+    "after": 0.0031,
+    "smoke": 0.0031,
+    "colliders": 0.0635,
+    "gravel": 0.2484,
+    "groundStones": 0.0169,
+    "threats": 0.0247
+   }
+  }
+ },
+ "shapes": {
+  "asItIs": [
+   {
+    "combatStep": 3.1083,
+    "enemies": 0.6875,
+    "projectiles": 1.7308
+   },
+   {
+    "combatStep": 2.9625,
+    "enemies": 0.5233,
+    "projectiles": 1.6033
+   }
+  ],
+  "oneShape": [
+   {
+    "combatStep": 3.2,
+    "enemies": 0.6308,
+    "projectiles": 1.5517
+   },
+   {
+    "combatStep": 3.0323,
+    "enemies": 0.53,
+    "projectiles": 1.425
+   }
+  ]
+ },
+ "heapFrames": 120,
+ "scaled": [
+  {
+   "load": {
+    "enemies": 10,
+    "shots": 150,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 2.6344,
+   "combatFrame": 0.249,
+   "layout": 0.2792,
+   "total": 11.8021,
+   "draw": 7.2354,
+   "parts": {
+    "step": 2.8367,
+    "frame": 0.2542,
+    "enemies": 0.2742,
+    "projectiles": 1.305,
+    "hostile": 0.1567,
+    "aim": 0.0683,
+    "director": 0.0025,
+    "pickups": 0,
+    "firing": 0.0583,
+    "after": 0.0017,
+    "smoke": 0.005,
+    "colliders": 0.0483,
+    "gravel": 0.2592,
+    "groundStones": 0.0208,
+    "threats": 0.0125,
+    "forced": 0.0183
+   },
+   "counts": {
+    "enemies": {
+     "mean": 9.9,
+     "min": 9,
+     "max": 10
+    },
+    "corpses": {
+     "mean": 2.1,
+     "min": 0,
+     "max": 4
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 146.2,
+     "min": 140,
+     "max": 150
+    },
+    "flying": {
+     "mean": 60.9,
+     "min": 51,
+     "max": 66
+    },
+    "spent": {
+     "mean": 98.8,
+     "min": 93,
+     "max": 108
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 512.7,
+     "min": 448,
+     "max": 566
+    },
+    "bubbles": {
+     "mean": 396.3,
+     "min": 387,
+     "max": 405
+    }
+   },
+   "events": {
+    "hitsPerSecond": 21,
+    "killsPerSecond": 4.5,
+    "firedPerSecond": 229.5,
+    "roundsForcedPerSecond": 107.5,
+    "roundsNaturalPerSecond": 0.5
+   },
+   "calls": 16,
+   "triangles": 28296
+  },
+  {
+   "load": {
+    "enemies": 20,
+    "shots": 150,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 2.6302,
+   "combatFrame": 0.2646,
+   "layout": 0.3719,
+   "total": 11.9958,
+   "draw": 7.2354,
+   "parts": {
+    "step": 2.865,
+    "frame": 0.2717,
+    "enemies": 0.4167,
+    "projectiles": 1.4358,
+    "hostile": 0.1567,
+    "aim": 0.0242,
+    "director": 0.0017,
+    "pickups": 0.0025,
+    "firing": 0.0767,
+    "after": 0.0033,
+    "smoke": 0.0075,
+    "colliders": 0.0408,
+    "gravel": 0.2825,
+    "groundStones": 0.02,
+    "threats": 0.015,
+    "forced": 0.0083
+   },
+   "counts": {
+    "enemies": {
+     "mean": 21.9,
+     "min": 21,
+     "max": 22
+    },
+    "corpses": {
+     "mean": 2.1,
+     "min": 1,
+     "max": 4
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 146,
+     "min": 140,
+     "max": 150
+    },
+    "flying": {
+     "mean": 60.7,
+     "min": 46,
+     "max": 67
+    },
+    "spent": {
+     "mean": 99.2,
+     "min": 93,
+     "max": 114
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 494.5,
+     "min": 460,
+     "max": 534
+    },
+    "bubbles": {
+     "mean": 373.6,
+     "min": 359,
+     "max": 392
+    }
+   },
+   "events": {
+    "hitsPerSecond": 75,
+    "killsPerSecond": 4.5,
+    "firedPerSecond": 239.5,
+    "roundsForcedPerSecond": 101,
+    "roundsNaturalPerSecond": 7
+   },
+   "calls": 18,
+   "triangles": 40088
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 150,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 3.0979,
+   "combatFrame": 0.2646,
+   "layout": 0.3677,
+   "total": 12.6698,
+   "draw": 7.4438,
+   "parts": {
+    "step": 3.35,
+    "frame": 0.2725,
+    "enemies": 0.5925,
+    "projectiles": 1.7783,
+    "hostile": 0.15,
+    "aim": 0.0433,
+    "director": 0.0017,
+    "pickups": 0.0025,
+    "firing": 0.0867,
+    "after": 0.0042,
+    "smoke": 0.0017,
+    "colliders": 0.0467,
+    "gravel": 0.2625,
+    "groundStones": 0.0167,
+    "threats": 0.0208,
+    "forced": 0.0225
+   },
+   "counts": {
+    "enemies": {
+     "mean": 39,
+     "min": 36,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 4.1,
+     "min": 2,
+     "max": 7
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 145.8,
+     "min": 141,
+     "max": 149
+    },
+    "flying": {
+     "mean": 61.4,
+     "min": 52,
+     "max": 66
+    },
+    "spent": {
+     "mean": 98.6,
+     "min": 94,
+     "max": 108
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 496.5,
+     "min": 463,
+     "max": 528
+    },
+    "bubbles": {
+     "mean": 354.9,
+     "min": 337,
+     "max": 382
+    }
+   },
+   "events": {
+    "hitsPerSecond": 86,
+    "killsPerSecond": 8,
+    "firedPerSecond": 251,
+    "roundsForcedPerSecond": 95,
+    "roundsNaturalPerSecond": 8
+   },
+   "calls": 19,
+   "triangles": 64418
+  },
+  {
+   "load": {
+    "enemies": 80,
+    "shots": 150,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 3.6615,
+   "combatFrame": 0.2552,
+   "layout": 0.3479,
+   "total": 12.9135,
+   "draw": 7.0208,
+   "parts": {
+    "step": 4.2892,
+    "frame": 0.2725,
+    "enemies": 0.9358,
+    "projectiles": 2.2783,
+    "hostile": 0.1425,
+    "aim": 0.0458,
+    "director": 0.005,
+    "pickups": 0.0025,
+    "firing": 0.0783,
+    "after": 0.0042,
+    "smoke": 0.0042,
+    "colliders": 0.0542,
+    "gravel": 0.2442,
+    "groundStones": 0.02,
+    "threats": 0.0367,
+    "forced": 0.0158
+   },
+   "counts": {
+    "enemies": {
+     "mean": 76.7,
+     "min": 74,
+     "max": 79
+    },
+    "corpses": {
+     "mean": 3.2,
+     "min": 1,
+     "max": 6
+    },
+    "undrawn": {
+     "mean": 34.9,
+     "min": 33,
+     "max": 35
+    },
+    "shots": {
+     "mean": 145.7,
+     "min": 139,
+     "max": 149
+    },
+    "flying": {
+     "mean": 61.8,
+     "min": 52,
+     "max": 68
+    },
+    "spent": {
+     "mean": 98,
+     "min": 92,
+     "max": 107
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 497.8,
+     "min": 464,
+     "max": 541
+    },
+    "bubbles": {
+     "mean": 397.9,
+     "min": 379,
+     "max": 418
+    }
+   },
+   "events": {
+    "hitsPerSecond": 89,
+    "killsPerSecond": 6.5,
+    "firedPerSecond": 255,
+    "roundsForcedPerSecond": 88.5,
+    "roundsNaturalPerSecond": 14
+   },
+   "calls": 19,
+   "triangles": 53422
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 28,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 2.1021,
+   "combatFrame": 0.2344,
+   "layout": 0.3125,
+   "total": 11.7031,
+   "draw": 7.525,
+   "parts": {
+    "step": 2.2917,
+    "frame": 0.2375,
+    "enemies": 0.9233,
+    "projectiles": 0.3408,
+    "hostile": 0.1592,
+    "aim": 0.0433,
+    "director": 0.0017,
+    "pickups": 0.0033,
+    "firing": 0.0733,
+    "after": 0.0067,
+    "smoke": 0.0042,
+    "colliders": 0.0667,
+    "gravel": 0.3,
+    "groundStones": 0.0233,
+    "threats": 0.0308,
+    "forced": 0.0108
+   },
+   "counts": {
+    "enemies": {
+     "mean": 39.9,
+     "min": 37,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 1.3,
+     "min": 0,
+     "max": 5
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 27.2,
+     "min": 24,
+     "max": 28
+    },
+    "flying": {
+     "mean": 61.5,
+     "min": 50,
+     "max": 68
+    },
+    "spent": {
+     "mean": 98.4,
+     "min": 92,
+     "max": 110
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 242.8,
+     "min": 214,
+     "max": 284
+    },
+    "bubbles": {
+     "mean": 185.3,
+     "min": 114,
+     "max": 273
+    }
+   },
+   "events": {
+    "hitsPerSecond": 40.5,
+    "killsPerSecond": 2.5,
+    "firedPerSecond": 46,
+    "roundsForcedPerSecond": 103.5,
+    "roundsNaturalPerSecond": 11
+   },
+   "calls": 18,
+   "triangles": 47982
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 50,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 2.3104,
+   "combatFrame": 0.2302,
+   "layout": 0.3552,
+   "total": 12.6187,
+   "draw": 7.9625,
+   "parts": {
+    "step": 2.7908,
+    "frame": 0.2425,
+    "enemies": 0.88,
+    "projectiles": 0.8717,
+    "hostile": 0.1742,
+    "aim": 0.0492,
+    "director": 0.0017,
+    "pickups": 0.0017,
+    "firing": 0.1008,
+    "after": 0.0033,
+    "smoke": 0.0033,
+    "colliders": 0.0558,
+    "gravel": 0.2867,
+    "groundStones": 0.0242,
+    "threats": 0.02,
+    "forced": 0.0292
+   },
+   "counts": {
+    "enemies": {
+     "mean": 40,
+     "min": 39,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 1.1,
+     "min": 0,
+     "max": 3
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 48.8,
+     "min": 39,
+     "max": 51
+    },
+    "flying": {
+     "mean": 60.7,
+     "min": 45,
+     "max": 67
+    },
+    "spent": {
+     "mean": 99.2,
+     "min": 93,
+     "max": 115
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 279.3,
+     "min": 250,
+     "max": 311
+    },
+    "bubbles": {
+     "mean": 149.1,
+     "min": 127,
+     "max": 173
+    }
+   },
+   "events": {
+    "hitsPerSecond": 36,
+    "killsPerSecond": 2.5,
+    "firedPerSecond": 73.5,
+    "roundsForcedPerSecond": 97,
+    "roundsNaturalPerSecond": 6.5
+   },
+   "calls": 19,
+   "triangles": 58316
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 300,
+    "hostile": 60
+   },
+   "capped": false,
+   "combatStep": 4.4542,
+   "combatFrame": 0.299,
+   "layout": 0.4187,
+   "total": 14.2188,
+   "draw": 7.5219,
+   "parts": {
+    "step": 4.6642,
+    "frame": 0.3225,
+    "enemies": 0.6283,
+    "projectiles": 3.0825,
+    "hostile": 0.16,
+    "aim": 0.035,
+    "director": 0,
+    "pickups": 0.0042,
+    "firing": 0.0325,
+    "after": 0.0033,
+    "smoke": 0.0017,
+    "colliders": 0.0467,
+    "gravel": 0.2692,
+    "groundStones": 0.0233,
+    "threats": 0.0192,
+    "forced": 0.0192
+   },
+   "counts": {
+    "enemies": {
+     "mean": 38,
+     "min": 35,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 5,
+     "min": 0,
+     "max": 9
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 292.5,
+     "min": 234,
+     "max": 299
+    },
+    "flying": {
+     "mean": 60.6,
+     "min": 52,
+     "max": 66
+    },
+    "spent": {
+     "mean": 99.2,
+     "min": 94,
+     "max": 108
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 766.3,
+     "min": 693,
+     "max": 768
+    },
+    "bubbles": {
+     "mean": 479,
+     "min": 459,
+     "max": 480
+    }
+   },
+   "events": {
+    "hitsPerSecond": 84,
+    "killsPerSecond": 10.5,
+    "firedPerSecond": 447,
+    "roundsForcedPerSecond": 84,
+    "roundsNaturalPerSecond": 6
+   },
+   "calls": 19,
+   "triangles": 66636
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 150,
+    "hostile": 0
+   },
+   "capped": false,
+   "combatStep": 2.5177,
+   "combatFrame": 0.2365,
+   "layout": 0.2875,
+   "total": 11.0073,
+   "draw": 6.6729,
+   "parts": {
+    "step": 2.65,
+    "frame": 0.2383,
+    "enemies": 0.5442,
+    "projectiles": 1.3275,
+    "hostile": 0.0358,
+    "aim": 0.0383,
+    "director": 0.0008,
+    "pickups": 0.0025,
+    "firing": 0.0258,
+    "after": 0.0017,
+    "smoke": 0.0042,
+    "colliders": 0.0467,
+    "gravel": 0.2417,
+    "groundStones": 0.0158,
+    "threats": 0.0183,
+    "forced": 0.0108
+   },
+   "counts": {
+    "enemies": {
+     "mean": 39.8,
+     "min": 38,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 2.6,
+     "min": 0,
+     "max": 5
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 145.6,
+     "min": 139,
+     "max": 150
+    },
+    "flying": {
+     "mean": 10.3,
+     "min": 4,
+     "max": 20
+    },
+    "spent": {
+     "mean": 8.7,
+     "min": 3,
+     "max": 15
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 343.3,
+     "min": 315,
+     "max": 378
+    },
+    "bubbles": {
+     "mean": 448.6,
+     "min": 395,
+     "max": 480
+    }
+   },
+   "events": {
+    "hitsPerSecond": 76.5,
+    "killsPerSecond": 5,
+    "firedPerSecond": 263.5,
+    "roundsForcedPerSecond": 0,
+    "roundsNaturalPerSecond": 12.5
+   },
+   "calls": 19,
+   "triangles": 65332
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 150,
+    "hostile": 120
+   },
+   "capped": false,
+   "combatStep": 2.5885,
+   "combatFrame": 0.2375,
+   "layout": 0.3167,
+   "total": 11.1427,
+   "draw": 6.6896,
+   "parts": {
+    "step": 2.7008,
+    "frame": 0.2375,
+    "enemies": 0.4925,
+    "projectiles": 1.3325,
+    "hostile": 0.1758,
+    "aim": 0.0358,
+    "director": 0.0033,
+    "pickups": 0.0008,
+    "firing": 0.0283,
+    "after": 0.0042,
+    "smoke": 0.005,
+    "colliders": 0.0358,
+    "gravel": 0.2483,
+    "groundStones": 0.0175,
+    "threats": 0.0217,
+    "forced": 0.0125
+   },
+   "counts": {
+    "enemies": {
+     "mean": 38.9,
+     "min": 36,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 3.2,
+     "min": 1,
+     "max": 6
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 145.6,
+     "min": 138,
+     "max": 150
+    },
+    "flying": {
+     "mean": 119,
+     "min": 63,
+     "max": 126
+    },
+    "spent": {
+     "mean": 40.4,
+     "min": 34,
+     "max": 97
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 492.3,
+     "min": 464,
+     "max": 534
+    },
+    "bubbles": {
+     "mean": 349,
+     "min": 317,
+     "max": 387
+    }
+   },
+   "events": {
+    "hitsPerSecond": 79.5,
+    "killsPerSecond": 6.5,
+    "firedPerSecond": 263,
+    "roundsForcedPerSecond": 239,
+    "roundsNaturalPerSecond": 4.5
+   },
+   "calls": 17,
+   "triangles": 57934
+  },
+  {
+   "load": {
+    "enemies": 40,
+    "shots": 0,
+    "hostile": 0
+   },
+   "capped": false,
+   "combatStep": 1.0927,
+   "combatFrame": 0.1198,
+   "layout": 0.226,
+   "total": 9.5917,
+   "draw": 6.8365,
+   "parts": {
+    "step": 1.1792,
+    "frame": 0.1183,
+    "enemies": 0.6925,
+    "projectiles": 0.0008,
+    "hostile": 0.0542,
+    "aim": 0,
+    "director": 0.005,
+    "pickups": 0,
+    "firing": 0.005,
+    "after": 0.0008,
+    "smoke": 0.0008,
+    "colliders": 0.0283,
+    "gravel": 0.2442,
+    "groundStones": 0.025,
+    "threats": 0.0258,
+    "forced": 0
+   },
+   "counts": {
+    "enemies": {
+     "mean": 40,
+     "min": 40,
+     "max": 40
+    },
+    "corpses": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "flying": {
+     "mean": 8.4,
+     "min": 3,
+     "max": 15
+    },
+    "spent": {
+     "mean": 14.8,
+     "min": 3,
+     "max": 21
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 23.7,
+     "min": 18,
+     "max": 34
+    },
+    "bubbles": {
+     "mean": 99.1,
+     "min": 15,
+     "max": 209
+    }
+   },
+   "events": {
+    "hitsPerSecond": 0,
+    "killsPerSecond": 0,
+    "firedPerSecond": 0,
+    "roundsForcedPerSecond": 0,
+    "roundsNaturalPerSecond": 7.5
+   },
+   "calls": 17,
+   "triangles": 47140
+  },
+  {
+   "load": {
+    "enemies": 0,
+    "shots": 0,
+    "hostile": 0,
+    "empty": true
+   },
+   "capped": false,
+   "combatStep": 0.0448,
+   "combatFrame": 0.024,
+   "layout": 0.0458,
+   "total": 8.0667,
+   "draw": 6.6833,
+   "parts": {
+    "step": 0.0483,
+    "frame": 0.03,
+    "enemies": 0.0117,
+    "projectiles": 0.0017,
+    "hostile": 0.0025,
+    "aim": 0,
+    "director": 0.0025,
+    "pickups": 0.0017,
+    "firing": 0.0092,
+    "after": 0.0008,
+    "smoke": 0,
+    "colliders": 0,
+    "gravel": 0,
+    "groundStones": 0,
+    "threats": 0.0025,
+    "forced": 0
+   },
+   "counts": {
+    "enemies": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "corpses": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "undrawn": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "shots": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "flying": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "spent": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "rested": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "glow": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    },
+    "bubbles": {
+     "mean": 0,
+     "min": 0,
+     "max": 0
+    }
+   },
+   "events": {
+    "hitsPerSecond": 0,
+    "killsPerSecond": 0,
+    "firedPerSecond": 0,
+    "roundsForcedPerSecond": 0,
+    "roundsNaturalPerSecond": 0
+   }
+  }
+ ],
+ "soak": [
+  {
+   "t": 1,
+   "flying": 4,
+   "spent": 45,
+   "rested": 3,
+   "oldest": 1.57,
+   "longestRest": 0.72,
+   "fired": 11,
+   "hostile": 0.055,
+   "combatStep": 1.7483,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 234.8
+  },
+  {
+   "t": 2,
+   "flying": 6,
+   "spent": 51,
+   "rested": 5,
+   "oldest": 2.57,
+   "longestRest": 1.72,
+   "fired": 20,
+   "hostile": 0.0233,
+   "combatStep": 1.7967,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 27,
+   "heapMB": 247.5
+  },
+  {
+   "t": 3,
+   "flying": 21,
+   "spent": 51,
+   "rested": 8,
+   "oldest": 3.57,
+   "longestRest": 2.72,
+   "fired": 26,
+   "hostile": 0.0433,
+   "combatStep": 1.735,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 26,
+   "heapMB": 256.9
+  },
+  {
+   "t": 4,
+   "flying": 1,
+   "spent": 58,
+   "rested": 13,
+   "oldest": 4.57,
+   "longestRest": 3.72,
+   "fired": 12,
+   "hostile": 0.075,
+   "combatStep": 1.7733,
+   "enemies": 41,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 235.7
+  },
+  {
+   "t": 5,
+   "flying": 16,
+   "spent": 56,
+   "rested": 16,
+   "oldest": 5.57,
+   "longestRest": 4.72,
+   "fired": 16,
+   "hostile": 0.04,
+   "combatStep": 2.1983,
+   "enemies": 42,
+   "corpses": 4,
+   "shots": 27,
+   "heapMB": 250.7
+  },
+  {
+   "t": 6,
+   "flying": 7,
+   "spent": 59,
+   "rested": 25,
+   "oldest": 6.57,
+   "longestRest": 5.72,
+   "fired": 16,
+   "hostile": 0.07,
+   "combatStep": 1.8567,
+   "enemies": 42,
+   "corpses": 3,
+   "shots": 26,
+   "heapMB": 266.8
+  },
+  {
+   "t": 7,
+   "flying": 14,
+   "spent": 49,
+   "rested": 36,
+   "oldest": 7.57,
+   "longestRest": 6.72,
+   "fired": 26,
+   "hostile": 0.06,
+   "combatStep": 1.7267,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 28,
+   "heapMB": 245.7
+  },
+  {
+   "t": 8,
+   "flying": 8,
+   "spent": 56,
+   "rested": 42,
+   "oldest": 8.57,
+   "longestRest": 7.72,
+   "fired": 9,
+   "hostile": 0.0583,
+   "combatStep": 1.9083,
+   "enemies": 44,
+   "corpses": 5,
+   "shots": 27,
+   "heapMB": 258.7
+  },
+  {
+   "t": 9,
+   "flying": 22,
+   "spent": 59,
+   "rested": 47,
+   "oldest": 9.57,
+   "longestRest": 7.7,
+   "fired": 50,
+   "hostile": 0.0983,
+   "combatStep": 2.02,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 25,
+   "heapMB": 272.2
+  },
+  {
+   "t": 10,
+   "flying": 10,
+   "spent": 62,
+   "rested": 59,
+   "oldest": 10.57,
+   "longestRest": 7.2,
+   "fired": 13,
+   "hostile": 0.0733,
+   "combatStep": 2.035,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 26,
+   "heapMB": 277.9
+  },
+  {
+   "t": 11,
+   "flying": 5,
+   "spent": 55,
+   "rested": 67,
+   "oldest": 11.57,
+   "longestRest": 7.68,
+   "fired": 7,
+   "hostile": 0.0667,
+   "combatStep": 1.8783,
+   "enemies": 43,
+   "corpses": 4,
+   "shots": 28,
+   "heapMB": 256.2
+  },
+  {
+   "t": 12,
+   "flying": 23,
+   "spent": 66,
+   "rested": 38,
+   "oldest": 11.25,
+   "longestRest": 7.98,
+   "fired": 51,
+   "hostile": 0.11,
+   "combatStep": 2.2283,
+   "enemies": 41,
+   "corpses": 2,
+   "shots": 28,
+   "heapMB": 264.8
+  },
+  {
+   "t": 13,
+   "flying": 7,
+   "spent": 74,
+   "rested": 41,
+   "oldest": 11.72,
+   "longestRest": 7.7,
+   "fired": 14,
+   "hostile": 0.0967,
+   "combatStep": 2.5817,
+   "enemies": 42,
+   "corpses": 3,
+   "shots": 26,
+   "heapMB": 274.3
+  },
+  {
+   "t": 14,
+   "flying": 4,
+   "spent": 69,
+   "rested": 38,
+   "oldest": 11.4,
+   "longestRest": 7.3,
+   "fired": 10,
+   "hostile": 0.085,
+   "combatStep": 2.4417,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 26,
+   "heapMB": 273.3
+  },
+  {
+   "t": 15,
+   "flying": 20,
+   "spent": 57,
+   "rested": 46,
+   "oldest": 11.55,
+   "longestRest": 7.05,
+   "fired": 25,
+   "hostile": 0.0867,
+   "combatStep": 2.6417,
+   "enemies": 42,
+   "corpses": 3,
+   "shots": 28,
+   "heapMB": 234.2
+  },
+  {
+   "t": 16,
+   "flying": 7,
+   "spent": 60,
+   "rested": 48,
+   "oldest": 11.52,
+   "longestRest": 7.42,
+   "fired": 14,
+   "hostile": 0.0867,
+   "combatStep": 1.925,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 250.6
+  },
+  {
+   "t": 17,
+   "flying": 5,
+   "spent": 59,
+   "rested": 48,
+   "oldest": 11.63,
+   "longestRest": 7.43,
+   "fired": 22,
+   "hostile": 0.0767,
+   "combatStep": 2.0083,
+   "enemies": 41,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 231.9
+  },
+  {
+   "t": 18,
+   "flying": 5,
+   "spent": 52,
+   "rested": 50,
+   "oldest": 11.5,
+   "longestRest": 7.7,
+   "fired": 13,
+   "hostile": 0.0867,
+   "combatStep": 2.0583,
+   "enemies": 43,
+   "corpses": 4,
+   "shots": 25,
+   "heapMB": 240.6
+  },
+  {
+   "t": 19,
+   "flying": 10,
+   "spent": 43,
+   "rested": 57,
+   "oldest": 11.37,
+   "longestRest": 7.93,
+   "fired": 28,
+   "hostile": 0.065,
+   "combatStep": 1.5367,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 28,
+   "heapMB": 256.3
+  },
+  {
+   "t": 20,
+   "flying": 7,
+   "spent": 33,
+   "rested": 60,
+   "oldest": 11.87,
+   "longestRest": 7.98,
+   "fired": 11,
+   "hostile": 0.0783,
+   "combatStep": 1.6417,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 268.5
+  },
+  {
+   "t": 21,
+   "flying": 21,
+   "spent": 29,
+   "rested": 54,
+   "oldest": 11.37,
+   "longestRest": 7.33,
+   "fired": 43,
+   "hostile": 0.0983,
+   "combatStep": 2.6667,
+   "enemies": 43,
+   "corpses": 3,
+   "shots": 27,
+   "heapMB": 248.2
+  },
+  {
+   "t": 22,
+   "flying": 14,
+   "spent": 47,
+   "rested": 56,
+   "oldest": 11.55,
+   "longestRest": 7.88,
+   "fired": 34,
+   "hostile": 0.0867,
+   "combatStep": 1.6717,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 28,
+   "heapMB": 253.8
+  },
+  {
+   "t": 23,
+   "flying": 8,
+   "spent": 51,
+   "rested": 56,
+   "oldest": 11.92,
+   "longestRest": 7.93,
+   "fired": 10,
+   "hostile": 0.0367,
+   "combatStep": 1.465,
+   "enemies": 41,
+   "corpses": 2,
+   "shots": 26,
+   "heapMB": 266.8
+  },
+  {
+   "t": 24,
+   "flying": 20,
+   "spent": 45,
+   "rested": 33,
+   "oldest": 10.1,
+   "longestRest": 7.88,
+   "fired": 30,
+   "hostile": 0.0667,
+   "combatStep": 1.4883,
+   "enemies": 43,
+   "corpses": 4,
+   "shots": 28,
+   "heapMB": 248.1
+  },
+  {
+   "t": 25,
+   "flying": 8,
+   "spent": 55,
+   "rested": 38,
+   "oldest": 11.1,
+   "longestRest": 7.83,
+   "fired": 24,
+   "hostile": 0.065,
+   "combatStep": 1.44,
+   "enemies": 41,
+   "corpses": 1,
+   "shots": 26,
+   "heapMB": 263.3
+  },
+  {
+   "t": 26,
+   "flying": 6,
+   "spent": 59,
+   "rested": 44,
+   "oldest": 11.22,
+   "longestRest": 7.62,
+   "fired": 14,
+   "hostile": 0.0517,
+   "combatStep": 1.41,
+   "enemies": 44,
+   "corpses": 4,
+   "shots": 28,
+   "heapMB": 270.4
+  },
+  {
+   "t": 27,
+   "flying": 19,
+   "spent": 52,
+   "rested": 42,
+   "oldest": 10.93,
+   "longestRest": 7.48,
+   "fired": 33,
+   "hostile": 0.08,
+   "combatStep": 1.45,
+   "enemies": 40,
+   "corpses": 0,
+   "shots": 27,
+   "heapMB": 286.4
+  },
+  {
+   "t": 28,
+   "flying": 11,
+   "spent": 55,
+   "rested": 50,
+   "oldest": 11.93,
+   "longestRest": 7.95,
+   "fired": 21,
+   "hostile": 0.0683,
+   "combatStep": 1.5033,
+   "enemies": 43,
+   "corpses": 3,
+   "shots": 28,
+   "heapMB": 271.9
+  },
+  {
+   "t": 29,
+   "flying": 11,
+   "spent": 50,
+   "rested": 47,
+   "oldest": 11.38,
+   "longestRest": 7.57,
+   "fired": 14,
+   "hostile": 0.0683,
+   "combatStep": 1.5167,
+   "enemies": 42,
+   "corpses": 2,
+   "shots": 27,
+   "heapMB": 290.8
+  },
+  {
+   "t": 30,
+   "flying": 11,
+   "spent": 54,
+   "rested": 52,
+   "oldest": 11.82,
+   "longestRest": 7.97,
+   "fired": 37,
+   "hostile": 0.08,
+   "combatStep": 1.5417,
+   "enemies": 43,
+   "corpses": 5,
+   "shots": 28,
+   "heapMB": 276.1
+  }
+ ],
+ "errors": [],
+ "console": {
+  "errors": [],
+  "warnings": [],
+  "environment": [
+   "network: Failed to load resource: the server responded with a status of 404 (Not Found) (http://localhost:8182/_vercel/insights/script.js)"
+  ]
+ },
+ "heapSampling": {
+  "frames": 120,
+  "totalKB": 3549,
+  "withinKB": {
+   "combat.step": 2803.6,
+   "combat.frame": 67.5,
+   "projectiles.update": 1851.4,
+   "enemies.update": 776.6,
+   "hostile.update": 30.4,
+   "hud.bars": 1.6,
+   "fx.update": 8.1
+  },
+  "sites": [
+   {
+    "site": "update (projectiles.js:221)",
+    "kb": 1596.2
+   },
+   {
+    "site": "height (ground.js:19)",
+    "kb": 702.5
+   },
+   {
+    "site": "next (native)",
+    "kb": 131
+   },
+   {
+    "site": "abs (native)",
+    "kb": 99.3
+   },
+   {
+    "site": "update (life.js:1447)",
+    "kb": 93.1
+   },
+   {
+    "site": "subarray (native)",
+    "kb": 61
+   },
+   {
+    "site": "drawLocal (minimap.js:138)",
+    "kb": 54.5
+   },
+   {
+    "site": "near (pebbles.js:250)",
+    "kb": 51.2
+   },
+   {
+    "site": "_update (three.webgpu.js:33882)",
+    "kb": 49.8
+   },
+   {
+    "site": "frame (gore.js:1143)",
+    "kb": 41.9
+   },
+   {
+    "site": "update (gore.js:852)",
+    "kb": 39
+   },
+   {
+    "site": "_bindUniforms (three.webgpu.js:76738)",
+    "kb": 25
+   },
+   {
+    "site": "riverBed (course.js:757)",
+    "kb": 23.8
+   },
+   {
+    "site": "meters.gravel.fn (scenes-look.js:356)",
+    "kb": 23.8
+   },
+   {
+    "site": "update (hostile.js:71)",
+    "kb": 23.6
+   }
+  ]
+ },
+ "environment": {
+  "otherChromes": 7,
+  "load": [
+   106.54736328125,
+   148.42529296875,
+   137.0771484375
+  ],
+  "loadBefore": [
+   213.9560546875,
+   173.84228515625,
+   119.56298828125
+  ],
+  "minutes": 13.1
+ }
+}
