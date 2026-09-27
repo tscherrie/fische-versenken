@@ -155,11 +155,15 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
     render() {
       const previous = renderer.getRenderTarget();
       const alpha = renderer.getClearAlpha();
+      const autoClear = renderer.autoClear;
       renderer.getClearColor(clear);
       renderer.setRenderTarget(target);
+      // The pass clears the target to black as it begins (a clear of its own first would be
+      // a second pass that does nothing).
       renderer.setClearColor(0x000000, 1);
-      renderer.clear(true, false, false);
+      renderer.autoClear = true;
       renderer.render(scene, camera);
+      renderer.autoClear = autoClear;
       renderer.setRenderTarget(previous);
       renderer.setClearColor(clear, alpha);
     },
