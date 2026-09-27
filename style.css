@@ -1313,6 +1313,8 @@
 #huntbar .count b { font-size: 14px; }
 #habitat.touch #huntbar { bottom: max(12px, env(safe-area-inset-bottom)); padding: 6px 12px; font-size: 11px; }
 #threats .threat.goal { color: #7fe6a8; }
+/* (The hunters' arrows get their opacity from how near the danger is; the way to the ball is always plain.) */
+#threats .threat.goal.on { opacity: 1; }
 #threats .threat.goal .name { opacity: 1; }
 #drivebar { position: fixed; z-index: 3; left: 50%; bottom: 96px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(0, 14, 18, 0.55); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3); pointer-events: none; font: 800 12px/1 var(--hud-font); color: #f3fbf7; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); white-space: nowrap; }
 #drivebar[hidden] { display: none; }
