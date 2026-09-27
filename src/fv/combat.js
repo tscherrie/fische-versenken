@@ -14,6 +14,8 @@ import { createDifficulty } from "./difficulty.js";
 import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
+import { createLarvae } from "./look/larvae.js";
+import { createCapsules } from "./look/capsule.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
 import { createGravel } from "./gravel.js";
@@ -48,6 +50,19 @@ export function createCombat(game) {
   const sfx = createSfx(sound);
   const gore = createGore(scene, camera, { random: look, light });
   const models = createWeaponModels(scene, { mirror: game.mirror });
+  // The larvae and the weapon capsules have models of their own (the look's): made here,
+  // before the first frame, so the warm-up render compiles them with everything else. The
+  // larvae's stand-in bodies in the enemies' crowds are then no longer drawn.
+  const larvae = createLarvae(scene, { capacity: 24, light });
+  const capsules = createCapsules(scene, { capacity: 24, light });
+  enemies.drawnBy("dragonflyLarva");
+  enemies.drawnBy("beetleLarva");
+  // (The capsules' bubbles take the daylight the game gives life.js.)
+  const lifeLight = life.light;
+  life.light = function (value, ...rest) {
+    capsules.light(value);
+    return lifeLight.call(this, value, ...rest);
+  };
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
   const difficulty = createDifficulty(habitat);
   const director = createDirector({ random });
@@ -375,8 +390,12 @@ export function createCombat(game) {
         const k = p.spent ? 0.06 : 1;
         fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
       }
-    for (const item of pickups.items) if (item.state === "idle") fx.add(item.x, item.y + Math.sin(item.age * 2) * 0.05, item.z, item.size * 0.5, 2.2, 2.4, 2.8, 1);
     fx.end();
+    // The larvae and the capsules (held still in the pause), and the weapons inside the
+    // capsules once the weapon models dock there (capsules.anchor).
+    larvae.draw(enemies.list, shown ? dt : 0);
+    capsules.draw(pickups.items, game.now.time);
+    models.capsules?.(pickups.items, capsules);
     smoke.frame();
     sfx.update?.();
     gore.frame();
