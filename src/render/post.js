@@ -39,7 +39,7 @@ import {
   vec4,
 } from "three/tsl";
 import { extinction } from "./fog.js";
-import { surfaceWaves } from "./caustics.js";
+import { SURFACE_SLOPE, surfaceRoughness, surfaceWaves } from "./caustics.js";
 import { canopyOpen, river, surfaceLevelAt, surfacePoint, waterTime } from "./water.js";
 import { windowMap, windowOn } from "./mirror.js";
 
@@ -299,8 +299,8 @@ export function createPost(renderer, camera, settings) {
         const dir = normalize(u.cameraWorld.mul(vec4(dirView, 0)).xyz);
         const at = u.cameraPos.add(dir.mul(length(view)));
         If(abs(at.y.sub(surfaceLevelAt(at))).lessThan(0.05).and(u.cameraPos.y.lessThan(surfaceLevelAt(u.cameraPos))), () => {
-          const waves = surfaceWaves(at.xz, waterTime, float(1));
-          const normal = normalize(vec3(waves.x.mul(1.8), -1, waves.y.mul(1.8)));
+          const waves = surfaceWaves(at.xz, waterTime, surfaceRoughness);
+          const normal = normalize(vec3(waves.x.mul(SURFACE_SLOPE), -1, waves.y.mul(SURFACE_SLOPE)));
           const r = reflect(dir, normal);
           const travel = float(0.6).toVar();
           const hit = vec3(0).toVar();
@@ -574,7 +574,7 @@ export function createPost(renderer, camera, settings) {
           const dirView = normalize(getViewPosition(p, float(0.5), u.projectionInverse));
           const dir = normalize(u.cameraWorld.mul(vec4(dirView, 0)).xyz);
           const glass = u.cameraPos.add(dir.mul(lens.reach.div(max(dirView.z.negate(), 0.1))));
-          const height = glass.y.sub(surfaceLevelAt(glass)).sub(surfaceWaves(glass.xz, waterTime, float(1)).z);
+          const height = glass.y.sub(surfaceLevelAt(glass)).sub(surfaceWaves(glass.xz, waterTime, surfaceRoughness).z);
           If(lens.above.greaterThan(0.5).and(height.lessThan(0)), () => {
             color.assign(mix(color.mul(0.4), lens.murk, 0.65));
           });

@@ -2603,7 +2603,9 @@ async function start() {
     skyUniforms.flash.value = events.flash;
     surfaceUniforms.rain.value = rain;
     surfaceUniforms.body.value.copy(lookHere.body);
-    caustics.uniforms.roughness.value = 0.9 + 0.15 * Math.sin(time * 0.05) + 0.5 * rain;
+    // (One roughness for the ripples one sees and the net they make: the surface's own, a
+    // little restless, rougher in rain.)
+    caustics.uniforms.roughness.value = 1 + 0.15 * Math.sin(time * 0.05) + 0.5 * rain;
     bedMaterial.userData.tint.value.copy(lookHere.tint);
     // The water's colour: what it takes from the light on the way down and from the view.
     // The snowmelt flood and a flash flood's mud take more of everything, blue most.

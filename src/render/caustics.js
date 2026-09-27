@@ -36,6 +36,13 @@ export function driftSurface(dt, flowX, flowZ) {
   surfaceDrift.value.y += (flowZ / length) * SURFACE_DRIFT * dt;
 }
 
+// The surface as one sees it (materials.js, and its underside's mirror in post.js) is drawn
+// with the trains' slope times this, and the net bends its light by the same slope.
+export const SURFACE_SLOPE = 1.8;
+// How rough the surface is: one value for the ripples one sees and the net they make
+// (main.js sets it each frame).
+export const surfaceRoughness = uniform(1);
+
 const WAVES = (() => {
   let seed = 0.37;
   const next = () => (seed = (seed * 9301 + 0.49297) % 1);
@@ -105,7 +112,6 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
-  const roughness = uniform(1);
 
   const material = new THREE.MeshBasicNodeMaterial({
     blending: THREE.AdditiveBlending,
@@ -118,10 +124,11 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   // Small-slope refraction: sunlight coming straight down through a patch whose height
   // rises along s (the gradient) leaves it bent by (1 - 1/n) s, toward the rising side, and
   // carries that bend down to the focal depth. A crest, rising to it from every side, is the
-  // converging lens: the bright lines lie under the crests one sees.
+  // converging lens: the bright lines lie under the crests one sees. (The slope is the one
+  // the surface is drawn with.)
   const q = positionGeometry.xy;
-  const wave = surfaceWaves(q, waterTime, roughness);
-  const landed = q.add(wave.xy.mul(1 - 1 / 1.333).mul(river.causticParams.z));
+  const wave = surfaceWaves(q, waterTime, surfaceRoughness);
+  const landed = q.add(wave.xy.mul((1 - 1 / 1.333) * SURFACE_SLOPE).mul(river.causticParams.z));
   const before = varying(q);
   const after = varying(landed);
   // Into the map the way causticLight reads it, the texture's row v holding what landed at
@@ -144,7 +151,7 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   return {
     target,
     tile: TILE,
-    uniforms: { roughness },
+    uniforms: { roughness: surfaceRoughness },
     render() {
       const previous = renderer.getRenderTarget();
       const alpha = renderer.getClearAlpha();

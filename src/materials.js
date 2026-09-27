@@ -61,7 +61,7 @@ import {
   viewportSharedTexture,
 } from "three/tsl";
 import { RIPPLE_COUNT, RIPPLE_SPEED, SUN_DIRECTION, river, surfaceLevelAt, waterLit, waterTime } from "./render/water.js";
-import { surfaceWaves } from "./render/caustics.js";
+import { SURFACE_SLOPE, surfaceRoughness, surfaceWaves } from "./render/caustics.js";
 import { extinction, fogNodes, underwaterInscatter, waterBetween } from "./render/fog.js";
 import { mirrorMap, mirrorOn, windowMap, windowOn } from "./render/mirror.js";
 import { eddyAt } from "./flowfield.js";
@@ -791,7 +791,7 @@ export async function createBedMaterial({ relief = false } = {}) {
 export const surfaceUniforms = {
   ...skyUniforms,
   waterTime,
-  roughness: uniform(1),
+  roughness: surfaceRoughness,
   rain: uniform(0),
   body: uniform(new THREE.Color(0.02, 0.06, 0.06)),
   // Winter: how much of the river here is frozen over (the riffles stay open longest).
@@ -882,7 +882,7 @@ export function createSurfaceMaterial({ clear = true } = {}) {
     const wake = reach.mul(length(eddy.xy).div(max(length(vFlow), 0.6)).add(abs(eddy.z).mul(0.08)).clamp(0, 1.5));
     // Fast water is broken water: the steeper and quicker, the rougher the skin.
     const chop = length(vFlow).mul(0.25).add(1).add(vFoam.mul(2)).add(wake.mul(1.2));
-    const slope = waves.xy.mul(1.8).add(swell).mul(chop).add(rings.xy).add(stir.mul(0.035)).toVar();
+    const slope = waves.xy.mul(SURFACE_SLOPE).add(swell).mul(chop).add(rings.xy).add(stir.mul(0.035)).toVar();
     // Far off the fine ripples are finer than a pixel: calm them rather than let them alias.
     const footprint = length(fwidth(q));
     slope.divAssign(footprint.mul(6).add(1));
