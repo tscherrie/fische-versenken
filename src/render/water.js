@@ -253,10 +253,14 @@ export const causticLight = Fn(([p]) => {
   const uv = q.add(ring.xy).div(params.x);
   const blur = abs(depth.sub(params.z)).mul(0.22).add(0.4);
   // The tile is small (sixty centimetres): a second look at it, turned and a little larger,
-  // blended in keeps the repeat from showing; the blend's contrast is restored.
+  // blended in keeps the repeat from showing; the blend's contrast is restored (x1.41).
+  // The net is then shown at 0.6 of its contrast: made by the slope the surface is drawn
+  // with, it comes into focus at half the depth it once did, and at full contrast its lines
+  // on the shallow brook bed would burn white. At 0.6 they stay sharp, and the bed is as
+  // bright as before, its contrast close.
   const uv2 = vec2(uv.x.mul(0.83).sub(uv.y.mul(0.56)), uv.x.mul(0.56).add(uv.y.mul(0.83))).mul(0.71).add(0.37);
   const map = river.causticMap.value;
-  const net = texture(map, uv).level(blur).r.add(texture(map, uv2).level(blur).r).mul(0.5).sub(1).mul(1.41).add(1).max(0);
+  const net = texture(map, uv).level(blur).r.add(texture(map, uv2).level(blur).r).mul(0.5).sub(1).mul(1.41 * 0.6).add(1).max(0);
   const formed = smoothstep(0.3, 4.5, depth).mul(params.y).mul(params.w);
   const dimples = striderShade(q, depth);
   return max(0, mix(1, net, formed).mul(ring.z.mul(1.5).mul(formed).add(1))).mul(mix(1, dimples, params.y));

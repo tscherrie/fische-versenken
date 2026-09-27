@@ -6,7 +6,7 @@ import { FLOW_DIRECTION, river, waterTime } from "./water.js";
 //
 // A gently rippled surface acts as a sheet of weak lenses: every patch of it tilts the
 // sunlight passing through by an angle proportional to its slope, so a bundle of rays that
-// started parallel converges under a trough and spreads under a crest. At some depth below,
+// started parallel converges under a crest and spreads under a trough. At some depth below,
 // the bundles cross, and the bright folded lines where they cross are the net seen dancing
 // on a sandy bed. That construction is done here once a frame for one periodic tile of
 // surface: a fine grid over the tile is moved to where its light lands at the focal depth,
@@ -35,6 +35,13 @@ export function driftSurface(dt, flowX, flowZ) {
   surfaceDrift.value.x += (flowX / length) * SURFACE_DRIFT * dt;
   surfaceDrift.value.y += (flowZ / length) * SURFACE_DRIFT * dt;
 }
+
+// The surface as one sees it (materials.js, and its underside's mirror in post.js) is drawn
+// with the trains' slope times this, and the net bends its light by the same slope.
+export const SURFACE_SLOPE = 1.8;
+// How rough the surface is: one value for the ripples one sees and the net they make
+// (main.js sets it each frame).
+export const surfaceRoughness = uniform(1);
 
 const WAVES = (() => {
   let seed = 0.37;
@@ -80,6 +87,12 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
     depthBuffer: false,
   });
   target.texture.name = "Caustic net";
+  // Made a render target on the card now. Were it first touched by a draw that samples it
+  // (the warm-up draws everything before the first frame), three would make it a plain
+  // texture there and replace it at the first render(); a material three does not re-check,
+  // one with no node properties of its own (the nets' gear, the eggs), would go on using the
+  // destroyed one, and that frame's scene would be lost to a validation error.
+  renderer.initRenderTarget(target);
   river.causticMap.value = target.texture;
   river.causticParams.value.x = TILE;
 
@@ -99,7 +112,6 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
-  const roughness = uniform(1);
 
   const material = new THREE.MeshBasicNodeMaterial({
     blending: THREE.AdditiveBlending,
@@ -109,14 +121,21 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
     depthTest: false,
     depthWrite: false,
   });
-  // Small-slope refraction: a ray through a patch tilted by the slope s leaves it bent by
-  // (1 - 1/n) s, and carries that bend down to the focal depth.
+  // Small-slope refraction: sunlight coming straight down through a patch whose height
+  // rises along s (the gradient) leaves it bent by (1 - 1/n) s, toward the rising side, and
+  // carries that bend down to the focal depth. A crest, rising to it from every side, is the
+  // converging lens: the bright lines lie under the crests one sees. (The slope is the one
+  // the surface is drawn with.)
   const q = positionGeometry.xy;
-  const wave = surfaceWaves(q, waterTime, roughness);
-  const landed = q.sub(wave.xy.mul((1 - 1 / 1.333) * 1).mul(river.causticParams.z));
+  const wave = surfaceWaves(q, waterTime, surfaceRoughness);
+  const landed = q.add(wave.xy.mul((1 - 1 / 1.333) * SURFACE_SLOPE).mul(river.causticParams.z));
   const before = varying(q);
   const after = varying(landed);
-  material.vertexNode = vec4(landed.div(TILE).mul(2).sub(1), 0, 1);
+  // Into the map the way causticLight reads it, the texture's row v holding what landed at
+  // z = v * TILE: a render target's first row (v = 0) is at the top of clip space (y = +1),
+  // so z runs down it. (Drawn with z running up, the net was the mirror image of the one the
+  // ripples overhead make, and in a bend it slid across the river instead of down it.)
+  material.vertexNode = vec4(landed.x.div(TILE).mul(2).sub(1), landed.y.div(TILE).mul(-2).add(1), 0, 1);
   material.fragmentNode = Fn(() => {
     const areaBefore = abs(dFdx(before).x.mul(dFdy(before).y).sub(dFdx(before).y.mul(dFdy(before).x)));
     const areaAfter = abs(dFdx(after).x.mul(dFdy(after).y).sub(dFdx(after).y.mul(dFdy(after).x)));
@@ -132,15 +151,19 @@ export function createCaustics(renderer, { size = 512, grid = 176 } = {}) {
   return {
     target,
     tile: TILE,
-    uniforms: { roughness },
+    uniforms: { roughness: surfaceRoughness },
     render() {
       const previous = renderer.getRenderTarget();
       const alpha = renderer.getClearAlpha();
+      const autoClear = renderer.autoClear;
       renderer.getClearColor(clear);
       renderer.setRenderTarget(target);
+      // The pass clears the target to black as it begins (a clear of its own first would be
+      // a second pass that does nothing).
       renderer.setClearColor(0x000000, 1);
-      renderer.clear(true, false, false);
+      renderer.autoClear = true;
       renderer.render(scene, camera);
+      renderer.autoClear = autoClear;
       renderer.setRenderTarget(previous);
       renderer.setClearColor(clear, alpha);
     },

@@ -2603,7 +2603,9 @@ async function start() {
     skyUniforms.flash.value = events.flash;
     surfaceUniforms.rain.value = rain;
     surfaceUniforms.body.value.copy(lookHere.body);
-    caustics.uniforms.roughness.value = 0.9 + 0.15 * Math.sin(time * 0.05) + 0.5 * rain;
+    // (One roughness for the ripples one sees and the net they make: the surface's own, a
+    // little restless, rougher in rain.)
+    caustics.uniforms.roughness.value = 1 + 0.15 * Math.sin(time * 0.05) + 0.5 * rain;
     bedMaterial.userData.tint.value.copy(lookHere.tint);
     // The water's colour: what it takes from the light on the way down and from the view.
     // The snowmelt flood and a flash flood's mud take more of everything, blue most.
@@ -2847,6 +2849,9 @@ async function start() {
     // compile gains nothing: the card does one thing after the other either way.)
     // (Drawn once, everything showing: that builds every pipeline, in the background on
     // WebGPU. The renderer's compileAsync cannot yet build them for a target of our own.)
+    // (The caustic net first, so that its pass is built here too and the draw below sees a
+    // real net.)
+    caustics.render();
     renderer.setRenderTarget(post.main);
     renderer.shadowMap.needsUpdate = true;
     renderer.render(scene, camera);
