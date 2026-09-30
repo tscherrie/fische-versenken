@@ -33,6 +33,8 @@ import { river, waterTime } from "../render/water.js";
 import { bed, clamp, current, level, locate } from "../course.js";
 import { FX_LAYER } from "./fx.js";
 import { BLOOD, CLOUD, EMBER, FLECK, GOO, ICHOR, SCALE, SILT, SMOKE, STEAM, createCloudMaterial, createGibGeometry, createGibMaterial, createSpeckMaterial, spriteBasis } from "./gore-shapes.js";
+import { createScorch } from "./look/scorch.js";
+import { createWounds } from "./look/wounds.js";
 import { WEAPONS, bursts } from "./weapons.js";
 
 const TAU = Math.PI * 2;
@@ -59,10 +61,14 @@ const CORPSE_FOOD = 35;
 // How hard each weapon tears (the roster's splatter column). `power` 1 is a solid rifle hit;
 // it sets how much flies, while whether the fish bursts at all is the weapon's class
 // (weapons.js: bursts). `burn`: the
-// wound is burnt (steam, an ember, cauterised rims, smoke instead of a gush). A weapon may
-// say so itself in WEAPONS (`gore: power` or `gore: { power, burn }`); otherwise this table,
-// and failing that the damage of one shot.
+// wound is burnt (steam, an ember, cauterised rims, smoke instead of a gush). `fire` (the
+// flamethrower) and `arc` (the arc thrower) sear rather than tear: a hit boils the water on
+// the skin and leaves the char or the scorch lines (look/wounds.js), with next to no blood.
+// A weapon may say so itself in WEAPONS (`gore: power` or `gore: { power, burn }`);
+// otherwise this table, and failing that the damage of one shot.
 const STYLES = {
+  flammen: { power: 0.4, burn: true, fire: true },
+  blitz: { power: 0.3, burn: true, arc: true },
   piu: { power: 0.5, burn: true },
   flinte: { power: 1.6, burn: false },
   granate: { power: 2.2, burn: false },
@@ -75,10 +81,11 @@ const STYLES = {
   harpune: { power: 2.5, burn: false },
   kanone: { power: 3, burn: false },
 };
-const found = { power: 1, burn: false };
+const found = { power: 1, burn: false, fire: false, arc: false };
 function styleOf(weapon) {
   const w = WEAPONS[weapon];
   const own = w?.gore;
+  found.fire = found.arc = false;
   if (typeof own === "number") {
     found.power = own;
     found.burn = false;
@@ -119,6 +126,15 @@ export function createGore(scene, camera, { light = false } = {}) {
   const GIBS = light ? 64 : 128;
   // On light settings a kill throws a little less, so the smaller pools last.
   const plenty = light ? 0.65 : 1;
+  // The marks on the fish (wounds, char, scorch lines: look/wounds.js) and on the bed (the
+  // blasts' marks: look/scorch.js).
+  const wounds = createWounds();
+  const scorch = createScorch(scene, { light });
+  // What attach() hands over: the salmon and its fish (for its own marks and its bleeding).
+  let salmonRef = null,
+    fishRef = null;
+  // The salmon as bleed() reads a fish.
+  const salmonBody = { id: 0, kind: "salmon", position: null, heading: null, size: 1, rolled: 0, spec: {}, marks: wounds.salmon };
 
   // ---- Two sprite clouds: blood clouds (blended, sorted) and small hard bits (cut out).
   function spriteGeometry() {
@@ -528,9 +544,13 @@ export function createGore(scene, camera, { light = false } = {}) {
   }
   const flung = { x: 0, y: 0, z: 0 };
 
-  // ---- A shot landed on `e` at `point`, flying along `dirHit` (unit).
-  function hit(e, point, dirHit, weapon) {
+  // ---- A shot landed on `e` at `point`, flying along `dirHit` (unit); `info`, what
+  // weapons.js says of it (its mode, a shell's pellets, a blast).
+  function hit(e, point, dirHit, weapon, info = null) {
     if (!e || !point) return;
+    // The mark it leaves on the skin, at once (the splatter comes with the step's others).
+    // (Of the players' fish only the local one's: the others are drawn by their crowds.)
+    if (e.kind !== "salmon" || e.position === fishRef?.position) wounds.hit(e, point, dirHit, weapon, info, random);
     // Where it went in, for the wound a dead fish bleeds from.
     const k = e.size;
     const hx = e.heading?.x ?? 1,
@@ -575,11 +595,18 @@ export function createGore(scene, camera, { light = false } = {}) {
   function splash(e, x, y, z, dx, dy, dz, weapon, count) {
     const k = e.size;
     const kc = k > 1 ? Math.pow(k, 0.75) : k;
-    const { power, burn } = styleOf(weapon);
+    const { power, burn, fire, arc } = styleOf(weapon);
     const many = spray(weapon) * plenty * Math.sqrt(count);
     const what = stuffOf(e);
     const tear = Math.sqrt(power);
     survey(x, y, z, e.river?.s ?? null);
+    // Seared, not torn: the water boils on the skin, and in the flame an ember glows a
+    // moment where it licked; the char and the scorch lines are the skin's own.
+    if (fire || arc) {
+      steam(x, y, z, Math.round((fire ? 4 : 2) + 2 * random()), k);
+      if (fire && random() < 0.4) ember(x - dx * 0.02 * k, y - dy * 0.02 * k, z - dz * 0.02 * k, e, 0.05 * Math.pow(k, 0.8), 0.25);
+      return;
+    }
     // The puff: blown out of the far side, along the shot. (Small for the laser: it burns
     // more than it tears.)
     const n = Math.max(1, Math.round((1.5 + 2 * power) * many));
@@ -634,10 +661,10 @@ export function createGore(scene, camera, { light = false } = {}) {
   }
 
   // ---- `e` was sunk by a shot along `dir`.
-  function kill(e, dirKill, weapon) {
+  function kill(e, dirKill, weapon, info = null) {
     if (!e) return;
     const k = e.size;
-    const { power, burn } = styleOf(weapon);
+    const { power, burn, fire, arc } = styleOf(weapon);
     const tear = Math.sqrt(power);
     const dx = dirKill?.x ?? 0,
       dy = dirKill?.y ?? 0,
@@ -700,7 +727,7 @@ export function createGore(scene, camera, { light = false } = {}) {
         next.drag = 2;
         next.stuff = what;
         next.ref = L;
-        puff(x + hx * along + dir.x * 0.1 * k, y + hy * along + dir.y * 0.1 * k, z + hz * along + dir.z * 0.1 * k, ux, uy, uz, s0, Math.min(9, s1 * bigger), 4.5 + 3.5 * random(), 0.65 + 0.25 * random());
+        puff(x + hx * along + dir.x * 0.1 * k, y + hy * along + dir.y * 0.1 * k, z + hz * along + dir.z * 0.1 * k, ux, uy, uz, s0, Math.min(9, s1 * bigger), 6 + 5 * random(), 0.65 + 0.25 * random());
       }
       // A burnt burst smokes a moment.
       if (burn) smokePuffs(x, y, z, k, 3);
@@ -744,7 +771,16 @@ export function createGore(scene, camera, { light = false } = {}) {
     }
 
     // It sinks whole. How badly it is torn decides how much comes out now and how hard it
-    // bleeds as it goes down.
+    // bleeds as it goes down. Fire and the arc sear it: charred or scorched all over (the
+    // skin's marks), next to no blood, and a charred one boils the water round it a while
+    // as it goes up (2: steam, not the laser's smoke).
+    wounds.kill(e, dirKill, weapon, info);
+    if (fire || arc) {
+      e.wound = 0.05;
+      e.burnt = fire ? 2 : 0;
+      steam(wx, wy, wz, fire ? 8 : 4, k);
+      return;
+    }
     e.wound = clamp(0.1 + 0.25 * power, 0.1, 1);
     e.burnt = burn ? 1 : 0;
     // The exit wound: a cloud blown out of the far side (for the laser, only a puff).
@@ -760,7 +796,7 @@ export function createGore(scene, camera, { light = false } = {}) {
       next.drag = 2.2;
       next.stuff = what;
       next.ref = L;
-      puff(wx + dx * 0.1 * k, wy + dy * 0.1 * k, wz + dz * 0.1 * k, (dx + dir.x * 0.5) * speed, (dy + dir.y * 0.5) * speed, (dz + dir.z * 0.5) * speed, (0.15 + 0.1 * random()) * kc * tear, (0.45 + 0.4 * random()) * kc * tear, 3 + 2.5 * random(), 0.65 + 0.25 * random());
+      puff(wx + dx * 0.1 * k, wy + dy * 0.1 * k, wz + dz * 0.1 * k, (dx + dir.x * 0.5) * speed, (dy + dir.y * 0.5) * speed, (dz + dir.z * 0.5) * speed, (0.15 + 0.1 * random()) * kc * tear, (0.45 + 0.4 * random()) * kc * tear, 4.5 + 4 * random(), 0.65 + 0.25 * random());
     }
     const m = Math.round(clamp((2 + 5 * power) * grand, 2, 4 + 8 * power));
     for (let i = 0; i < m; i++) {
@@ -818,7 +854,15 @@ export function createGore(scene, camera, { light = false } = {}) {
   function bleed(e, count, strength) {
     const k = e.size;
     const kc = k > 1 ? Math.pow(k, 0.75) : k;
-    woundOf(e);
+    // From one of its wounds (by turns, the ones the laser burnt shut left out), or where
+    // the last shot went in.
+    const holes = e.marks?.n ?? 0;
+    let from = -1;
+    for (let j = 0; j < holes && from < 0; j++) {
+      const i = (tick + (e.id ?? 0) + j) % holes;
+      if ((e.marks.holes[i] & 7) !== 1) from = i;
+    }
+    if (!(from >= 0 && wounds.holeAt(e, from, wound))) woundOf(e);
     survey(wound.x, wound.y, wound.z, e.river?.s ?? null);
     const what = stuffOf(e);
     for (let i = 0; i < count; i++) {
@@ -834,9 +878,9 @@ export function createGore(scene, camera, { light = false } = {}) {
         dir.x * 0.12 * kc,
         dir.y * 0.06 * kc,
         dir.z * 0.12 * kc,
-        (0.07 + 0.05 * random()) * kc * strength,
-        (0.28 + 0.22 * random()) * kc * strength,
-        3 + 2.5 * random(),
+        (0.06 + 0.04 * random()) * kc * strength,
+        (0.24 + 0.2 * random()) * kc * strength,
+        4.5 + 3.5 * random(),
         (0.6 + 0.2 * random()) * Math.min(1, 0.45 + strength),
       );
     }
@@ -883,24 +927,42 @@ export function createGore(scene, camera, { light = false } = {}) {
           const rate = (7 + 9 * w) * Math.sqrt(e.size) * plenty;
           count = spilt(rate, offset, e.corpse) - spilt(rate, offset, e.corpse - dt);
           strength = (0.45 + 0.75 * w) * (0.8 + 0.4 * Math.exp(-e.corpse / BLEED_EASE));
-          // A burnt wound smokes a while as the fish goes down.
+          // A burnt wound smokes a while as the fish goes down; a charred body boils the
+          // water off its skin instead.
           if (e.burnt && e.corpse < SMOKE_SECONDS) {
             const fumes = 5 * plenty;
             const n = Math.floor(e.corpse * fumes + offset) - Math.floor((e.corpse - dt) * fumes + offset);
             if (n > 0) {
               woundOf(e);
               survey(wound.x, wound.y, wound.z, e.river?.s ?? null);
-              smokePuffs(wound.x, wound.y, wound.z, e.size * (1 - 0.5 * (e.corpse / SMOKE_SECONDS)), n);
+              if (e.burnt === 2) steam(e.position.x, e.position.y, e.position.z, 2 * n, e.size * 1.4);
+              else smokePuffs(wound.x, wound.y, wound.z, e.size * (1 - 0.5 * (e.corpse / SMOKE_SECONDS)), n);
             }
           }
         } else if (e.maxHp && e.hp < e.maxHp) {
+          // A wounded fish bleeds as it swims, the more the worse it is hurt; badly hurt, it
+          // leaves a thread of blood behind it in the water.
           const hurt = 1 - e.hp / e.maxHp;
-          const rate = 4 * hurt * Math.sqrt(e.size) * plenty;
+          const rate = (5 + 14 * Math.max(0, hurt - 0.4)) * hurt * Math.sqrt(e.size) * plenty;
           count = Math.floor(clock * rate + offset) - Math.floor((clock - dt) * rate + offset);
           strength = 0.5 + 0.4 * hurt;
         }
         if (count > 0) bleed(e, Math.min(count, 4), strength);
       }
+    // The salmon, low on strength with wounds open, bleeds a little too.
+    const f = fishRef;
+    if (f && wounds.salmon.n > 0 && f.energy < 0.55 && !f.airborne) {
+      salmonBody.position = f.position;
+      salmonBody.heading = f.heading;
+      salmonBody.size = f.length;
+      salmonBody.river = f.river;
+      const rate = 3 * (0.55 - f.energy) * plenty;
+      const count = Math.floor(clock * rate + 0.3) - Math.floor((clock - dt) * rate + 0.3);
+      if (count > 0) bleed(salmonBody, 1, 0.45 + 0.4 * (0.55 - f.energy));
+    }
+    wounds.stepSalmon(salmonRef, f, random);
+    // (The marks of enemies gone from the river free their places.)
+    if (enemies) wounds.sweep();
 
     // Sprites.
     for (let j = 0; j < live; j++) {
@@ -1141,6 +1203,10 @@ export function createGore(scene, camera, { light = false } = {}) {
 
   // ---- Each frame: sort the clouds far to near and write what is to be drawn.
   function frame() {
+    // (A body the salmon has just grown into gets its wounds' shading before its first
+    // picture; and the bed's marks are drawn only while there are any.)
+    if (salmonRef) wounds.wearSalmon(salmonRef);
+    scorch.frame();
     camera.getWorldPosition(eye);
     camera.getWorldDirection(ahead);
     const basis = camera.matrixWorld.elements;
@@ -1178,8 +1244,14 @@ export function createGore(scene, camera, { light = false } = {}) {
     }
     // The daylight at each sprite: the sun (or what is left of it), less what the water
     // above has taken out, red first. Only partly, though: deep down, true to the water,
-    // blood would be black, and it should still read as blood.
-    const day = 0.28 + 0.72 * clamp(skyUniforms.sun.value, 0, 1);
+    // blood would be black, and it should still read as blood. At night only the moon's
+    // blue light is left (the game's sun then holds a quarter of it): blood in it is a dark
+    // cloud with little red left, not a red glow in the dark water.
+    const sun = clamp(skyUniforms.sun.value, 0, 1);
+    const night = 1 - THREE.MathUtils.smoothstep(sun, 0.22, 0.5);
+    const day = 0.05 + 0.95 * THREE.MathUtils.smoothstep(sun, 0.15, 0.85);
+    const moonRed = 1 - 0.55 * night,
+      moonGreen = 1 - 0.25 * night;
     const absorb = river.absorb.value;
     const slant = Math.max(0.2, river.lightDirection.value.y);
     const view = camera.matrixWorldInverse.elements;
@@ -1344,8 +1416,8 @@ export function createGore(scene, camera, { light = false } = {}) {
       tt[o + 2] = sy;
       tt[o + 3] = extra;
       const under = Math.max(0, top[i] - py[i]) / slant;
-      l[o] = day * (0.45 + 0.55 * Math.exp(-absorb.x * under));
-      l[o + 1] = day * (0.45 + 0.55 * Math.exp(-absorb.y * under));
+      l[o] = day * moonRed * (0.45 + 0.55 * Math.exp(-absorb.x * under));
+      l[o + 1] = day * moonGreen * (0.45 + 0.55 * Math.exp(-absorb.y * under));
       l[o + 2] = day * (0.45 + 0.55 * Math.exp(-absorb.z * under));
       // (Clouds: the bed's height, to fade out where they run into it. Scales: the glint.
       // Embers: how hot they still are.)
@@ -1384,12 +1456,67 @@ export function createGore(scene, camera, { light = false } = {}) {
     }
   }
 
+  // ---- A charge went off at `at` with blast radius `R` (weapons.js blast(): the players'
+  // and the enemies' alike): near the bed it leaves its mark there, and a haze of silt that
+  // settles slowly over it.
+  function blast(at, R, weapon, floor = null, hint = null) {
+    survey(at.x, at.y, at.z, hint);
+    if (!scorch.blast(at, R, floor ?? site.floor, site.s, random)) return;
+    const n = Math.round(3 * plenty);
+    for (let i = 0; i < n; i++) {
+      const a = random() * TAU;
+      const d = R * (0.3 + 0.5 * random());
+      next.stuff = SILT;
+      next.rate = 0.5;
+      next.drag = 1.2;
+      next.sink = -0.01;
+      next.pop = 0.1;
+      next.delay = 0.6 + 0.8 * random();
+      puff(at.x + Math.cos(a) * d, site.floor + R * 0.2, at.z + Math.sin(a) * d, Math.cos(a) * R * 0.2, 0.03 * R, Math.sin(a) * R * 0.2, R * 0.6, R * (1.4 + 0.5 * random()), 6 + 3 * random(), 0.1 + 0.06 * random());
+    }
+  }
+  // A shot struck the bed (`what` "bed") and bounces on: the cannon's ball ploughs a furrow.
+  function impact(shot, what) {
+    if (what !== "bed" || shot?.weapon !== "kanone") return;
+    const v = shot.velocity;
+    const l = Math.hypot(v.x, v.z);
+    if (l < 1e-3) return;
+    const p = shot.position;
+    survey(p.x, p.y, p.z, shot.river?.s ?? null);
+    const size = Math.max(0.05, (shot.radius ?? shot.size ?? 0.1) * 1.6);
+    scorch.furrow(p, v.x / l, v.z / l, size, site.s, random);
+    next.stuff = SILT;
+    next.rate = 1.5;
+    puff(p.x, site.floor + size, p.z, (v.x / l) * size * 2, size, (v.z / l) * size * 2, size * 2, size * 6, 3 + random(), 0.35);
+  }
+  // Combat hands over what the marks go on: the enemies (their crowds' skins are wrapped
+  // now, before the shaders are compiled, and enemies.js writes each one's marks as it
+  // poses it), the salmon and its fish, and the river's stones and gravel for the bed's
+  // marks.
+  function attach({ enemies = null, salmon = null, fish = null, terrain = null, pebbles = null } = {}) {
+    if (enemies?.crowds) {
+      wounds.wearCrowds(enemies.crowds);
+      enemies.marks = wounds.pack;
+    }
+    salmonRef = salmon;
+    fishRef = fish;
+    if (salmon) wounds.wearSalmon(salmon);
+    scorch.terrain = terrain;
+    scorch.pebbles = pebbles;
+  }
+
   return {
     hit,
     kill,
     update,
     frame,
     eat,
+    blast,
+    impact,
+    attach,
+    // For tests: the marks (the salmon's, the bed's) and the wounds' bookkeeping.
+    wounds,
+    scorch,
     // For tests: how much is in the water.
     get busy() {
       return live + gibCount;

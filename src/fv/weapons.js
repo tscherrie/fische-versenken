@@ -1952,6 +1952,8 @@ export function createFiring(ctx) {
       game.falls?.splash?.(at.x, top, at.z, 2 + 6 * L);
       game.ripples?.add?.(at.x, at.z, 3 + 4 * L);
     }
+    // Near the bed, the mark it leaves there.
+    gore.blast?.(at, R, id, floor, where.s);
     if (isLocal(owner)) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
   }
 
@@ -2541,6 +2543,8 @@ export function createFiring(ctx) {
   function onBounce(shot, what) {
     const L = shot.shooter;
     const p = shot.position;
+    // (The cannon's ball ploughs a furrow where it strikes the bed.)
+    gore.impact?.(shot, what);
     fx.fizz(p.x, p.y, p.z, { count: 2, size: 0.006 + 0.006 * L, spread: 0.05 * L, rise: 0.5, random: look });
     puff(SILT, p.x, p.y, p.z, 0, 0.3 * L, 0, 0.1 * L, 2.5, 1.2, what === "bed" ? 0.4 : 0.2, 3, 0.05 * L, shot.river.s);
     if (isLocal(shot.owner)) sfx.bounce(what);

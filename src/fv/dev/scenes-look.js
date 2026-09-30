@@ -1668,6 +1668,7 @@ export const LOOK_SCENES = [
 // end to go on to the following scene.
 export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
+  if (ctx.scene.gore) return (await import("../look/dev/gore-scenes.js")).runGoreScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1707,4 +1708,25 @@ LOOK_SCENES.push(
   // What 24 of each cost, in the redd where the larvae come, seen by the game's own camera: the
   // frame timed with and without them, and draw() on the processor.
   { name: "modelle-kosten", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+);
+
+// ---- The marks the fighting leaves (look/wounds.js, look/scorch.js, gore.js), close up: run
+// in src/fv/look/dev/gore-scenes.js. Pictures: shots/<set>/<scene>-<picture>.jpg.
+LOOK_SCENES.push(
+  // Enemies held broadside, hit after hit: healthy, hurt, badly hurt, close up, the far side,
+  // and let go to swim off bleeding.
+  { name: "wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The salmon's own wounds as its strength goes down and comes back.
+  { name: "lachs-wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The flamethrower's char on the living and a burnt one floating up.
+  { name: "brand", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The arc thrower's scorch lines.
+  { name: "blitz", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // Blast marks on the bed and the cannon's furrow, fading over a minute.
+  { name: "krater", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The same with a bigger fish in the middle river (bigger blasts, no loose gravel drawn).
+  { name: "krater-fluss", look: true, gore: true, run: "krater", stage: "smolt", at: 11790, season: "spring", hour: 12 },
+  // Blood in the water by day and at night.
+  { name: "blut", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "blut-nacht", look: true, gore: true, run: "blut", stage: "parr", at: 2500, season: "summer", hour: 23 },
 );

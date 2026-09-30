@@ -50,6 +50,8 @@ export function createCombat(game) {
   const fx = createFx(scene, camera, { capacity: light ? 400 : 768, bubbleCapacity: light ? 240 : 480 });
   const sfx = createSfx(sound);
   const gore = createGore(scene, camera, { random: look, light });
+  // (What the splatter marks: the enemies' skins, the salmon's own, the bed with its stones.)
+  gore.attach?.({ enemies, salmon, fish, terrain, pebbles: game.pebbles });
   const models = createWeaponModels(scene, { mirror: game.mirror });
   // The larvae and the weapon capsules have models of their own (the look's): made here,
   // before the first frame, so the warm-up render compiles them with everything else. The
@@ -609,6 +611,8 @@ export function createCombat(game) {
     hostile,
     smoke,
     firing,
+    // (For the look's tests: the splatter and the marks it leaves.)
+    gore,
     deaths,
     director,
     bosses,

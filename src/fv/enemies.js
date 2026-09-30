@@ -1580,6 +1580,8 @@ export function createEnemies(scene, { random }) {
       const crowd = crowds[e.kind];
       const slot = (slots[e.kind] = (slots[e.kind] ?? -1) + 1);
       crowd.body.setMatrixAt(slot, pose(e, matrix));
+      // (The marks the splatter has left on it ride in the matrix's unused bottom row.)
+      api.marks?.(e, crowd.body.instanceMatrix.array, slot * 16);
       const coiled = e.mode === "coil" || e.mode === "aim";
       const amplitude = e.dead ? 0 : coiled ? 0.95 : 0.3 + Math.min(0.5, (e.speed / e.size) * 0.4);
       // (A dead body hangs as limp as the splatter says: e.limp bends its spine.)

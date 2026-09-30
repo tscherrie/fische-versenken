@@ -90,17 +90,19 @@ export function createCloudMaterial(geometry) {
     const above = texture(lumpMap, spin(q.add(up.mul(0.35))).mul(0.16).add(home).add(warp.mul(0.3))).r.sub(0.5).mul(3.2);
     const lit = big.sub(above).mul(1.6).add(q.dot(up).mul(0.35)).add(0.5).clamp(0, 1);
     // Thick blood swallows the light and looks nearly black-red; its thin fringes let the
-    // water's light through and look a little redder. It turns from crimson to a rusty
-    // brown as it gets old, and no two puffs are quite the same red. Smoke is a sooty grey,
-    // ichor a sickly yellow-green, goo nearly clear, silt the grey-brown of the bed.
+    // water's light through and look a little redder. Under water it is a dark red, never
+    // the scarlet of blood in air: the water above has taken much of the red out of the
+    // light that reaches it. It turns from a deep crimson to a rusty brown as it gets old,
+    // and no two puffs are quite the same red. Smoke is a sooty grey, ichor a sickly
+    // yellow-green, goo nearly clear, silt the grey-brown of the bed.
     const tint = seed.mul(0.4).add(0.8);
-    const blood = mix(vec3(0.13, 0.032, 0.018), vec3(0.25, 0.008, 0.006), fresh);
+    const blood = mix(vec3(0.075, 0.022, 0.013), vec3(0.13, 0.007, 0.005), fresh);
     const smoke = mix(vec3(0.07, 0.066, 0.06), vec3(0.03, 0.028, 0.026), fresh);
     const ichor = mix(vec3(0.16, 0.17, 0.035), vec3(0.3, 0.36, 0.03), fresh);
     const goo = vec3(0.34, 0.42, 0.44);
     const silt = vec3(0.24, 0.22, 0.17);
     const albedo = select(stuff.lessThan(0.5), blood, select(stuff.lessThan(1.5), smoke, select(stuff.lessThan(2.5), ichor, select(stuff.lessThan(3.5), goo, silt)))).mul(tint);
-    const color = albedo.mul(mix(float(1.2), float(0.34), density)).mul(lit.mul(1.1).add(0.3));
+    const color = albedo.mul(mix(float(1.05), float(0.3), density)).mul(lit.mul(0.9).add(0.3));
     // Where the bed runs through the sprite, its lower part fades out instead of being cut
     // off hard by the gravel. The height of each pixel is worked out in the world (from the
     // camera's own right and up), so a camera that looks down on a cloud still fades it
@@ -409,7 +411,8 @@ export function createGibMaterial(coat, gib) {
   material.roughnessNode = mix(float(0.6), float(0.5), skin);
   const depth = max(surfaceLevelAt(positionWorld).sub(positionWorld.y), 0);
   const through = exp(river.absorb.mul(depth).negate()).mul(0.55).add(0.45);
-  const day = skyUniforms.sun.clamp(0, 1).mul(0.72).add(0.28);
+  // (Dim at night, as the blood clouds are: gore.js.)
+  const day = smoothstep(0.15, 0.85, skyUniforms.sun).mul(0.95).add(0.05);
   material.emissiveNode = flesh.mul(0.3).mul(through).mul(day).mul(skin.oneMinus());
   return material;
 }
