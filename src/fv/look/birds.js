@@ -44,6 +44,14 @@ const ease = (a, b, x) => {
 // Eases `from` toward `to` at `rate` per second.
 const toward = (from, to, rate, dt) => from + (to - from) * (1 - Math.exp(-rate * dt));
 
+// The mount frames each kind has, for whoever straps the weapons on (models.js): the
+// kingfisher's push dagger along the top of its bill, the goosander's revolver on its right
+// shoulder, the heron's harpoon gun along its head over the bill, the gannet's bombs under
+// the roots of its wings (on the body, which they stay on as the wings fold). flock.mount()
+// gives each as a world matrix without scale: its origin on the bird, +x along the weapon's
+// line, +y the part's up, +z to its right.
+export const MOUNTS = { kingfisher: ["beak"], merganser: ["shoulder"], heron: ["head"], gannet: ["left", "right"] };
+
 // Per bird in the instanced buffer: the matrix's three rows, then the pose.
 const FLOATS = 28;
 
