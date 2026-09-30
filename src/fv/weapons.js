@@ -1207,7 +1207,8 @@ export function createFiring(ctx) {
         let best = w.sight(L);
         const cos = Math.cos(w.seek);
         for (const e of enemies.list) {
-          if (e.dead) continue;
+          // (It looks for enemies, not for the peaceful fish about.)
+          if (e.dead || e.neutral) continue;
           tmp.subVectors(e.position, p.position);
           const d = tmp.length();
           if (d < best && tmp.dot(seekDir) > cos * d) {
@@ -1306,7 +1307,8 @@ export function createFiring(ctx) {
     let best = null;
     let bestD = reach;
     for (const e of enemies.list) {
-      if (e.dead) continue;
+      // (The first arc goes to an enemy; on from it, it jumps to whatever is near.)
+      if (e.dead || e.neutral) continue;
       tmp.subVectors(e.position, muzzle);
       const d = tmp.length();
       if (d < bestD && tmp.dot(aimDir) > cos * d) {
@@ -1702,7 +1704,8 @@ export function createFiring(ctx) {
       if (p.solid !== "mine" || p.fuse || p.age < WEAPONS.minen.arm) continue;
       const reach = WEAPONS.minen.trigger * p.shooter;
       for (const e of enemies.list) {
-        if (e.dead) continue;
+        // (A shoal fish drifting by does not set it off: it waits for a pursuer.)
+        if (e.dead || e.neutral) continue;
         bodyEnds(e, tail, head);
         if (pointSegment(p.position, tail, head, closest) < reach + e.size * 0.1) {
           detonate(p, 0);

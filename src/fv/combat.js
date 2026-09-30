@@ -15,6 +15,7 @@ import { createDirector } from "./director.js";
 import { createEnemies } from "./enemies.js";
 import { createFx } from "./fx.js";
 import { createLarvae } from "./look/larvae.js";
+import { createNeutrals } from "./neutrals.js";
 import { createCapsules } from "./look/capsule.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
@@ -73,6 +74,8 @@ export function createCombat(game) {
   const pickups = createPickups({ weapons: WEAPONS });
   const hostile = createHostile({ capacity: light ? 90 : 160 });
   const signals = createSignals(game, enemies);
+  // (Set up below, once the players are there.)
+  let neutrals = null;
   const aim = createAim(camera);
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
@@ -84,6 +87,8 @@ export function createCombat(game) {
     keys.insertBefore(item, keys.children[3] ?? null);
   }
   const local = players[0];
+  // The peaceful fish of the shoals, open to attack (neutrals.js).
+  neutrals = createNeutrals({ life, enemies, players, clock: () => game.now.time });
   // For trying the weapons out: ?weapon=<id> (and ?belly=<id>) starts with them, and then the
   // number keys 1-9 put the weapons there are on the fish, one after another.
   const query = game.query;
@@ -204,6 +209,8 @@ export function createCombat(game) {
     const damage = (swallows ? 0.35 : shot ? shot.hitDamage ?? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1)) * level.taken;
     player.safeUntil = clock + (shot ? 0.12 : 0.8);
     f.energy = Math.max(0, f.energy - damage);
+    // (A shock -- the eel's -- stops the salmon short for a moment.)
+    if (melee?.stun) f.relative?.multiplyScalar(0.1);
     if (clock - (player.feltAt ?? -1) > 0.35) {
       player.feltAt = clock;
       outcome.bitten = true;
@@ -387,6 +394,7 @@ export function createCombat(game) {
     // by: ground.js.)
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12, game.now.time);
+    neutrals.update(fish);
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);

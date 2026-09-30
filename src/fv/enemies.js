@@ -90,7 +90,7 @@ export function createEnemies(scene, { random }) {
 
   function count(kind) {
     let n = 0;
-    for (const e of list) if (e.kind === kind) n++;
+    for (const e of list) if (e.kind === kind && !e.neutral) n++;
     return n;
   }
 
@@ -168,6 +168,69 @@ export function createEnemies(scene, { random }) {
     }
     list.push(e);
     return e;
+  }
+
+  // A fish of the base game's shoals (life.js), peaceful, stood in for here so that shots
+  // can find it (neutrals.js): the record shares its position and heading (the shoal moves
+  // it and draws it); it is not moved, drawn or counted here. Struck, it becomes an enemy of
+  // `kind` of its own (convert).
+  function adopt(kind, member, group) {
+    const spec = KINDS[kind];
+    if (!spec) return null;
+    const mean = 0.5 * (spec.size[0] + spec.size[1]);
+    const e = {
+      id: nextId++,
+      kind,
+      spec,
+      owner: 0,
+      size: member.size,
+      hp: spec.hp * api.hpScale * (member.size / mean),
+      maxHp: spec.hp * api.hpScale * (member.size / mean),
+      position: member.position,
+      velocity: member.velocity ?? new THREE.Vector3(),
+      heading: member.heading,
+      speed: 0,
+      river: { s: null, u: 0 },
+      mode: "neutral",
+      t: 0,
+      target: null,
+      phase: member.phase ?? 0,
+      finPhase: member.finPhase ?? 0,
+      gape: 0,
+      strikeDir: new THREE.Vector3(),
+      orbit: random() < 0.5 ? 1 : -1,
+      nextDart: range(1.2, 2.8),
+      rest: 0,
+      stagger: 0,
+      dead: false,
+      rolled: 0,
+      corpse: 0,
+      lastHitBy: -1,
+      neutral: member,
+      group,
+    };
+    locate(e.position.x, e.position.z, null, e.river);
+    list.push(e);
+    return e;
+  }
+  // The stand-in becomes an enemy of its own: its own position from now on (the shoal's
+  // record goes back to the shoal), drawn by its kind's crowd; `passive`, it only flees.
+  function convert(e, { passive }) {
+    e.position = e.position.clone();
+    e.heading = e.heading.clone();
+    e.velocity = e.velocity.clone();
+    e.speed = e.velocity.length();
+    e.neutral = null;
+    e.group = null;
+    e.passive = passive;
+    e.mode = passive ? "flee" : "approach";
+    e.t = 0;
+    locate(e.position.x, e.position.z, e.river.s, e.river);
+  }
+  // Gone from the list without a trace (a stand-in whose shoal fish is gone).
+  function forget(e) {
+    const i = list.indexOf(e);
+    if (i >= 0) list.splice(i, 1);
   }
 
   // The nearest player an enemy can go for (not dead, not taken, not in the air).
@@ -450,6 +513,25 @@ export function createEnemies(scene, { random }) {
     // A gun: once it is loaded and the salmon is in its range, it stops to aim (the tell),
     // then fires. A fish big enough to swallow the salmon still goes for that when it is
     // close enough.
+    // Shot at but the weaker: away from the salmon at full speed a while, then keeping its
+    // distance, wandering; it never attacks (neutrals.js).
+    if (e.passive) {
+      if (e.mode === "flee") {
+        want.copy(to).multiplyScalar(-1);
+        want.y *= 0.3;
+        steer(e, want, rate * 1.5, dt);
+        if (e.t > 6) {
+          e.mode = "wander";
+          e.t = 0;
+        }
+        return spec.chase * 1.1;
+      }
+      e.mode = "wander";
+      want.set(Math.cos(e.phase * 0.05 + e.id), 0, Math.sin(e.phase * 0.05 + e.id));
+      if (dist < 4 + 2 * L) want.addScaledVector(to, -1 / Math.max(dist, 1e-3));
+      steer(e, want, rate * 0.4, dt);
+      return spec.cruise * 0.5;
+    }
     const gun = spec.weapon?.kind === "ranged" ? spec.weapon : null;
     // A bird under water (the goosander) holds its breath `air` seconds, then goes up for a
     // few breaths at the surface -- but not in the middle of a burst.
@@ -664,6 +746,8 @@ export function createEnemies(scene, { random }) {
     for (const crowd of Object.values(crowds)) crowd.begin();
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
+      // (A stand-in for a shoal fish: the shoal moves it.)
+      if (e.neutral) continue;
       if (e.dead) {
         drift(e, dt, time, hooks.ground);
         // (A burst body goes once the splatter has faded it out: at once, unless it keeps
@@ -748,10 +832,10 @@ export function createEnemies(scene, { random }) {
   function separate(dt) {
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (a.dead) continue;
+      if (a.dead || a.neutral) continue;
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
-        if (b.dead || b.kind !== a.kind) continue;
+        if (b.dead || b.neutral || b.kind !== a.kind) continue;
         tmp.subVectors(a.position, b.position);
         const d = tmp.length();
         const min = (a.size + b.size) * 0.3;
@@ -792,7 +876,7 @@ export function createEnemies(scene, { random }) {
       if (birds[kind].head) birds[kind].head.count = 0;
     }
     for (const e of list) {
-      if (drawnElsewhere.has(e.kind)) continue;
+      if (e.neutral || drawnElsewhere.has(e.kind)) continue;
       const bird = birds[e.kind];
       if (bird && e.spec.wades) {
         heronPose(e, bird);
@@ -858,6 +942,13 @@ export function createEnemies(scene, { random }) {
   // true when it sank the enemy.
   function hit(e, damage, dir, by = 0) {
     if (e.dead) return false;
+    // (A peaceful fish struck: it flees or turns, neutrals.js decides; a fleeing one runs
+    // again.)
+    if (e.neutral) api.onNeutral?.(e, by);
+    else if (e.passive) {
+      e.mode = "flee";
+      e.t = 0;
+    }
     e.hp -= damage;
     e.lastHitBy = by;
     e.hitAt = clockNow;
@@ -893,6 +984,10 @@ export function createEnemies(scene, { random }) {
     update,
     hit,
     pose,
+    adopt,
+    convert,
+    forget,
+    count,
     count,
     reset,
     snout,

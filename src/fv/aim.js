@@ -33,7 +33,8 @@ export function createAim(camera) {
       let bestT = reach,
         bestScore = assist;
       for (const e of enemies) {
-        if (e.dead) continue;
+        // (Peaceful fish do not pull the aim, nor start the phone's auto-fire.)
+        if (e.dead || e.neutral) continue;
         offset.subVectors(e.position, origin);
         const t = offset.dot(direction);
         if (t < 0.2 || t > reach + e.size) continue;

@@ -35,6 +35,12 @@ export function createDirector({ random }) {
     if (suits("bullhead", s) > 0.2) options.push(["bullhead", 2]);
     if (stage >= 2 && suits("trout", s) > 0.2) options.push(["trout", stage >= 3 ? 1.5 : 0.7]);
     if (suits("minnow", s) > 0.2) options.push(["minnow", 1.2]);
+    // The river's and the sea's own fish, armed (kinds.js), in their waters.
+    if (stage >= 3 && suits("grayling", s) > 0.3) options.push(["grayling", 0.9]);
+    if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
+    if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
+    if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
+    if (stage >= 6 && suits("mackerel", s) > 0.3) options.push(["mackerel", 0.8]);
     // (The kingfisher goes for small fish only, as it does in the base game, and one at a
     // time.)
     if (stage >= 1 && stage <= 4 && suits("kingfisher", s) > 0.2 && !enemies.list.some((e) => e.kind === "kingfisher" && !e.dead)) options.push(["kingfisher", 1]);
@@ -81,7 +87,7 @@ export function createDirector({ random }) {
       const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * count);
       // (A shoal counts as a few enemies, not as every fish in it.)
       let alive = 0;
-      for (const e of enemies.list) if (!e.dead) alive += e.spec.school ? 0.3 : 1;
+      for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
       const kind = choose(stage, fish.river.s, enemies);
       if (!kind) {

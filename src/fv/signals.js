@@ -18,7 +18,7 @@ export function createSignals({ life }, enemies) {
     // The most pressing of Extreme's enemies near this fish, at most three.
     const ours = [];
     for (const e of enemies.list) {
-      if (e.dead) continue;
+      if (e.dead || e.neutral || e.passive) continue;
       const d = e.position.distanceTo(fish.position);
       if (d > 45) continue;
       let level = 0;
