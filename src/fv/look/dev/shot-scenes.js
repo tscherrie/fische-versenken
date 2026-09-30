@@ -284,6 +284,42 @@ const SCENES = {
     salmon.held.delete("KeyS");
   },
 
+  // The minigun held down for seconds on end: the ring of cases full, the stream still falling
+  // to the bed and lying there (the ring's oldest going into the gravel, none taken in sight).
+  async "huelsen-dauerfeuer"(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, look } = salmon;
+    const combat = extreme.combat;
+    const a = combat.players[0].arsenal;
+    const { ahead, left, up } = frameOf(salmon);
+    const L = fish.length;
+    const ground = groundOf(salmon);
+    const hold = () => {
+      look.yaw = Math.atan2(ahead.z, ahead.x);
+      look.pitch = 0;
+      // (The minigun never runs hot here: the stream is what is looked at.)
+      if (a.heat) a.heat.minigun = 0;
+    };
+    salmon.held.add("KeyS");
+    a.back = "minigun";
+    a.ensure?.("minigun");
+    await salmon.run(0.3, hold, 1 / 60);
+    for (const seconds of [3, 6]) {
+      // (Three seconds more each time.)
+      combat.fire(true);
+      await salmon.run(3, hold, 1 / 60);
+      // (From the right, where the cases go, a little below the fish: the stream from the gun
+      // down as far as it goes.)
+      const below = fish.position.clone().addScaledVector(up, -1.4 * L);
+      salmon.view(below.clone().addScaledVector(left, -2.6 * L).addScaledVector(up, 0.3 * L).toArray(), below.toArray(), 0.01);
+      record.push({ label: `${seconds}s`, cases: combat.ordnance.cases, above: +(fish.position.y - ground(fish.position)).toFixed(2) });
+      await picture(ctx, record, `strom-${seconds}s`);
+      salmon.view(null);
+    }
+    combat.fire(false);
+    salmon.held.delete("KeyS");
+  },
+
   // The enemies' guns throwing their cases, seen close beside the gunner a moment after its
   // shot, fired through the game's own path (the hooks enemies.update is handed, as the bench
   // does): the trout's submachine gun, a perch's pistol, the mackerel's assault rifle, the
@@ -350,6 +386,66 @@ const SCENES = {
     salmon.view(null);
   },
 
+  // The enemies' guns fired at the fish through the game's own path, seen from the side
+  // between them: the tracers flying and fading as the water takes their speed, the rounds
+  // spent and sinking a moment later, the cases. (The fish is kept safe: the rounds go
+  // through it.)
+  async "gegner-feuer"(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, course, look } = salmon;
+    const combat = extreme.combat;
+    const { ahead, left, up } = frameOf(salmon);
+    const L = fish.length;
+    salmon.held.add("KeyS");
+    combat.fire(false);
+    let hooks = null;
+    const update = combat.enemies.update;
+    combat.enemies.update = function (dt, time, players, d) {
+      hooks = d;
+      return update.apply(this, arguments);
+    };
+    const spot = {};
+    const face = () => {
+      look.yaw = Math.atan2(ahead.z, ahead.x);
+      look.pitch = 0;
+      fish.safe = true;
+    };
+    const snout = fish.position.clone();
+    try {
+      for (const kind of ["trout", "mackerel", "bullhead"]) {
+        combat.enemies.reset();
+        combat.hostile.reset();
+        combat.ordnance.reset();
+        const p = fish.position.clone().addScaledVector(ahead, 6 * Math.max(1, L));
+        course.locate(p.x, p.z, fish.river.s, spot);
+        const e = combat.enemies.spawn(kind, spot.s, spot.u, fish.position.y, { heading: ahead.clone().negate() });
+        if (!e) {
+          record.push({ label: kind, spawned: false });
+          continue;
+        }
+        await salmon.run(1 / 30, face, 1 / 30);
+        const gun = e.spec.weapon;
+        const middle = fish.position.clone().lerp(e.position, 0.5);
+        for (let i = 0; i < 3; i++) {
+          combat.enemies.snout(e, snout);
+          hooks?.shoot(e, fish.position.clone().sub(snout).normalize(), gun);
+          await salmon.run(0.08, face, 1 / 60);
+        }
+        const d = fish.position.distanceTo(e.position);
+        salmon.view(middle.clone().addScaledVector(left, 0.7 * d).addScaledVector(up, 0.1 * d).toArray(), middle.toArray(), 0.01);
+        await picture(ctx, record, `${kind}-flug`);
+        await salmon.run(0.6, face, 1 / 60);
+        await picture(ctx, record, `${kind}-verbraucht`);
+        record.push({ label: kind, gun: gun?.id, rounds: combat.hostile.live.length, cases: combat.ordnance.cases });
+      }
+    } finally {
+      combat.enemies.update = update;
+      fish.safe = false;
+    }
+    salmon.held.delete("KeyS");
+    salmon.view(null);
+  },
+
   // Each of the enemies' things close by: flying (from beside and above, so a star shows its
   // face), and lying on the bed; then a spent bullet and a pellet on the bed, very close.
   async "gegner-nah"(ctx, record) {
@@ -363,6 +459,8 @@ const SCENES = {
     const fire = (weapon, position, velocity, size, more = {}) => {
       const p = hostile.fire({ source: null, weapon, cause: "test", position, velocity, damage: 0, drag: 1.5, radius: 0.03, life: 1e4, size, tint: [7, 3.2, 0.7], stretch: 3.5 });
       Object.assign(p, more);
+      // (Laid on the bed by hand: the bed is where it lies, as hostile.js works it out.)
+      if (p.rested && more.floor === undefined) p.floor = p.position.y;
       return p;
     };
     const clear = () => hostile.reset();
@@ -421,6 +519,8 @@ const SCENES = {
     const fire = (weapon, position, velocity, size, more = {}) => {
       const p = hostile.fire({ source: null, weapon, cause: "test", position, velocity, damage: 0, drag: 1.5, radius: 0.03, life: 1e4, size, tint: tints, stretch: 3.5 });
       Object.assign(p, more);
+      // (Laid on the bed by hand: the bed is where it lies, as hostile.js works it out.)
+      if (p.rested && more.floor === undefined) p.floor = p.position.y;
       return p;
     };
     const view = (eye, target) => salmon.view(eye.toArray(), target.toArray(), 0.005);
@@ -525,4 +625,97 @@ const SCENES = {
     });
     hostile.reset();
   },
+
+  // Seen from above the water, looking down through the surface: the ordnance and the
+  // tracers just under it (drawn under the surface, not over it), a bomb falling through the
+  // air and one in the water, the heron's spear in the air.
+  async "geschosse-oben"(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, THREE } = salmon;
+    const combat = extreme.combat;
+    const { projectiles, hostile } = combat;
+    const { ahead, left, up } = frameOf(salmon);
+    const L = fish.length;
+    await salmon.run(0.3, null, 1 / 60);
+    const surface = salmon.course.level(fish.river.s);
+    const at = fish.position.clone().addScaledVector(ahead, 2.5 * L).setY(surface - 0.35 * L);
+    const shot = (solid, position, velocity) => {
+      const p = projectiles.fire({ owner: 0, weapon: { torpedo: "torpedo", rocket: "raketen", mine: "minen", harpoon: "harpune", ball: "kanone" }[solid], position, velocity, solid, scale: L, shooter: L, life: 1e4, ghost: true, fuse: false, damage: 0, size: 0.04 * L, tint: [1, 1, 1] });
+      p.age = 0.8;
+      return p;
+    };
+    const fire = (weapon, position, velocity, size, more = {}) => {
+      const p = hostile.fire({ source: null, weapon, cause: "test", position, velocity, damage: 0, drag: 1.5, radius: 0.03, life: 1e4, size, tint: [7, 3.2, 0.7], stretch: 3.5 });
+      Object.assign(p, more);
+      // (Laid on the bed by hand: the bed is where it lies, as hostile.js works it out.)
+      if (p.rested && more.floor === undefined) p.floor = p.position.y;
+      return p;
+    };
+    const eye = at.clone().addScaledVector(ahead, -1.6 * L).addScaledVector(left, 0.8 * L).setY(surface + 1.3 * L);
+    salmon.view(eye.toArray(), at.toArray(), 0.01);
+    const kinds = ["torpedo", "rocket", "mine", "harpoon", "ball"];
+    await picture(ctx, record, "ordnance", () => {
+      projectiles.reset();
+      hostile.reset();
+      kinds.forEach((solid, i) => shot(solid, at.clone().addScaledVector(left, (i - 2) * 0.4 * L), ahead.clone().multiplyScalar(6)));
+      [1, 0.8, 0.6].forEach((k, i) => {
+        const p = fire("smg", at.clone().addScaledVector(ahead, 0.6 * L).addScaledVector(left, (i - 1) * 0.4 * L), left.clone().multiplyScalar(-16 * k), 0.07);
+        p.age = 0.1;
+      });
+    });
+    projectiles.reset();
+    hostile.reset();
+    // A bomb in the air over the water, one just in; the heron's spear in the air.
+    const bombs = combat.enemies.bombs;
+    const bomb = (position, velocity, wet) => ({ position, velocity, wet, source: null, gun: null, age: 1, side: 1 });
+    await picture(ctx, record, "luft", () => {
+      bombs.length = 0;
+      bombs.push(bomb(at.clone().setY(surface + 0.7 * L), new THREE.Vector3(0, -12, 0).addScaledVector(ahead, 3), false));
+      bombs.push(bomb(at.clone().addScaledVector(left, 0.6 * L), new THREE.Vector3(0, -2, 0).addScaledVector(ahead, 0.5), true));
+      hostile.reset();
+      const p = fire("speargun", at.clone().addScaledVector(left, -0.6 * L).setY(surface + 0.4 * L), ahead.clone().multiplyScalar(4).add(new THREE.Vector3(0, -6, 0)), 0.11, { air: true });
+      p.age = 0.05;
+    });
+    bombs.length = 0;
+    hostile.reset();
+    salmon.view(null);
+  },
+
+  // The grenade harpoon stopped in the water (weapons.js stops it at its reach or in a fish
+  // too big to go through, its velocity nothing, until its head goes off): it keeps pointing
+  // the way it flew, away from the gun, on its line.
+  async "harpune-halt"(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, THREE } = salmon;
+    const combat = extreme.combat;
+    const projectiles = combat.projectiles;
+    const player = combat.players[0];
+    player.arsenal.belly = "harpune";
+    player.arsenal.ensure?.("harpune");
+    await salmon.run(0.3, null, 1 / 60);
+    const { ahead, left, up } = frameOf(salmon);
+    const L = fish.length;
+    // (Off to the fish's left and a little down: a way that is not the world's +x.)
+    const way = ahead.clone().addScaledVector(left, 0.6).addScaledVector(up, -0.15).normalize();
+    const out = fish.position.clone().addScaledVector(way, 2 * L);
+    salmon.view(fish.position.clone().addScaledVector(left, -1.6 * L).addScaledVector(up, 0.9 * L).addScaledVector(ahead, 1.2 * L).toArray(), fish.position.clone().addScaledVector(way, 1.3 * L).toArray(), 0.005);
+    let p = null;
+    await picture(ctx, record, "flug", () => {
+      projectiles.reset();
+      p = projectiles.fire({ owner: player.id, weapon: "harpune", position: out.clone(), velocity: way.clone().multiplyScalar(4), solid: "harpoon", scale: L, shooter: L, life: 1e4, ghost: true, fuse: false, damage: 0, size: 0.04 * L, tint: [1, 1, 1] });
+      p.age = 0.8;
+    });
+    // (Stopped as weapons.js stops it: the same record, its velocity taken.)
+    await picture(ctx, record, "halt", () => {
+      p.velocity.set(0, 0, 0);
+      p.stopped = 0.1;
+    });
+    projectiles.reset();
+    salmon.view(null);
+  },
 };
+// The same scenes at night (their own places in the list carry the hour).
+SCENES["geschosse-nah-nacht"] = SCENES["geschosse-nah"];
+SCENES["gegner-dinge-nacht"] = SCENES["gegner-dinge"];
+SCENES["huelsen-nacht"] = SCENES.huelsen;
+SCENES["gegner-feuer-nacht"] = SCENES["gegner-feuer"];

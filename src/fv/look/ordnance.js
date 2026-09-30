@@ -46,14 +46,23 @@ const MODEL = 0.79;
 // followed from the chase camera; the grenade has the same rule in projectiles.js).
 const SHOWN = { torpedo: 1.15, rocket: 1.35, mine: 1.1, harpoon: 1.15, ball: 1.3 };
 const LEAST = { torpedo: 0.028, rocket: 0.024, mine: 0.012, harpoon: 0.03, ball: 0.012 };
-// A round's tracer burns while it keeps this share of its first speed, brightest above FULL;
-// it is TRACER as wide as the round's glow was, and as long. Down its middle, while it is
-// fast, runs a core CORE as wide as the tracer, nearly white: without it a soft streak seen
-// close reads as a glowing lens, not as a line of burning compound.
+// A round's tracer burns while it keeps this share of its first speed, brightest above FULL.
+// It is a streak TRACER as wide as the round's glow was and STREAK times as long, trailing
+// behind the round, and a hot point HEAD as wide as the streak at the round's base, where the
+// compound burns. (A streak laid over the round's middle, as long ahead as behind, reads as a
+// glowing lens from the side, a saucer in the dark; one trailing from a hot base reads as a
+// line of fire going somewhere.)
 const DIM = 0.3,
   FULL = 0.78,
-  TRACER = 0.42,
-  CORE = 0.32;
+  TRACER = 0.3,
+  STREAK = 1.4,
+  HEAD = 0.9;
+// How fast hostile.js sinks a spent round (its SINK), for the rounds it holds still where
+// their life ran out in mid-water: the eye sees them go on down to the bed.
+const SINK = 0.45;
+// A spent round or thing still in the water when it goes shrinks away over this long first
+// (a body that simply went would pop).
+const FADE = 0.5;
 // The enemies' things, one unit long in their shapes: how long each is as a share of the
 // round's size (hostile.js: size grows with the enemy that fired it), and how fast it turns
 // while it is fast (rad/s, slowing with it: a star spins flat, a knife tumbles end over end;
@@ -95,6 +104,12 @@ const EJECT = {
 // Cases and spent rounds: how long they lie on the bed before they settle into it and go.
 const LIE = 7,
   SETTLE = 1;
+// The rings of cases and of things stuck in the bed take their oldest when they are full. So
+// that none is taken while it is seen, the one AHEAD places on in the ring (about a second of
+// the minigun's stream) starts to go as a new one comes: into the gravel if it lies there,
+// shrinking away over GO seconds if it is still in the water.
+const AHEAD = 32,
+  GO = 0.4;
 // Up to this many ejections waiting for their moment.
 const PENDING = 64;
 // Up to this many of the enemies' things stuck in the bed where they struck it (hostile.js
@@ -235,35 +250,45 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
   }
 
   // ---- A round: its tracer while it is fast, its body once it slows. `rest`: seconds it
-  // has lain on the bed (-1 while it does not), `left`: seconds before it goes.
-  function round(p, pellet, rest, left, tumble) {
+  // has lain on the bed (-1 while it does not), `left`: seconds before it goes, `drop`: how
+  // far below its record it is drawn (it went on sinking), `scale`: how much of it is left as
+  // it shrinks away in the water.
+  function round(p, pellet, rest, left, tumble, drop = 0, scale = 1) {
     const speed = p.velocity.length();
     const ratio = p.spent ? 0 : speed / Math.max(1e-6, p.speed0);
     const f = clamp01((ratio - DIM) / (FULL - DIM));
+    // The body grows in as the tracer goes out (it is small, and fast things smear).
+    const shown = clamp01(1 - f / 0.45);
+    const L = p.size * (pellet ? PELLET : BULLET) * (0.4 + 0.6 * shown) * scale;
     if (f > 0.004 && rest < 0) {
       // The tracer fades with the speed, and reddens as it cools: its green and blue go first.
-      // A thin streak (thinner than the old glow, as long), and as long as the way it flies
+      // The streak draws in to the base as the round slows, and is as long as the way it flies
       // looks from the eye: a round coming straight at the eye or going straight off is a
       // point, not a streak laid across the picture.
       const k = f * f;
       const t = p.tint;
       side.subVectors(p.position, eye);
-      const across = speed > 1e-6 ? Math.sqrt(Math.max(0, 1 - (side.dot(p.velocity) / (speed * Math.max(1e-6, side.length()))) ** 2)) : 0;
-      const wide = p.size * TRACER * (0.55 + 0.45 * f);
-      const stretch = 1 + (p.stretch / TRACER - 1) * f * across;
-      fx.add(p.position.x, p.position.y, p.position.z, wide, t[0] * k, t[1] * k * (0.35 + 0.65 * f), t[2] * k * (0.15 + 0.85 * f), stretch, p.velocity.x, p.velocity.y, p.velocity.z);
-      // (The core, as long as the streak but a third as wide, goes out first as it cools.)
-      if (f > 0.35) {
-        const c = t[0] * k * (f - 0.35) * 0.9;
-        fx.add(p.position.x, p.position.y, p.position.z, wide * CORE, c, c * 0.86, c * 0.6, 1 + (stretch - 1) / CORE, p.velocity.x, p.velocity.y, p.velocity.z);
-      }
+      const far = Math.max(1e-6, side.length());
+      const across = Math.sqrt(Math.max(0, 1 - (side.dot(p.velocity) / (speed * far)) ** 2));
+      // (Never thinner than two or three pixels: the temporal blend would thin a finer line
+      // to a flicker.)
+      const wide = Math.max(p.size * TRACER * (0.35 + 0.65 * f), 0.0035 * tall * far);
+      const long = p.size * p.stretch * STREAK * f;
+      axis.copy(p.velocity).divideScalar(speed);
+      // (The base: the back of the body where it shows, the round's point while it does not.
+      // The streak's middle a little less than half its length behind it: its soft front end
+      // then runs into the hot base instead of stopping short of it.)
+      at.copy(p.position).addScaledVector(axis, -0.5 * L * shown);
+      point.copy(at).addScaledVector(axis, -0.38 * long);
+      fx.add(point.x, point.y, point.z, wide, t[0] * k, t[1] * k * (0.35 + 0.65 * f), t[2] * k * (0.15 + 0.85 * f), Math.max(1, (long * across) / wide), p.velocity.x, p.velocity.y, p.velocity.z);
+      // (The hot base: near white while it is fast, the first to redden.)
+      const c = t[0] * k * 1.1;
+      fx.add(at.x, at.y, at.z, wide * HEAD, c, c * (0.3 + 0.55 * f), c * (0.1 + 0.5 * f), Math.max(1, (0.2 * long * across) / (wide * HEAD)), p.velocity.x, p.velocity.y, p.velocity.z);
     }
-    // The body grows in as the tracer goes out (it is small, and fast things smear).
-    const shown = clamp01(1 - f / 0.45);
-    if (shown <= 0) return;
-    const L = p.size * (pellet ? PELLET : BULLET) * (0.4 + 0.6 * shown);
+    if (shown <= 0 || scale <= 0) return;
     const r = pellet ? L * 0.5 : L * 0.2;
     at.copy(p.position);
+    at.y -= drop;
     if (rest >= 0) {
       at.y += r;
       lying(hash(p.born, 1) * 6.283, hash(p.born, 2) * 6.283, q);
@@ -290,10 +315,13 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
     return 0.03 * L;
   }
 
-  // ---- An enemy's thing (a bolt, a spear, a star, a knife, a nail).
-  function thing(p, spec, rest, left) {
-    const L = p.size * spec.length;
+  // ---- An enemy's thing (a bolt, a spear, a star, a knife, a nail); `drop` and `scale` as
+  // for a round.
+  function thing(p, spec, rest, left, drop = 0, scale = 1) {
+    if (scale <= 0) return;
+    const L = p.size * spec.length * scale;
     at.copy(p.position);
+    at.y -= drop;
     if (rest >= 0) {
       at.y += laid(spec, p.born, hash(p.born, 1) * 6.283, L);
       if (left < SETTLE) at.y -= 0.06 * L * (1 - left / SETTLE);
@@ -332,6 +360,10 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
     if (!spec || p.spent || !p.river) return;
     const s = stuck[stuckNext];
     stuckNext = (stuckNext + 1) % STUCK;
+    // (The one a third of the ring on, taken soon if things keep striking the bed this fast,
+    // starts to settle into the gravel now.)
+    const soon = stuck[(stuckNext + STUCK / 3) % STUCK];
+    if (soon.live && soon.t > now - (REST - SETTLE)) soon.t = now - (REST - SETTLE);
     const floor = bed(p.river.s, p.river.u);
     const drop = p.last.y - p.position.y;
     const u = drop > 1e-6 ? clamp01((p.last.y - floor) / drop) : 1;
@@ -368,7 +400,11 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
   // ---- The empty cases: a fixed pool of records.
   const cases = [];
   for (let i = 0; i < casesPool; i++)
-    cases.push({ live: false, kind: "pistol", x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, spin: new THREE.Quaternion(), w: new THREE.Vector3(), length: 0, sink: 0, floor: 0, s: null, age: 0, rest: -1, yaw: 0, born: 0 });
+    cases.push({ live: false, kind: "pistol", key: "case-pistol", x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, spin: new THREE.Quaternion(), w: new THREE.Vector3(), length: 0, sink: 0, floor: 0, s: null, age: 0, rest: -1, fade: -1, yaw: 0, born: 0 });
+  // (Each kind's mesh by name, made once: a name put together for every case every frame
+  // would be a new string each time.)
+  const caseKey = {};
+  for (const name in CASES) caseKey[name] = `case-${name}`;
   let caseNext = 0,
     caseBorn = 0;
   // A case thrown from `from` along `way` (a unit vector) at `speed`, with what carried the
@@ -377,8 +413,14 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
     // (The oldest goes when the pool is full: the pool is a ring.)
     const c = cases[caseNext];
     caseNext = (caseNext + 1) % casesPool;
+    const soon = cases[(caseNext + AHEAD) % casesPool];
+    if (soon.live) {
+      if (soon.rest >= 0) soon.rest = Math.max(soon.rest, LIE);
+      else if (soon.fade < 0) soon.fade = GO;
+    }
     c.live = true;
     c.kind = kind;
+    c.key = caseKey[kind];
     c.length = length * (0.92 + 0.16 * look());
     const v = speed * (0.75 + 0.5 * look());
     c.x = from.x;
@@ -399,6 +441,7 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
     c.floor = bed(where.s, where.u);
     c.age = 0;
     c.rest = -1;
+    c.fade = -1;
     c.born = ++caseBorn;
   }
   function moveCases(dt) {
@@ -409,6 +452,13 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
       const c = cases[i];
       if (!c.live) continue;
       c.age += dt;
+      if (c.fade >= 0) {
+        c.fade -= dt;
+        if (c.fade <= 0) {
+          c.live = false;
+          continue;
+        }
+      }
       if (c.rest >= 0) {
         c.rest += dt;
         if (c.rest > LIE + SETTLE || c.age > 30) c.live = false;
@@ -442,7 +492,7 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
       }
       // (A case that never finds the bed -- thrown up out of the water, or sinking where the
       // bed was not looked up again -- goes after a while.)
-      if (c.age > 20) c.live = false;
+      if (c.age > 20 && c.fade < 0) c.fade = GO;
     }
   }
   function drawCases() {
@@ -454,7 +504,8 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
         lying(c.yaw, hash(c.born, 2) * 6.283, q);
         if (c.rest > LIE) at.y -= 2.4 * c.length * 0.13 * ((c.rest - LIE) / SETTLE);
       } else q.copy(c.spin);
-      put(`case-${c.kind}`, at, q, c.length, c.length, c.length);
+      const L = c.fade >= 0 ? (c.length * c.fade) / GO : c.length;
+      put(c.key, at, q, L, L, L);
     }
   }
 
@@ -504,12 +555,16 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
       eject(port.casing, port.length * scale * 1.4, portAt, portWay, port.speed * f.length, carry, f.river?.s ?? null);
     }
   }
-  // An enemy's gun throws its case out now: from behind the muzzle, to its right.
+  // An enemy's gun throws its case out now: from behind the muzzle, to its right. From a gun
+  // model's own muzzle the port is just off the gun's axis; from the snout (no gun drawn, its
+  // rounds come from there) it is outside the flank, where the gun strapped on would have it:
+  // a case appearing a little inside the body would be thrown out of the fish's skin.
   const muzzleAt = new THREE.Vector3();
   function enemyEject(e, gun) {
     const spec = EJECT[gun.id];
     if (!spec || !e || e.dead) return;
-    if (!models?.enemyMuzzle?.(e, muzzleAt)) {
+    const drawn = !!models?.enemyMuzzle?.(e, muzzleAt);
+    if (!drawn) {
       if (!enemies?.snout) return;
       enemies.snout(e, muzzleAt);
     }
@@ -518,7 +573,11 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
     side.crossVectors(dir, Y);
     if (side.lengthSq() < 1e-6) side.set(0, 0, 1);
     side.normalize();
-    portAt.copy(muzzleAt).addScaledVector(dir, -0.3 * e.size).addScaledVector(side, 0.03 * e.size);
+    portAt
+      .copy(muzzleAt)
+      .addScaledVector(dir, -0.3 * e.size)
+      .addScaledVector(side, (drawn ? 0.03 : 0.12) * e.size)
+      .addScaledVector(Y, drawn ? 0 : 0.03 * e.size);
     portWay.copy(side).addScaledVector(Y, 0.5).addScaledVector(dir, -0.25).normalize();
     if (e.velocity) carry.copy(e.velocity);
     else carry.copy(e.heading).multiplyScalar(e.speed ?? 0);
@@ -581,6 +640,11 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
   }
 
   // ---- The players' ordnance.
+  // The way each harpoon last flew, by its record's `born` (a record goes back to the pool and
+  // comes out again as another shot): room for more than can be in the water at once.
+  const HEADINGS = 8;
+  const headings = [];
+  for (let i = 0; i < HEADINGS; i++) headings.push({ born: -1, way: new THREE.Vector3(1, 0, 0) });
   const lineFrom = new THREE.Vector3(),
     lineTo = new THREE.Vector3(),
     point = new THREE.Vector3(),
@@ -598,9 +662,20 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
       put("mine", p.position, q, k);
       return;
     }
-    // The ball rolls on over the gravel: turned about its flight by the spin the shots keep.
-    along(p.velocity.lengthSq() > 1e-6 ? p.velocity : dir.set(1, 0, 0), q);
+    // Along its flight (one standing still along the world's x: a ball, round, shows no way).
+    let way = p.velocity.lengthSq() > 1e-6 ? p.velocity : dir.set(1, 0, 0);
+    if (kind === "harpoon") {
+      // A harpoon stopped (at its reach, or in a fish too big to go through: weapons.js takes
+      // its velocity) keeps pointing the way it flew.
+      const h = headings[p.born % HEADINGS];
+      if (way === p.velocity) {
+        h.born = p.born;
+        h.way.copy(way);
+      } else if (h.born === p.born) way = h.way;
+    }
+    along(way, q);
     if (kind === "ball") {
+      // The ball rolls on over the gravel: turned about its flight by the spin the shots keep.
       q.multiply(q2.setFromAxisAngle(axis.set(0, 0, 1), -p.spin * 0.6));
       put("ball", p.position, q, k);
       // The fuse's end, burning blue under water; from afar a spark of some pixels still (the
@@ -715,15 +790,35 @@ export function createOrdnance(scene, camera, { fx, models = null, enemies = nul
       }
       // (The laser's bolts and the flame's puffs are the weapons' own glows.)
       if (!p.water) continue;
-      round(p, SHOT.has(p.weapon), p.rested ? 1 : -1, p.life - p.age, p.age * (6 + 8 * hash(p.born, 8)));
+      // (A spent round that has not reached the bed when its life is up goes from the
+      // water: it shrinks away first.)
+      const left = p.life - p.age;
+      round(p, SHOT.has(p.weapon), p.rested ? 1 : -1, left, p.age * (6 + 8 * hash(p.born, 8)), 0, p.rested ? 1 : clamp01(left / FADE));
     }
     for (let i = 0; i < hostile.length; i++) {
       const p = hostile[i];
-      const rest = p.rested ? p.spentAge - p.restAt : -1;
-      const left = p.rested ? REST + p.restAt - p.spentAge : Infinity;
+      let rest = -1,
+        left = Infinity,
+        drop = 0,
+        scale = 1;
+      if (p.rested) {
+        left = REST + p.restAt - p.spentAge;
+        // hostile.js holds a round still where its life ran out, in mid-water too; drawn lying
+        // there it would hang flat in the water. The eye sees it go on down at the pace it
+        // sank to the bed and lie there, or shrink away before it gets there.
+        const above = p.spent ? p.position.y - p.floor : 0;
+        const down = SINK * (p.spentAge - p.restAt);
+        if (above > 1e-3 && down < above) {
+          drop = down;
+          scale = clamp01(left / FADE);
+        } else {
+          drop = Math.max(0, above);
+          rest = p.spentAge - p.restAt - drop / SINK;
+        }
+      }
       const spec = THINGS[p.weapon];
-      if (spec) thing(p, spec, rest, left);
-      else round(p, SHOT.has(p.weapon), rest, left, p.spentAge * (5 + 8 * hash(p.born, 8)));
+      if (spec) thing(p, spec, rest, left, drop, scale);
+      else round(p, SHOT.has(p.weapon), rest, left, p.spentAge * (5 + 8 * hash(p.born, 8)), drop, scale);
     }
     // The bombs, nose first along their way, 14 cm long (as the stand-ins were).
     for (let i = 0; i < (bombs?.length ?? 0); i++) {

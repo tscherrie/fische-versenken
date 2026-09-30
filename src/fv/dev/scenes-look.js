@@ -1734,4 +1734,19 @@ LOOK_SCENES.push(
   // The enemies' bolts, spear, stars, knives and nails (flying, lying, stuck in the bed),
   // tracers fading, spent rounds, bombs.
   { name: "gegner-dinge", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // The same at one in the night: what the tracers, the flame and the fuse still show, and
+  // how dark the bodies go.
+  { name: "geschosse-nah-nacht", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 1 },
+  { name: "gegner-dinge-nacht", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 1 },
+  { name: "huelsen-nacht", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 1 },
+  // The enemies' guns fired at a parr through the game's own path, seen from the side: the
+  // tracers fading as the water takes their speed, the spent rounds sinking; by day and night.
+  { name: "gegner-feuer", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  { name: "gegner-feuer-nacht", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 1 },
+  // The minigun held down for six seconds: the ring of cases full, the stream still whole.
+  { name: "huelsen-dauerfeuer", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // From above the water, looking down through the surface; bombs and the spear in the air.
+  { name: "geschosse-oben", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The harpoon stopped in the water: still pointing the way it flew.
+  { name: "harpune-halt", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
 );
