@@ -29,6 +29,8 @@
 //            goes through a line of fish (the anti-materiel rifle)
 //   arc      held: every moment an arc to the nearest enemy ahead, jumping on from it to the
 //            next ones near, each jump a little weaker (the arc thrower)
+//   harpoon  from the belly: a harpoon on a line that skewers the fish it goes through and
+//            carries them on; where it stops, its head goes off (the grenade harpoon)
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -371,6 +373,63 @@ export const WEAPONS = {
     unlock: 0.35,
     tint: [2.4, 3.2, 6],
     core: [5, 5.5, 7],
+  },
+  harpune: {
+    title: "Granatharpune",
+    mode: "harpoon",
+    place: "belly",
+    mount: "belly",
+    shells: 1,
+    interval: 0.3,
+    reload: 2.2,
+    idleReload: 3,
+    // Fast off the gun, slowed by the water; through up to `skewer` fish, which it carries
+    // along; it stops at its reach or in something too big to go through (x the fish's
+    // length), and its head goes off `delay` seconds after it has stopped.
+    speed: (L) => 30 + 10 * L,
+    reach: (L) => 10 + 5 * L,
+    skewer: 4,
+    tooBig: 2.5,
+    delay: 0.35,
+    direct: 30,
+    damage: 55,
+    blast: (L) => 1.1 * L,
+    edge: 0.35,
+    shove: 1,
+    stun: 1.5,
+    recoil: 0.35,
+    size: (L) => 0.03 + 0.02 * L,
+    radius: (L) => 0.04 + 0.03 * L,
+    tint: [1.2, 1.2, 1.3],
+    line: [0.9, 0.25, 0.2],
+    flash: [6, 5, 4],
+  },
+  strahl: {
+    title: "Partikelstrahler",
+    mode: "bolt",
+    place: "back",
+    mount: "middle",
+    muzzle: { x: 0.45, bore: 0.025 },
+    // Only the beam (no pulses): drawn through a shoal. `interval` and `heat` give its rates
+    // a second, as the laser's pulses do; `sear`: how much more it does the longer it stays on
+    // one target (up to 1 + sear times, after a second on it).
+    beam: { pulses: [0, 0], seconds: [1e9, 1e9] },
+    interval: 0.1,
+    damage: 5,
+    sear: 2,
+    heat: 0.018,
+    cool: 0.4,
+    rest: 0.3,
+    unlock: 0.35,
+    spread: 0,
+    speed: (L) => 60,
+    reach: (L) => 20 + 10 * L,
+    size: (L) => 0.03 + 0.03 * L,
+    radius: (L) => 0.04 + 0.04 * L,
+    tint: [0.4, 3.2, 6],
+    core: [3, 6, 7],
+    glow: [0.3, 1.5, 3],
+    stretch: 9.5,
   },
 };
 
@@ -885,7 +944,18 @@ export function createFiring(ctx) {
     b.age = b.was ? b.age + dt : 0;
     b.on = true;
     b.id = id;
-    if (best) damage(player.id, best, (w.damage / w.interval) * damageScale(L) * dt, aimDir, b.to, id, gorier(best, 0.12), BEAM_INFO);
+    if (best) {
+      // A searing beam does more the longer it stays on the same one (it cools off it again
+      // at the same pace once the beam is gone).
+      let more = 1;
+      if (w.sear) {
+        const was = Math.max(0, (best.seared ?? 0) - (clock - (best.searedAt ?? clock)));
+        best.seared = Math.min(1, was + dt);
+        best.searedAt = clock;
+        more = 1 + w.sear * best.seared;
+      }
+      damage(player.id, best, (w.damage / w.interval) * damageScale(L) * dt * more, aimDir, b.to, id, gorier(best, 0.12), BEAM_INFO);
+    }
     // Where it ends on stone or gravel it boils the water: beads, and now and then a spark
     // and a puff of silt. (Out of the water it goes on into the air, to its reach or until
     // it is well above the surface: nothing to show there.)
@@ -1235,6 +1305,104 @@ export function createFiring(ctx) {
     if (player.local) {
       if (sfx.arc) sfx.arc(L, struck.length);
       else sfx.piu(L * 2, 0);
+    }
+  }
+
+  // harpoon: off the belly gun on its line, straight along the aim. Its flight (harpoons()):
+  // each fish it meets on the way is struck and skewered -- carried on along the shaft --
+  // up to `skewer`; one too big to go through stops it. Stopped (or at its reach), a moment
+  // later its head goes off.
+  const lines = new Map();
+  function harpoon(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    const speed = w.speed(L);
+    flight.copy(aimDir).multiplyScalar(speed);
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = 0;
+    p.radius = w.radius(L);
+    p.life = 30;
+    p.fuse = false;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = 3;
+    p.solid = "harpoon";
+    p.scale = L;
+    p.shooter = L;
+    // (It finds what it strikes itself, so that it can go on through them.)
+    p.ghost = true;
+    p.drag = (0.6 * speed) / w.reach(L);
+    p.speed0 = speed;
+    p.skewered = [];
+    p.stuck = null;
+    p.stopped = -1;
+    p.travel = 0;
+    // (Kept by its record, which goes back to the pool when it is gone: `born` tells a
+    // later shot in the same record apart.)
+    lines.set(p, { player, place, born: p.born });
+    flash(muzzle, aimDir, L, w.flash, 0.6, f.river.s);
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.harpoon) sfx.harpoon(L);
+      else sfx.flinte(L);
+    }
+  }
+  function harpoons(dt) {
+    for (const [p, line] of lines) {
+      if (p.born !== line.born || p.solid !== "harpoon" || !projectiles.live.includes(p)) {
+        lines.delete(p);
+        continue;
+      }
+      const w = WEAPONS[p.weapon];
+      const L = p.shooter;
+      seekDir.copy(p.velocity);
+      const speed = seekDir.length();
+      if (p.stopped < 0) {
+        p.travel += speed * dt;
+        seekDir.divideScalar(speed || 1);
+        // What it meets on this step's way (from where it was to a step ahead).
+        tail.copy(p.position);
+        head.copy(p.position).addScaledVector(p.velocity, dt);
+        for (const e of enemies.list) {
+          if (e.dead || p.skewered.includes(e)) continue;
+          bodyEnds(e, tmp, tmp2);
+          const r = e.size * 0.1 + p.radius;
+          if (segmentSegment(tail, head, tmp, tmp2) > r * r) continue;
+          if (e.size > w.tooBig * L) {
+            // Too big to go through: it sticks in it.
+            damage(p.owner, e, w.direct * damageScale(L), seekDir, p.position, p.weapon, true, { mode: "harpoon", point: p.position });
+            p.stuck = e;
+            p.stopped = 0;
+            break;
+          }
+          damage(p.owner, e, w.direct * damageScale(L), seekDir, p.position, p.weapon, true, { mode: "harpoon", point: p.position });
+          p.skewered.push(e);
+          if (p.skewered.length >= w.skewer) {
+            p.stopped = 0;
+            break;
+          }
+        }
+        if (p.stopped < 0 && (p.travel >= w.reach(L) || speed < 0.2 * p.speed0)) p.stopped = 0;
+        if (p.stopped >= 0) p.velocity.set(0, 0, 0);
+      } else {
+        p.stopped += dt;
+        // (Stuck in a big one, it goes with it.)
+        if (p.stuck && !p.stuck.dead) p.position.copy(p.stuck.position);
+        if (p.stopped >= w.delay) {
+          p.fuse = true;
+          p.life = p.age;
+        }
+      }
+      // The skewered ride on the shaft, one behind the other.
+      if (seekDir.lengthSq() < 1e-6) seekDir.copy(p.last).sub(line.player.fish.position).normalize();
+      for (let i = 0; i < p.skewered.length; i++) {
+        const e = p.skewered[i];
+        e.position.copy(p.position).addScaledVector(seekDir, -(0.15 + 0.35 * i) * L);
+      }
     }
   }
 
@@ -1954,6 +2122,7 @@ export function createFiring(ctx) {
         else if (w.mode === "rockets") rocket(player, place, w, id);
         else if (w.mode === "mines") mine(player, place, w, id);
         else if (w.mode === "arc") arc(player, place, w, id);
+        else if (w.mode === "harpoon") harpoon(player, place, w, id);
         a.fired[id] = 0;
         if (w.shells) a.ammo[id]--;
         if ((w.mode === "bolt" || w.mode === "arc") && w.heat) {
@@ -2011,6 +2180,7 @@ export function createFiring(ctx) {
     home(dt);
     rockets(dt);
     mines();
+    harpoons(dt);
     for (const p of ctx.players) bladeSteps(p, dt);
   }
 
@@ -2149,7 +2319,7 @@ export function createFiring(ctx) {
   // so its arc stays in the water a moment and can be followed.
   function trails(dt) {
     for (const p of projectiles.live) {
-      if (!p.solid || p.solid === "mine") continue;
+      if (!p.solid || p.solid === "mine" || (p.solid === "harpoon" && p.stopped >= 0)) continue;
       const L = p.scale;
       if (p.solid === "rocket") {
         // The motor's smoke: grey puffs left along the way, swelling and hanging.
@@ -2196,6 +2366,16 @@ export function createFiring(ctx) {
         continue;
       }
       fx.add(p.position.x, p.position.y, p.position.z, size, r * fade, g * fade, b * fade, p.stretch, v.x, v.y, v.z);
+    }
+    // The harpoons' lines, from the gun under the belly to the harpoon (dark red).
+    if (camera && lines.size) {
+      camera.getWorldDirection(forward);
+      for (const [p, line] of lines) {
+        if (line.player.down || p.born !== line.born) continue;
+        muzzleOf(line.player, line.place, muzzle);
+        const w = WEAPONS.harpune;
+        chain(muzzle, p.position, 0.008 * p.shooter + 0.004, w.line, w.line, 0.35, 12, tall);
+      }
     }
     // The rockets' motors: a hot point at the tail.
     for (const p of projectiles.live) {
@@ -2345,7 +2525,9 @@ export function createFiring(ctx) {
       fx.add(tmp.x, tmp.y, tmp.z, size, r * k, g * k, bl * k, Math.max(1, Math.min(span / 0.18, room / 0.4) / size), across.x, across.y, across.z);
       fx.add(tmp.x, tmp.y, tmp.z, size * 0.45, cr * k, cg * k, cb * k, Math.max(1, Math.min(span / 0.08, room / 0.18) / size), across.x, across.y, across.z);
     }
-    fx.add(muzzle.x, muzzle.y, muzzle.z, width * 2.4, 4, 0.5, 0.3, 1);
+    // (The lens in the weapon's own colour.)
+    const lens = w.glow ?? w.tint;
+    fx.add(muzzle.x, muzzle.y, muzzle.z, width * 2.4, lens[0] * 1.3, lens[1] * 1.3, lens[2] * 1.3, 1);
     if (b.what) {
       const spot = Math.max(width * 3, 0.012 * tall * eye.distanceTo(b.to));
       fx.add(b.to.x, b.to.y, b.to.z, spot, r * 0.5, g * 0.5, bl * 0.5, 1);

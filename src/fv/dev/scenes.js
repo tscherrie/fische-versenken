@@ -96,6 +96,11 @@ export const SCENES = [
   // of fish; and the arc thrower (the katana on the back) jumping through a shoal.
   { name: "w-panzer", stage: "grilse", at: 11790, season: "spring", hour: 12, weapon: "panzerbuechse", seconds: 6, pulse: [0.9, 0.4], pictures: [1, 2.3, 4], spawn: [["trout", 8, 0], ["trout", 10, 0.1], ["trout", 12, -0.1], ["troutParr", 9, 0]] },
   { name: "w-blitz", stage: "grilse", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "blitz", seconds: 5, pictures: [0.5, 1.5, 3.5], spawn: [["minnow", 3, -1], ["minnow", 3.5, -0.4], ["minnow", 3, 0.3], ["minnow", 3.6, 0.9], ["minnow", 4, -0.8], ["minnow", 4.2, 0], ["minnow", 4, 0.7], ["trout", 5, 0]] },
+  // The sea salmon's pair: the particle beam drawn through a shoal and held on a trout; the
+  // grenade harpoon (the katana on the back) through a line of fish.
+  { name: "w-strahl", stage: "sea", at: 11790, season: "spring", hour: 12, weapon: "strahl", seconds: 5, pictures: [0.5, 2, 4], spawn: [["minnow", 5, -1], ["minnow", 5.5, -0.4], ["minnow", 5, 0.3], ["minnow", 5.6, 0.9], ["trout", 7, 0], ["trout", 8, 0.8]] },
+  { name: "w-harpune-allein", stage: "sea", at: 11790, season: "spring", hour: 12, weapon: "harpune", seconds: 5, pictures: [0.3, 0.8, 3], spawn: [["troutParr", 6, 0], ["troutParr", 7, 0.05], ["troutParr", 8, -0.05], ["trout", 10, 0]] },
+  { name: "w-harpune", stage: "sea", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "harpune", seconds: 5, pictures: [0.3, 0.8, 3], spawn: [["troutParr", 6, 0], ["troutParr", 7, 0.05], ["troutParr", 8, -0.05], ["trout", 10, 0]] },
   { name: "w-flammen-seite", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3, side: [1.0, 0.5, 1.0, 1.8], pictures: [0.4, 1.2, 2.6], spawn: [["troutParr", 2.2, -0.3], ["troutParr", 2.5, 0.2], ["troutParr", 2.8, 0]] },
   // The phone's auto-fire (on a computer): the gun fires only while the aim has an enemy in
   // reach, the katana only with one in front within its reach.
