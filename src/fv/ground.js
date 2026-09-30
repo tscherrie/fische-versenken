@@ -9,7 +9,8 @@
 // only when the fish has moved on a little, when the gravel has been laid anew round it, or
 // now and then for what streams in and out. A height is exactly what a scan of everything
 // gathered would give: a stone goes into every cell its footprint test can pass in, and a
-// point outside the cells is answered by the scan.
+// point outside the cells is answered by the scan. (What was gathered can be a little behind
+// what lies there: a second for stones streaming in, a few steps for gravel laid slowly.)
 
 // The ground is gathered again once the fish has moved this far (u) -- a respawn or a jump
 // always is that far -- and it is gathered this much wider than asked, so that everything
@@ -55,12 +56,22 @@ export function createGround({ terrain, pebbles }) {
   // meshes' upload counters, and of how many pebbles they drew. The gravel does not keep
   // still while the fish swims: pebbles.js lays the cells ahead of it and drops those behind
   // each time it crosses into another of its small cells (a few tenths of a unit round an
-  // alevin), and thins the stones out as it grows. It puts each such change up to be drawn in
-  // the step it makes it, before combat's step, so a change here means that the pebbles round
-  // the fish are not those gathered any more. (Only a laying that overruns its few
-  // milliseconds a frame -- all of it laid afresh when the fish outgrows the size of its cells
-  // -- goes up later, with the frame that finishes it or every sixth: until then the crawlers
-  // walk on the gravel as it is drawn.)
+  // alevin), and thins the stones out as it grows. A laying done within its few milliseconds
+  // a frame is put up to be drawn in the step it is made, before combat's step, so a change
+  // here means that the pebbles round the fish are not those gathered any more.
+  //
+  // A laying that overruns them -- all of the gravel laid afresh when the fish outgrows the
+  // size of its cells, or on a slow phone any laying -- goes on over the next frames and is
+  // put up only with the frame that finishes it or with every sixth, while pebbles.js already
+  // hands out the pebbles it holds. For those few steps (at most five after each time it was
+  // put up) the crawlers' gravel is not what gathering it afresh each step would give: it is
+  // the gravel as last put up, or as held when the fish had moved on or a second had gone by
+  // in between; the step the laying is put up, it is the same again. Looking the gravel up
+  // again in each of the five steps after every upload would catch that, but costs about as
+  // much as gathering only now and then saves while the fish swims (and far more on a slow
+  // phone, where it would be looked up and sorted anew nearly every step), for a difference
+  // of at most a pebble's height for a few frames while the gravel itself is being laid anew:
+  // so, like the second that stones streaming in may be late, it is let be.
   let laid = NaN,
     drawn = NaN;
 

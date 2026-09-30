@@ -31,10 +31,14 @@ export const SCENES = [
   // The same with the alevin swimming round in a wide circle, so that the gravel is laid
   // ahead of it and dropped behind it all the time; and then as it outgrows the gravel's cell
   // size halfway (a fry), so that the gravel is laid afresh, coarser, over several frames
-  // (while that laying overruns its frame, the crawlers walk on the gravel as it is drawn, a
-  // few steps behind the gravel gathered afresh: see ground.js).
+  // (while such a laying overruns its frame, the gravel it holds is not yet the gravel it
+  // draws, and the crawlers may walk on either: see ground.js).
   { name: "boden-schwimmt", stage: "alevin", at: null, season: "spring", hour: 11, ground: 30, move: 0.02, spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5]] },
   { name: "boden-wachsen", stage: "alevin", at: null, season: "spring", hour: 11, ground: 30, move: 0.02, grow: [15, 1, 0.8], spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5]] },
+  // Both on a slow phone: the gravel gets only a tenth of a millisecond a frame (`budget`), so
+  // that nearly every laying runs over several frames and is put up only every sixth -- the
+  // steps in which the crawlers' gravel may differ from the gravel as it was gathered before.
+  { name: "boden-langsam", stage: "alevin", at: null, season: "spring", hour: 11, ground: 30, move: 0.02, grow: [15, 1, 0.8], budget: 0.1, spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5]] },
   // The old king in his pool: a yearling comes in and fights him (the pilot).
   { name: "koenig", stage: "yearling", at: 690, season: "summer", hour: 13, pilot: 60 },
   // A minute down the brook as a fry with the director sending enemies, a simple pilot
@@ -450,7 +454,9 @@ function scanGround(lists, x, z, floor) {
 }
 
 // The crawlers' ground against that plain scan, with everything within 12 u of the fish
-// gathered afresh for it each step (as combat gathered it before): every height a crawler
+// gathered afresh for it each step (as combat gathered it before), counted apart in the steps
+// in which the gravel was being laid over several frames and had not been put up yet
+// ("laying": there the two may differ, see ground.js) and in all others: every height a crawler
 // asks for, each step a few dozen random points 3.5 to 6.5 u from the fish ("ring": where the
 // larvae crawl, and where the gravel is laid and dropped as the fish swims), and every half
 // second a few hundred random points round it -- within 11 u, where the two must agree to the
@@ -471,7 +477,7 @@ async function groundCheck(salmon, extreme, set, scene, list, index, extra, erro
     lists[1].length = 0;
     pebbles?.near?.(center, 12, lists[1]);
   };
-  const result = { asked: 0, askedDiffer: 0, askedMaxDiff: 0, askedFarthest: 0, ring: 0, ringDiffer: 0, ringMaxDiff: 0, points: 0, pointsDiffer: 0, pointsMaxDiff: 0, edge: 0, edgeDiffer: 0, edgeInnermost: null, outer: 0, outerDiffer: 0, steps: 0 };
+  const result = { asked: 0, askedDiffer: 0, askedMaxDiff: 0, askedLaying: 0, askedFarthest: 0, ring: 0, ringDiffer: 0, ringMaxDiff: 0, ringLaying: 0, points: 0, pointsDiffer: 0, pointsMaxDiff: 0, pointsLaying: 0, layingMaxDiff: 0, edge: 0, edgeDiffer: 0, edgeInnermost: null, outer: 0, outerDiffer: 0, steps: 0, layingSteps: 0 };
   // (Who asks the gravel for its pebbles, how far round and how often: combat's ground among
   // them shows how often it really gathers.)
   const askers = new Map();
@@ -482,22 +488,27 @@ async function groundCheck(salmon, extreme, set, scene, list, index, extra, erro
       return pebblesNear.call(pebbles, center, reach, out);
     };
   // (How the gravel was laid: in how many steps it put its stones up to be drawn, and in how
-  // many it ran out of its time before it was done without putting them up -- the steps in
-  // which the pebbles it holds are not yet those it draws.)
-  const laying = { steps: 0, uploads: 0, overran: 0, overranAt: [], longestMs: 0 };
+  // many it ran out of its time before it was done without putting them up. From such a step
+  // until it is put up again the pebbles it holds may not be those it draws (`unsettled`):
+  // it changes them only in a step that either puts them up or runs out of its time. With
+  // `budget` (ms) the gravel gets that much time a frame instead of its own 2.5 ms.)
+  const laying = { steps: 0, uploads: 0, overran: 0, overranAt: [], longestMs: 0, unsettled: false };
   const pebblesUpdate = pebbles?.update;
   const uploads = () => pebbles.meshes.reduce((sum, mesh) => sum + mesh.instanceMatrix.version, 0);
   if (pebblesUpdate)
-    pebbles.update = function (...args) {
+    pebbles.update = function (position, length, hintS, budget) {
       const before = uploads(),
         t0 = performance.now();
-      const out = pebblesUpdate.apply(this, args);
+      const out = pebblesUpdate.call(this, position, length, hintS, budget ?? scene.budget);
       const ms = performance.now() - t0,
         uploaded = uploads() !== before;
       laying.steps++;
-      if (uploaded) laying.uploads++;
-      else if (ms >= 2.5) {
+      if (uploaded) {
+        laying.uploads++;
+        laying.unsettled = false;
+      } else if (ms >= (budget ?? scene.budget ?? 2.5)) {
         laying.overran++;
+        laying.unsettled = true;
         if (laying.overranAt.length < 20) laying.overranAt.push(+extreme.game.now.time.toFixed(2));
       }
       laying.longestMs = Math.max(laying.longestMs, +ms.toFixed(2));
@@ -512,6 +523,11 @@ async function groundCheck(salmon, extreme, set, scene, list, index, extra, erro
   const differed = [];
   const compare = (x, z, floor, h, key) => {
     const before = scanGround(lists, x, z, floor);
+    if (laying.unsettled) {
+      if (!Object.is(h, before)) result[`${key}Laying`]++;
+      result.layingMaxDiff = Math.max(result.layingMaxDiff, Math.abs(h - before));
+      return;
+    }
     if (!Object.is(h, before)) {
       result[`${key}Differ`]++;
       const at = +extreme.game.now.time.toFixed(2);
@@ -550,6 +566,7 @@ async function groundCheck(salmon, extreme, set, scene, list, index, extra, erro
     if (hooks.ground) {
       gather(fish.position);
       result.steps++;
+      if (laying.unsettled) result.layingSteps++;
       for (let k = 0; k < 30; k++) {
         const r = 3.5 + 3 * random(),
           a = random() * Math.PI * 2;
