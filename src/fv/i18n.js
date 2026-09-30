@@ -24,6 +24,9 @@ const WORDS = [
   ["Konter!", "Counter!", "反击！", "カウンター！", "Контра!"],
   ["Nachladen", "Reloading", "装填中", "リロード中", "Презареждане"],
   ["Leer", "Empty", "燃料耗尽", "燃料切れ", "Празно"],
+  // The weapon cards' places, on a phone.
+  ["Rücken", "Back", "背部", "背中", "Гръб"],
+  ["Bauch", "Belly", "腹部", "腹", "Корем"],
   [
     "<b>Feuer frei!</b> Deine Waffe feuert von selbst, sobald ein Feind im Visier und in Reichweite ist. Alles, was kein Lachs ist, will dich fressen.",
     "<b>Open fire!</b> Your weapon fires by itself as soon as an enemy is in your sights and in reach. Everything that is not a salmon wants to eat you.",

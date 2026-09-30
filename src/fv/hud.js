@@ -1,6 +1,10 @@
 // Combat on the screen: the crosshair (the middle of the view, where shots go), a mark on it
-// for a hit and a sink, the call-outs ("Treffer!", "Versenkt!"), and the weapon card in the
-// bottom-left corner, the one corner the game leaves free, with how hot the weapon is.
+// for a hit and a sink, the call-outs ("Treffer!", "Versenkt!"), and the weapon cards in the
+// bottom-left corner, the one corner the game leaves free: for each weapon how hot it is, how
+// much fuel is left, or its rounds as pips and the magazine filling while it reloads, and a
+// word when it cannot fire ("Überhitzt", "Leer", "Nachladen"). On a phone the crosshair
+// shows whenever the fish is armed (there is no pointer to catch), and the cards name the
+// places instead of the mouse buttons.
 // The German texts are the source; the page's translation watch turns them into the chosen
 // language (fv/i18n.js has the words).
 
@@ -8,7 +12,7 @@ import { t } from "../i18n.js";
 
 const CSS = `
 #xh { position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 0.2s; }
-#habitat.locked:not(.paused):not(.menu):not(.building) #xh.armed { opacity: 1; }
+#habitat.locked:not(.paused):not(.menu):not(.building) #xh.armed, #habitat.touch:not(.paused):not(.menu):not(.building) #xh.armed { opacity: 1; }
 #xh i { position: absolute; background: rgba(255, 244, 230, 0.85); box-shadow: 0 0 3px rgba(0, 0, 0, 0.6); }
 #xh i.t, #xh i.b { left: 14px; width: 2px; height: 8px; }
 #xh i.t { top: 0; } #xh i.b { bottom: 0; }
@@ -30,11 +34,20 @@ const CSS = `
 #arsenal .card { min-width: 132px; padding: 8px 10px 9px; border-radius: 10px; background: rgba(6, 18, 16, 0.55); border: 1px solid rgba(238, 238, 222, 0.14); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 #arsenal .card[hidden] { display: none; }
 #arsenal .key { font-size: 10px; opacity: 0.6; letter-spacing: 0.06em; text-transform: uppercase; }
+#arsenal .key .finger, .touch #arsenal .key .mouse { display: none; }
+.touch #arsenal .key .finger { display: inline; }
 #arsenal .name { margin: 2px 0 6px; font-weight: 800; }
+#arsenal .card.flag .name::after { content: " · " attr(data-state); color: #ffd9a0; }
+#arsenal .card.locked .name::after { color: #ff7a5a; }
 #arsenal .heat { height: 4px; border-radius: 2px; background: rgba(238, 238, 222, 0.16); overflow: hidden; }
-#arsenal .heat i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd27a, #ff6a3a); }
+#arsenal .heat i { display: block; height: 100%; width: 100%; transform: scaleX(0); transform-origin: 0 50%; background: linear-gradient(90deg, #ffd27a, #ff6a3a); will-change: transform; }
+#arsenal .card.fuel .heat i { background: linear-gradient(90deg, #ff8a3a, #ffd27a); }
+#arsenal .card.shells .heat i { background: rgba(238, 238, 222, 0.75); }
 #arsenal .card.locked .heat i { background: #ff3b2e; }
-#arsenal .card.locked .name::after { content: " · " attr(data-hot); color: #ff7a5a; }
+#arsenal .pips { display: flex; gap: 3px; height: 8px; }
+#arsenal .pips b { flex: 0 0 5px; border-radius: 1.5px; background: #f0d9a8; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
+#arsenal .pips b.spent { background: rgba(238, 238, 222, 0.16); box-shadow: none; }
+#arsenal .card.shells:not(.reloading) .heat, #arsenal .card:not(.shells) .pips, #arsenal .card.reloading .pips { display: none; }
 @media (max-width: 1000px) { #arsenal { bottom: 70px; } }
 #bossbar { position: fixed; left: 50%; top: 18px; width: min(460px, 60vw); transform: translate(-50%, 0); z-index: 3; pointer-events: none; text-align: center; font: 800 13px/1.2 var(--hud-font, var(--font-body)); color: #fff4ea; letter-spacing: 0.08em; text-transform: uppercase; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); opacity: 0; transition: opacity 0.4s; }
 #bossbar.shown { opacity: 1; }
@@ -65,17 +78,19 @@ export function createCombatHud(habitat, { weapons }) {
   const arsenal = document.createElement("div");
   arsenal.id = "arsenal";
   const cards = {};
-  for (const [place, key] of [
-    ["back", "Linke Maustaste"],
-    ["belly", "Rechte Maustaste"],
+  for (const [place, key, spot] of [
+    ["back", "Linke Maustaste", "Rücken"],
+    ["belly", "Rechte Maustaste", "Bauch"],
   ]) {
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `<div class="key">${key}</div><div class="name"></div><div class="heat"><i></i></div>`;
-    card.querySelector(".name").dataset.hot = t("Überhitzt");
+    card.innerHTML = `<div class="key"><span class="mouse">${key}</span><span class="finger">${spot}</span></div><div class="name"></div><div class="heat"><i></i></div><div class="pips"></div>`;
     arsenal.appendChild(card);
-    cards[place] = { card, name: card.querySelector(".name"), heat: card.querySelector(".heat i"), shown: null, width: -1, locked: null };
+    // (`shown` starts as nothing at all, so the first frame hides a card with no weapon.)
+    cards[place] = { card, name: card.querySelector(".name"), heat: card.querySelector(".heat i"), pips: card.querySelector(".pips"), shown: undefined, kind: null, level: -1, locked: null, label: null, reloading: null, shells: -1, rounds: -1 };
   }
+  // (What the weapon card reads each frame, filled in place.)
+  const readout = {};
   habitat.appendChild(arsenal);
 
   // Bars over enemies that have been hit, while they are near and in view.
@@ -125,15 +140,43 @@ export function createCombatHud(habitat, { weapons }) {
             if (id) c.name.textContent = t(weapons[id]?.title ?? id);
           }
           if (!id) continue;
-          const width = Math.round(Math.min(1, a.heat[id] ?? 0) * 100);
-          if (width !== c.width) {
-            c.width = width;
-            c.heat.style.width = `${width}%`;
+          const r = a.readout ? a.readout(id, readout) : { kind: "heat", level: Math.min(1, a.heat[id] ?? 0), locked: !!a.locked[id], label: a.locked[id] ? "Überhitzt" : "", reload: 0, rounds: 0, shells: 0 };
+          if (r.kind !== c.kind) {
+            c.card.classList.remove(`${c.kind}`);
+            c.kind = r.kind;
+            c.card.classList.add(r.kind);
           }
-          const locked = !!a.locked[id];
-          if (locked !== c.locked) {
-            c.locked = locked;
-            c.card.classList.toggle("locked", locked);
+          // The bar: heat rising, fuel falling, or the magazine filling while it reloads.
+          const level = Math.round(Math.min(1, Math.max(0, r.level)) * 100);
+          if (level !== c.level) {
+            c.level = level;
+            c.heat.style.transform = `scaleX(${level / 100})`;
+          }
+          const reloading = r.reload > 0;
+          if (reloading !== c.reloading) {
+            c.reloading = reloading;
+            c.card.classList.toggle("reloading", reloading);
+          }
+          // The rounds, one pip each, the spent ones dimmed.
+          if (r.kind === "shells") {
+            if (r.shells !== c.shells) {
+              c.shells = r.shells;
+              c.rounds = -1;
+              c.pips.innerHTML = "<b></b>".repeat(r.shells);
+            }
+            if (r.rounds !== c.rounds) {
+              c.rounds = r.rounds;
+              for (let i = 0; i < c.pips.children.length; i++) c.pips.children[i].classList.toggle("spent", i >= r.rounds);
+            }
+          }
+          if (r.locked !== c.locked) {
+            c.locked = r.locked;
+            c.card.classList.toggle("locked", r.locked);
+          }
+          if (r.label !== c.label) {
+            c.label = r.label;
+            if (r.label) c.name.dataset.state = t(r.label);
+            c.card.classList.toggle("flag", !!r.label);
           }
         }
         const isHot = !!a.locked[a.back];
