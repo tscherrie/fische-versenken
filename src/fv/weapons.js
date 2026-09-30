@@ -31,6 +31,10 @@
 //            next ones near, each jump a little weaker (the arc thrower)
 //   harpoon  from the belly: a harpoon on a line that skewers the fish it goes through and
 //            carries them on; where it stops, its head goes off (the grenade harpoon)
+//   whirl    a sword nearly as long as the fish sweeping once all round it; held, it goes on
+//            round and round (the nodachi's rotor)
+//   saw      held: the chainsaw under the chin revs up and cuts whatever is in front of it,
+//            on and on (heat, as a motor gets hot)
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -373,6 +377,38 @@ export const WEAPONS = {
     unlock: 0.35,
     tint: [2.4, 3.2, 6],
     core: [5, 5.5, 7],
+  },
+  nodachi: {
+    title: "Nodachi",
+    mode: "whirl",
+    place: "back",
+    mount: "left",
+    muzzle: { x: 0.2, side: -1 },
+    // Once round in `swing` seconds, `reach` L out, `height` L up or down; held, the next
+    // turn follows at once.
+    interval: 0.42,
+    swing: 0.42,
+    damage: 40,
+    reach: (L) => 1.3 * L,
+    height: 0.35,
+  },
+  saege: {
+    title: "Kettensäge",
+    mode: "saw",
+    place: "belly",
+    mount: "belly",
+    // It revs up over `rev` seconds; at full revs it cuts what is within `reach` L ahead of
+    // the snout and `cone` rad of its line, `damage` a second; a motor: heat a second.
+    rev: 0.4,
+    damage: 60,
+    reach: (L) => 0.9 * L,
+    cone: 0.45,
+    heat: 0.12,
+    cool: 0.5,
+    rest: 0.3,
+    unlock: 0.35,
+    // (It pulls the fish on into what it cuts, x cruise a second.)
+    pull: 0.8,
   },
   harpune: {
     title: "Granatharpune",
@@ -1308,6 +1344,91 @@ export function createFiring(ctx) {
     }
   }
 
+  // whirl: the nodachi. A turn starts when the trigger is held and none is under way; each
+  // step the blade sweeps on round the fish (from straight ahead, the way it was carried:
+  // to the left, round behind and back), and what it passes within its reach and height
+  // is cut once a turn.
+  const whirls = new Map();
+  function whirlStep(player, place, w, id, dt, on) {
+    let r = whirls.get(player.id);
+    if (!r) whirls.set(player.id, (r = { age: 1e9, hit: new Set() }));
+    if (r.age >= w.swing && on) {
+      r.age = 0;
+      r.hit.clear();
+      models.recoil(player, place);
+      stat(id).shots++;
+      if (player.local) {
+        if (sfx.whirl) sfx.whirl(player.fish.length);
+        else sfx.katanaSwing(1);
+      }
+    }
+    if (on) player.arsenal.fired[id] = 0;
+    if (r.age < w.swing) {
+      const f = player.fish;
+      const L = f.length;
+      frameOf(f, fwd, right, upward);
+      const a0 = (r.age / w.swing) * Math.PI * 2,
+        a1 = Math.min(1, (r.age + dt) / w.swing) * Math.PI * 2;
+      const dS = damageScale(L);
+      for (const e of enemies.list) {
+        if (e.dead || r.hit.has(e)) continue;
+        bodyEnds(e, tail, head);
+        const d = pointSegment(f.position, tail, head, closest);
+        if (d > w.reach(L) + e.size * 0.09) continue;
+        tmp.subVectors(closest, f.position);
+        if (Math.abs(tmp.dot(upward)) > w.height * L + e.size * 0.12) continue;
+        // (Its angle round the fish, 0 ahead, growing to the left: the way the blade goes.)
+        let angle = Math.atan2(-tmp.dot(right), tmp.dot(fwd));
+        if (angle < 0) angle += Math.PI * 2;
+        if (angle < a0 - 0.08 || angle > a1 + 0.08) continue;
+        r.hit.add(e);
+        tmp2.copy(right).multiplyScalar(-1).applyAxisAngle(upward, angle).normalize();
+        damage(player.id, e, w.damage * dS, tmp2, closest, id, true, { mode: "blade", cut: true, point: closest });
+        if (player.local) sfx.katanaHit(e.size);
+      }
+    }
+    // (Counting on after the turn: its ring of light fades.)
+    r.age += dt;
+  }
+
+  // saw: the chainsaw, a step of it. It revs up while held (and down after); at full revs,
+  // what is in front of the snout is cut, a spray of red with it, and the fish is pulled on.
+  function sawStep(player, place, w, id, dt, on) {
+    const a = player.arsenal;
+    const st = a.state[id];
+    st.spin = Math.min(1, Math.max(0, st.spin + (on ? dt / w.rev : -dt / (w.rev * 2))));
+    if (player.local) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
+    if (!on) return;
+    a.fired[id] = 0;
+    a.heat[id] += w.heat * dt;
+    if (a.heat[id] >= 1) {
+      a.locked[id] = true;
+      if (player.local) sfx.overheat(id);
+      return;
+    }
+    if (st.spin < 1) return;
+    const f = player.fish;
+    const L = f.length;
+    head.copy(f.mouth ?? f.position);
+    const reach = w.reach(L);
+    const cos = Math.cos(w.cone);
+    let cutting = false;
+    for (const e of enemies.list) {
+      if (e.dead) continue;
+      bodyEnds(e, tail, tmp2);
+      const d = pointSegment(head, tail, tmp2, closest);
+      if (d > reach + e.size * 0.09) continue;
+      tmp.subVectors(closest, head);
+      const len = tmp.length();
+      if (len > 0.1 * L && tmp.dot(f.heading) < cos * len) continue;
+      cutting = true;
+      damage(player.id, e, w.damage * damageScale(L) * dt, f.heading, closest, id, gorier(e, 0.08), { mode: "saw", point: closest });
+    }
+    if (cutting) kick(player, f.heading, -w.pull * dt);
+    models.recoil(player, place);
+    stat(id).time = (stat(id).time ?? 0) + dt;
+  }
+
   // harpoon: off the belly gun on its line, straight along the aim. Its flight (harpoons()):
   // each fish it meets on the way is struck and skewered -- carried on along the shaft --
   // up to `skewer`; one too big to go through stops it. Stopped (or at its reach), a moment
@@ -2094,6 +2215,14 @@ export function createFiring(ctx) {
         spinStep(player, place, w, id, dt, on);
         continue;
       }
+      if (w.mode === "whirl") {
+        whirlStep(player, place, w, id, dt, on);
+        continue;
+      }
+      if (w.mode === "saw") {
+        sawStep(player, place, w, id, dt, on);
+        continue;
+      }
       if (w.mode === "charge") {
         // (Letting go fires even though the trigger is no longer held: only the fish must
         // still be able to fight.)
@@ -2413,6 +2542,31 @@ export function createFiring(ctx) {
     // dash cut's line along its path, both fading in a moment.
     if (ribbons) {
       ribbons.begin();
+      // The nodachi: the ring of light its tip leaves as it goes round, fading behind it.
+      for (const player of ctx.players) {
+        const r = whirls.get(player.id);
+        if (!r || player.down || r.age >= WEAPONS.nodachi.swing + 2.5 * TRAIL) continue;
+        const f = player.fish;
+        const L = f.length;
+        const w = WEAPONS.nodachi;
+        frameOf(f, fwd, right, upward);
+        const R = w.reach(L);
+        const t1 = Math.min(r.age, w.swing),
+          t0 = Math.max(0, r.age - 2.5 * TRAIL);
+        const n = 16;
+        for (let i = 0; i <= n; i++) {
+          const t = t0 + ((t1 - t0) * i) / n;
+          const fresh = 1 - (r.age - t) / (2.5 * TRAIL);
+          if (fresh <= 0) continue;
+          const angle = (t / w.swing) * Math.PI * 2;
+          tmp.copy(fwd).multiplyScalar(Math.cos(angle)).addScaledVector(right, -Math.sin(angle)).normalize();
+          const outer = R * 1.02,
+            inner = R * (1 - 0.2 * fresh);
+          const light = fresh * fresh;
+          ribbons.point(f.position.x + tmp.x * inner, f.position.y + tmp.y * inner, f.position.z + tmp.z * inner, f.position.x + tmp.x * outer, f.position.y + tmp.y * outer, f.position.z + tmp.z * outer, 1.3 * light, 1.4 * light, 1.7 * light);
+        }
+        ribbons.cut();
+      }
       for (const player of ctx.players) {
         const b = blades.get(player.id);
         if (!b || player.down) continue;
