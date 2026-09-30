@@ -128,6 +128,14 @@ async function start() {
   // WebGPU where the browser has it, WebGL 2 where it has not (or with ?webgl).
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance", forceWebGL: query.has("webgl"), trackTimestamp: query.has("shots") });
   await renderer.init();
+  // The screen's depth buffer (on WebGPU) is a texture three makes without a size and sizes
+  // on the first frame, after asking the texture what size it has. The undefined it gets
+  // back goes into a Vector3, and after a single undefined V8 keeps x and y of every Vector3
+  // in the game as boxed numbers: each write into one makes a new heap number, in all of
+  // the maths (render/mirror.js has the other case). A size of nothing until the real one
+  // keeps them plain numbers; the buffer is made on the first frame as before.
+  const screenDepth = renderer.getCanvasTarget().depthTexture;
+  screenDepth.image.width = screenDepth.image.height = 0;
   renderer.setPixelRatio(1);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
