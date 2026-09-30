@@ -86,6 +86,10 @@ export const SCENES = [
   // The same with the alevin swimming round in a wide circle through the redd, the larvae
   // after it: the gravel is laid anew round it all the time, and the crawlers' ground with it.
   { name: "perf-kiesbett-schwimmt", stage: "alevin", at: null, season: "spring", hour: 11, weapon: "piu", fire: false, swim: 0.02, seconds: 6, perf: [3, 6], pictures: [5.9], spawn: [["dragonflyLarva", 5, -2], ["dragonflyLarva", 5.5, 1.5], ["dragonflyLarva", 4.5, 3], ["dragonflyLarva", 6, -3.5], ["dragonflyLarva", 3.5, -4.5], ["dragonflyLarva", -4, 3], ["dragonflyLarva", -5, -2], ["dragonflyLarva", 2, 5], ["beetleLarva", 6.5, 0], ["beetleLarva", -3, -5], ["beetleLarva", 4, -1], ["beetleLarva", -6, 1]] },
+  // What the enemies' rounds cost: four trout with submachine guns and two bullheads with
+  // shotguns open up on a parr that shrugs the hits off (`endure`), so they keep firing and
+  // the rounds that miss sink and lie on the bed (the rounds' own step is timed as well).
+  { name: "perf-beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "piu", fire: false, endure: true, seconds: 10, perf: [5, 9.5], pictures: [4], spawn: [["trout", 8, -1], ["trout", 9, 0], ["trout", 8, 1], ["trout", 10, 0.5], ["bullhead", 4, 0.8], ["bullhead", 4, -0.8]] },
   // The effects' own looks, held still in front of the eye: smoke of each kind, and a blast.
   { name: "fx-probe", stage: "parr", at: 2500, season: "summer", hour: 15, probe: true },
   // The numbers: one target that cannot sink, held still at a distance (in fish lengths),
@@ -860,10 +864,19 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   // and with each of combat's pictures hidden in turn; and what combat's step and frame
   // cost the processor, on average.
   const perf = [...(scene.perf ?? [])];
-  const timing = { step: 0, steps: 0, frame: 0, frames: 0 };
+  const timing = { step: 0, steps: 0, frame: 0, frames: 0, hostile: 0, rounds: 0 };
   if (perf.length) {
     const step = combat.step,
       frame = combat.frame;
+    // (The enemies' rounds on their own too, with how many there were.)
+    const hostile = combat.hostile,
+      update = hostile.update;
+    hostile.update = (dt, players, hooks) => {
+      const t0 = performance.now();
+      update(dt, players, hooks);
+      timing.hostile += performance.now() - t0;
+      timing.rounds += hostile.live.length;
+    };
     combat.step = (...args) => {
       const t0 = performance.now();
       step(...args);
@@ -900,8 +913,8 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       }
       parts[key] = +median(differences).toFixed(2);
     }
-    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3) });
-    timing.step = timing.steps = timing.frame = timing.frames = 0;
+    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3), hostileMs: +(timing.hostile / Math.max(1, timing.steps)).toFixed(4), rounds: Math.round(timing.rounds / Math.max(1, timing.steps)) });
+    timing.step = timing.steps = timing.frame = timing.frames = timing.hostile = timing.rounds = 0;
   };
   if (perf.length) await measure("before");
   let steps = 0;
@@ -910,6 +923,8 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       hold();
       face();
       follow();
+      // (A fish that shrugs the enemies' hits off, so that they keep firing.)
+      if (scene.endure) fish.energy = 1;
       if (scene.auto) {
         combat.autoFire(true);
         return;

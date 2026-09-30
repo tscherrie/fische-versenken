@@ -218,21 +218,61 @@ export function createCombat(game) {
     if (deaths.length > 16) deaths.shift();
   }
   // An enemy's gun goes off: its pellets fly from its muzzle toward where the salmon will be.
+  // (One description of a round, filled in for each shot and handed to hostile.fire for every
+  // pellet, which copies it into a record of its pool: nothing is made per shot. Its tint is
+  // one array for all the rounds, only ever read.)
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
+  const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
   function enemyShoots(e, dir, gun) {
     if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
+    round.source = e;
+    round.weapon = gun.id;
+    round.cause = gun.cause;
+    round.damage = gun.damage;
+    round.drag = gun.drag;
+    round.radius = 0.03 + 0.01 * e.size;
+    round.size = 0.05 + 0.02 * e.size;
+    round.s = e.river.s;
     for (let i = 0; i < gun.pellets; i++) {
       pellet.copy(dir);
       pellet.x += (random() - 0.5) * 2 * gun.spread;
       pellet.y += (random() - 0.5) * 2 * gun.spread;
       pellet.z += (random() - 0.5) * 2 * gun.spread;
       pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
-      hostile.fire({ source: e, weapon: gun.id, cause: gun.cause, position: enemyMuzzle.clone(), velocity: pellet.clone(), damage: gun.damage, drag: gun.drag, radius: 0.03 + 0.01 * e.size, life: 12, size: 0.05 + 0.02 * e.size, tint: [7, 3.2, 0.7], stretch: 3.5, s: e.river.s });
+      hostile.fire(round);
     }
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, { size: 0.12 + 0.05 * e.size, life: 0.08, r: 5, g: 2.6, b: 0.6 });
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
   }
+  // The salmon as the splatter sees it when an enemy's round strikes it (gore.hit takes an
+  // enemy), and the round's direction handed in beside it. Each hit of a step gets a record
+  // of its own, as when one was made for every hit: gore.hit adds a step's hits up by the
+  // record they come with, so one shared record would turn several rounds into one splash.
+  // The records are made the first time a step needs that many and are used again from the
+  // next step on (gore lets go of them at the end of every step, in gore.update).
+  const struckBodies = [];
+  let struckUsed = 0;
+  const struckAlong = new THREE.Vector3();
+  function struckBody(f) {
+    const body = (struckBodies[struckUsed++] ??= { position: f.position, heading: f.heading, size: f.length, kind: "salmon", dead: false, spec: {} });
+    body.position = f.position;
+    body.heading = f.heading;
+    body.size = f.length;
+    return body;
+  }
+  // What the enemies' rounds do when they strike, made once rather than every step; the
+  // step's outcome is handed to them in `stepOutcome` just before hostile.update.
+  let stepOutcome = null;
+  const hostileHooks = {
+    onPlayer(shot, player) {
+      hurt(player, shot.source, stepOutcome, shot);
+      gore.hit?.(struckBody(player.fish), shot.position, struckAlong.copy(shot.velocity).normalize(), shot.weapon);
+    },
+    onGround(shot) {
+      fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
+    },
+  };
 
   // What a sunk enemy gives back: a little growth for every kill, so fighting pays as well as
   // hiding (plan: "Kampf nährt das Leben"); a fasting spawner gets strength instead; in the
@@ -349,15 +389,10 @@ export function createCombat(game) {
     enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
-    hostile.update(dt, players, {
-      onPlayer(shot, player) {
-        hurt(player, shot.source, outcome, shot);
-        gore.hit?.({ position: player.fish.position, heading: player.fish.heading, size: player.fish.length, kind: "salmon", dead: false, spec: {} }, shot.position, shot.velocity.clone().normalize(), shot.weapon);
-      },
-      onGround(shot) {
-        fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
-      },
-    });
+    // (The splatter's records for the salmon are free again: gore.update let go of them.)
+    stepOutcome = outcome;
+    struckUsed = 0;
+    hostile.update(dt, players, hostileHooks);
     signals.whiffs(outcome);
     if (projectiles.live.length) terrain.collidersNear(fish.position.x, fish.position.z, WEAPONS.piu.reach(L) + 4, stones);
     else stones.length = 0;
