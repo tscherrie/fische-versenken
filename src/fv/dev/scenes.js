@@ -92,6 +92,10 @@ export const SCENES = [
   { name: "w-raketen", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "raketen", seconds: 5, pictures: [0.5, 1.2, 3.5], spawn: [["trout", 9, -1], ["trout", 10, 0], ["trout", 9, 1.2], ["troutParr", 7, 0.3]] },
   { name: "w-minen-allein", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "minen", seconds: 8, pictures: [2, 6], spawn: [["troutParr", 4, -1], ["troutParr", 4.5, 0], ["troutParr", 4, 1], ["troutParr", 5, -0.5], ["troutParr", 5, 0.5]] },
   { name: "w-minen", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "minen", seconds: 8, pictures: [1, 4, 7], spawn: [["troutParr", 4, -1], ["troutParr", 4.5, 0], ["troutParr", 4, 1], ["troutParr", 5, -0.5], ["troutParr", 5, 0.5]] },
+  // The grilse's pair: the anti-materiel rifle held to steady and let go, through a line
+  // of fish; and the arc thrower (the katana on the back) jumping through a shoal.
+  { name: "w-panzer", stage: "grilse", at: 11790, season: "spring", hour: 12, weapon: "panzerbuechse", seconds: 6, pulse: [0.9, 0.4], pictures: [1, 2.3, 4], spawn: [["trout", 8, 0], ["trout", 10, 0.1], ["trout", 12, -0.1], ["troutParr", 9, 0]] },
+  { name: "w-blitz", stage: "grilse", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "blitz", seconds: 5, pictures: [0.5, 1.5, 3.5], spawn: [["minnow", 3, -1], ["minnow", 3.5, -0.4], ["minnow", 3, 0.3], ["minnow", 3.6, 0.9], ["minnow", 4, -0.8], ["minnow", 4.2, 0], ["minnow", 4, 0.7], ["trout", 5, 0]] },
   { name: "w-flammen-seite", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3, side: [1.0, 0.5, 1.0, 1.8], pictures: [0.4, 1.2, 2.6], spawn: [["troutParr", 2.2, -0.3], ["troutParr", 2.5, 0.2], ["troutParr", 2.8, 0]] },
   // The phone's auto-fire (on a computer): the gun fires only while the aim has an enemy in
   // reach, the katana only with one in front within its reach.
@@ -830,6 +834,8 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   const dt = 1 / 30;
   const trigger = () => {
     if (scene.fire === false) return false;
+    // (`pulse` [held, let go] seconds: for a weapon that fires when the trigger is let go.)
+    if (scene.pulse) return t % (scene.pulse[0] + scene.pulse[1]) < scene.pulse[0];
     // (Letting them come close first: only with an enemy within `range`, spawn units.)
     if (scene.range) {
       const near = nearest();

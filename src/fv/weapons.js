@@ -25,6 +25,10 @@
 //            trail, bursting on what it strikes
 //   mines    from the belly: a horned mine dropped behind, hanging where it stops; armed, it
 //            goes off when something swims into it, and a blast sets off the mines near it
+//   charge   held to steady the aim (the spread closes), let go to fire one heavy round that
+//            goes through a line of fish (the anti-materiel rifle)
+//   arc      held: every moment an arc to the nearest enemy ahead, jumping on from it to the
+//            next ones near, each jump a little weaker (the arc thrower)
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -318,6 +322,56 @@ export const WEAPONS = {
     tint: [1, 1, 1],
     flash: [9, 7, 5],
   },
+  panzerbuechse: {
+    title: "Panzerbüchse .50",
+    mode: "charge",
+    place: "back",
+    mount: "middle",
+    muzzle: { x: 0.5, bore: 0.02 },
+    // Held, it steadies over `steady` seconds: the spread closes from `spread` to nothing.
+    steady: 0.8,
+    spread: 0.05,
+    shells: 5,
+    interval: 0.5,
+    reload: 2.6,
+    idleReload: 4,
+    damage: 90,
+    // Through up to `pierce` fish, keeping this much of its force at each.
+    pierce: 6,
+    keep: 0.85,
+    speed: (L) => 60 + 20 * L,
+    reach: (L) => 18 + 8 * L,
+    recoil: 0.7,
+    size: (L) => 0.03 + 0.025 * L,
+    radius: (L) => 0.03 + 0.03 * L,
+    tint: [6, 4.2, 2.4],
+    stretch: 12,
+    flash: [10, 6, 2.5],
+  },
+  blitz: {
+    title: "Lichtbogenwerfer",
+    mode: "arc",
+    place: "belly",
+    mount: "belly",
+    // An arc every `interval` while held: to the nearest enemy within `reach` and `cone` rad
+    // of the aim, then on to up to `jumps` more, each within `hop` L of the last, each jump
+    // doing `fade` of the one before.
+    interval: 0.12,
+    damage: 5,
+    reach: (L) => 6 + 3 * L,
+    cone: 0.6,
+    jumps: 5,
+    hop: 2.5,
+    fade: 0.8,
+    // What it does to each: a twitch (s).
+    twitch: 0.25,
+    heat: 0.03,
+    cool: 0.5,
+    rest: 0.3,
+    unlock: 0.35,
+    tint: [2.4, 3.2, 6],
+    core: [5, 5.5, 7],
+  },
 };
 
 // What a kill does to the fish (the user's rule): the big guns burst it into many pieces;
@@ -539,6 +593,7 @@ const FLAME_BILLOW_COOL = [0.4, 0.05, 0.01];
 const FIRE_INFO = Object.freeze({ mode: "flame", fire: true });
 const BURN_INFO = Object.freeze({ mode: "flame", fire: true, burning: true });
 const BEAM_INFO = Object.freeze({ mode: "beam", burn: true });
+const ARC_INFO = Object.freeze({ mode: "arc", burn: true });
 
 // ---- The firing: every verb, and what the shots do when they land.
 //
@@ -1034,6 +1089,152 @@ export function createFiring(ctx) {
       locate(p.position.x, p.position.z, p.river.s, where);
       if (p.position.y > level(where.s) - 0.3 * L) seekDir.y = Math.min(seekDir.y, -0.05);
       p.velocity.copy(seekDir.normalize()).multiplyScalar(speed);
+    }
+  }
+
+  // charge: the rifle held, a step of it. Held (and loaded), it steadies; let go, it fires
+  // if it had been held a moment -- the steadier, the straighter.
+  function chargeStep(player, place, w, id, dt, on, able) {
+    const a = player.arsenal;
+    const st = a.state[id];
+    const ready = a.ammo[id] > 0 && !(a.reloading[id] > 0) && a.cooldown[place] <= 0;
+    if (on && ready) {
+      st.charge = Math.min(1, (st.charge ?? 0) + dt / w.steady);
+      st.held = true;
+      a.fired[id] = 0;
+      return;
+    }
+    if (st.held && able && ready) {
+      slug(player, place, w, id, st.charge ?? 0);
+      a.ammo[id]--;
+      a.cooldown[place] = w.interval;
+      a.fired[id] = 0;
+    }
+    st.held = false;
+    st.charge = 0;
+  }
+  function slug(player, place, w, id, steady) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    scatter(aimDir, w.spread * (1 - steady), tmp);
+    const speed = w.speed(L);
+    flight.copy(tmp).multiplyScalar(speed);
+    const reach = w.reach(L);
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = w.damage * damageScale(L);
+    p.radius = w.radius(L);
+    p.water = true;
+    p.drag = (0.75 * speed) / reach;
+    p.speed0 = speed;
+    p.life = (3 * reach) / speed + 6;
+    p.pierce = w.pierce;
+    p.pierceKeep = w.keep;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = w.stretch;
+    p.shooter = L;
+    p.sky = SKY;
+    flash(muzzle, aimDir, L, w.flash, 1.6, f.river.s);
+    // The channel it leaves: a line of bubbles along the first stretch of its way.
+    for (let i = 1; i <= 10; i++) {
+      tmp.copy(muzzle).addScaledVector(aimDir, (i / 10) * reach * 0.6);
+      fx.fizz(tmp.x, tmp.y, tmp.z, { count: 1, size: 0.01 * L + 0.006, spread: 0.04 * L, rise: 0.7, random: look });
+    }
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.rifle) sfx.rifle(L);
+      else sfx.flinte(L * 1.5);
+    }
+  }
+
+  // arc: one discharge. To the nearest enemy ahead, then from each to the nearest one not
+  // yet struck within a hop, weaker at each; each struck twitches. The arcs are kept a
+  // moment for the picture (their jagged points worked out here, from the look stream).
+  const ARC_POINTS = 48;
+  const arcs = Array.from({ length: 8 }, () => ({ age: 1, n: 0, points: new Float32Array(ARC_POINTS * 3), tint: null, core: null, width: 0 }));
+  let arcNext = 0;
+  const struck = [];
+  function arc(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    aimFrom(muzzle, L, aimDir);
+    const reach = w.reach(L);
+    const cos = Math.cos(w.cone);
+    struck.length = 0;
+    let from = muzzle;
+    let best = null;
+    let bestD = reach;
+    for (const e of enemies.list) {
+      if (e.dead) continue;
+      tmp.subVectors(e.position, muzzle);
+      const d = tmp.length();
+      if (d < bestD && tmp.dot(aimDir) > cos * d) {
+        bestD = d;
+        best = e;
+      }
+    }
+    const rec = arcs[arcNext++ % arcs.length];
+    rec.age = 0;
+    rec.n = 0;
+    rec.tint = w.tint;
+    rec.core = w.core;
+    rec.width = 0.02 + 0.02 * L;
+    const put = (x, y, z) => {
+      if (rec.n >= ARC_POINTS) return;
+      rec.points[rec.n * 3] = x;
+      rec.points[rec.n * 3 + 1] = y;
+      rec.points[rec.n * 3 + 2] = z;
+      rec.n++;
+    };
+    // (A zigzag from a to b: six pieces, each point knocked aside a little.)
+    const zigzag = (a, b) => {
+      const d = a.distanceTo(b);
+      for (let k = 1; k <= 6; k++) {
+        tmp.lerpVectors(a, b, k / 6);
+        if (k < 6) {
+          sphere(tmp2, look);
+          tmp.addScaledVector(tmp2, d * 0.08);
+        }
+        put(tmp.x, tmp.y, tmp.z);
+      }
+    };
+    put(muzzle.x, muzzle.y, muzzle.z);
+    const dS = damageScale(L);
+    let amount = w.damage * dS;
+    if (!best) {
+      // Nothing near: it crackles out into the water a short way.
+      tmp2.copy(muzzle).addScaledVector(aimDir, reach * 0.35);
+      zigzag(muzzle, tmp2);
+    }
+    while (best && struck.length <= w.jumps) {
+      struck.push(best);
+      zigzag(from, best.position);
+      if (!damage(player.id, best, amount, aimDir, best.position, id, gorier(best, 0.2), ARC_INFO)) stun(best, w.twitch, false, L);
+      fx.spark(best.position.x, best.position.y, best.position.z, { size: 0.1 + 0.08 * best.size, life: 0.08, r: 3, g: 4, b: 8 });
+      amount *= w.fade;
+      from = best.position;
+      let next = null;
+      let nextD = w.hop * L;
+      for (const e of enemies.list) {
+        if (e.dead || struck.includes(e)) continue;
+        const d = e.position.distanceTo(from);
+        if (d < nextD) {
+          nextD = d;
+          next = e;
+        }
+      }
+      best = next;
+    }
+    fx.fizz(muzzle.x, muzzle.y, muzzle.z, { count: 2, size: 0.008 + 0.006 * L, spread: 0.05 * L, rise: 0.8, random: look });
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.arc) sfx.arc(L, struck.length);
+      else sfx.piu(L * 2, 0);
     }
   }
 
@@ -1725,6 +1926,12 @@ export function createFiring(ctx) {
         spinStep(player, place, w, id, dt, on);
         continue;
       }
+      if (w.mode === "charge") {
+        // (Letting go fires even though the trigger is no longer held: only the fish must
+        // still be able to fight.)
+        chargeStep(player, place, w, id, dt, on, !player.down && !a.locked[id]);
+        continue;
+      }
       if (w.beam && beamStep(player, place, w, id, dt, on)) {
         beaming = true;
         continue;
@@ -1746,9 +1953,10 @@ export function createFiring(ctx) {
         else if (w.mode === "torpedo") launch(player, place, w, id);
         else if (w.mode === "rockets") rocket(player, place, w, id);
         else if (w.mode === "mines") mine(player, place, w, id);
+        else if (w.mode === "arc") arc(player, place, w, id);
         a.fired[id] = 0;
         if (w.shells) a.ammo[id]--;
-        if (w.mode === "bolt" && w.heat) {
+        if ((w.mode === "bolt" || w.mode === "arc") && w.heat) {
           a.heat[id] += w.heat;
           if (a.heat[id] >= 1) {
             a.locked[id] = true;
@@ -1799,6 +2007,7 @@ export function createFiring(ctx) {
       if (!on && e.rolled <= 0) stuns.delete(e);
     }
     burn(dt);
+    for (const rec of arcs) rec.age += dt;
     home(dt);
     rockets(dt);
     mines();
@@ -1996,6 +2205,21 @@ export function createFiring(ctx) {
       tmp.copy(v).normalize();
       fx.add(p.position.x - tmp.x * 0.05 * k, p.position.y - tmp.y * 0.05 * k, p.position.z - tmp.z * 0.05 * k, 0.12 * k, 6, 3, 1, 3, v.x, v.y, v.z);
     }
+    // The arcs: jagged chains of bright streaks, gone in a few frames.
+    if (camera) {
+      camera.getWorldDirection(forward);
+      for (const rec of arcs) {
+        if (rec.age > 0.09 || rec.n < 2) continue;
+        const fade = 1 - rec.age / 0.09;
+        for (let i = 1; i < rec.n; i++) {
+          const o = i * 3,
+            q = (i - 1) * 3;
+          tmp.set(rec.points[q], rec.points[q + 1], rec.points[q + 2]);
+          tmp2.set(rec.points[o], rec.points[o + 1], rec.points[o + 2]);
+          chain(tmp, tmp2, rec.width, rec.tint, rec.core, 1.4 * fade, 3, tall);
+        }
+      }
+    }
     // The lasers' beams.
     if (camera && beams.size) {
       camera.getWorldDirection(forward);
@@ -2126,6 +2350,30 @@ export function createFiring(ctx) {
       const spot = Math.max(width * 3, 0.012 * tall * eye.distanceTo(b.to));
       fx.add(b.to.x, b.to.y, b.to.z, spot, r * 0.5, g * 0.5, bl * 0.5, 1);
       fx.add(b.to.x, b.to.y, b.to.z, spot * 0.4, cr * 0.8, cg * 0.8, cb * 0.8, 1);
+    }
+  }
+
+  // A straight piece from a to b drawn as `n` streaks laid along it as the eye sees it
+  // (the arcs' pieces; see drawBeam for the reasoning).
+  const piece = new THREE.Vector3();
+  const pieceDir = new THREE.Vector3();
+  function chain(a, b, width, tint, core, k, n, tall) {
+    pieceDir.subVectors(b, a);
+    const length = pieceDir.length();
+    if (length < 1e-4) return;
+    pieceDir.divideScalar(length);
+    const facing = pieceDir.dot(forward);
+    const seg = length / n;
+    for (let i = 0; i < n; i++) {
+      piece.copy(a).addScaledVector(pieceDir, seg * (i + 0.5));
+      seen.subVectors(piece, eye);
+      const depth = seen.dot(forward);
+      if (depth < 0.05) continue;
+      across.copy(pieceDir).multiplyScalar(depth).addScaledVector(seen, -facing);
+      const span = (seg * across.length()) / depth;
+      const size = Math.max(width, 0.005 * tall * depth);
+      fx.add(piece.x, piece.y, piece.z, size, tint[0] * k, tint[1] * k, tint[2] * k, Math.max(1, span / (0.3 * size)), across.x, across.y, across.z);
+      fx.add(piece.x, piece.y, piece.z, size * 0.45, core[0] * k, core[1] * k, core[2] * k, Math.max(1, span / (0.14 * size)), across.x, across.y, across.z);
     }
   }
 
