@@ -96,7 +96,7 @@ export function createCloudMaterial(geometry) {
     // and no two puffs are quite the same red. Smoke is a sooty grey, ichor a sickly
     // yellow-green, goo nearly clear, silt the grey-brown of the bed.
     const tint = seed.mul(0.4).add(0.8);
-    const blood = mix(vec3(0.075, 0.022, 0.013), vec3(0.13, 0.007, 0.005), fresh);
+    const blood = mix(vec3(0.085, 0.024, 0.014), vec3(0.17, 0.009, 0.006), fresh);
     const smoke = mix(vec3(0.07, 0.066, 0.06), vec3(0.03, 0.028, 0.026), fresh);
     const ichor = mix(vec3(0.16, 0.17, 0.035), vec3(0.3, 0.36, 0.03), fresh);
     const goo = vec3(0.34, 0.42, 0.44);

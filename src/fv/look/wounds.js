@@ -7,8 +7,8 @@
 // cooked pale, and no streak: it cauterises. A blade leaves a long gash across the body. The
 // flamethrower chars the skin where the flame licked it -- a black crust, cracked open to
 // the cooked flesh beneath, dull, with no shine left, the eye cooked milky -- and a fish it
-// kills floats up charred; the arc thrower browns the skin in feathered patches crossed by
-// fine dark lines. The salmon shows its own hurt too, but little
+// kills floats up charred; the arc thrower dulls the skin in patches and burns branching
+// lines into it, as lightning does. The salmon shows its own hurt too, but little
 // of it: a few small wounds that close again as it gets its strength back, so a healthy
 // fish looks as it always did.
 //
@@ -56,11 +56,9 @@ const UP = new THREE.Vector3(0, 1, 0);
 // 1 at `from`, 0 at `to` (from < to), smooth in between.
 const fade = (x, from, to) => smoothstep(from, to, x).oneMinus();
 
-// ---- The skin's own noise: four patterns in one small tileable texture, made once. Red and
+// ---- The skin's own noise: three patterns in one small tileable texture, made once. Red and
 // green: soft fractal noise (the ragged edge of a wound, where the char lies); blue: how far
-// to the nearest crack between plates of uneven size and shape (a burnt crust split open);
-// alpha: how far to the nearest of a tangle of thin wandering lines (the arc's scorch), in
-// texels, so the lines come out the same width everywhere.
+// to the nearest crack between plates of uneven size and shape (a burnt crust split open).
 let noiseTexture = null;
 export function woundNoise(size = 128) {
   if (noiseTexture) return noiseTexture;
@@ -85,13 +83,11 @@ export function woundNoise(size = 128) {
   const octaves = (ns) => ns.map((n, i) => ({ n, w: [0.5, 0.27, 0.15, 0.08][i], values: lattice(n) }));
   const soft = fbm(octaves([4, 9, 17, 33]));
   const other = fbm(octaves([5, 11, 21, 41]));
-  const ridges = fbm(octaves([4, 9, 19, 37]));
   // The plates of the crust: jittered points on an 11 x 11 grid (wrapped round), looked up
   // through a warp so the plates are uneven and their edges wander.
   const cells = 11;
   const points = Array.from({ length: cells * cells }, () => [next(), next()]);
   const data = new Uint8Array(size * size * 4);
-  const texel = 1 / size;
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++) {
       const u = x / size + (other(x / size, y / size) - 0.5) * 0.12,
@@ -115,14 +111,7 @@ export function woundNoise(size = 128) {
       data[o] = Math.round(Math.min(1, Math.max(0, soft(u, v))) * 255);
       data[o + 1] = Math.round(Math.min(1, Math.max(0, other(u, v))) * 255);
       data[o + 2] = Math.round(Math.min(1, (f2 - f1) * 2.2) * 255);
-      // (The distance to where the ridged noise crosses its middle: its difference from the
-      // middle over how fast it changes.)
-      const a = x / size,
-        b = y / size;
-      const r = ridges(a, b) - 0.5;
-      const gx = (ridges(a + texel, b) - ridges(a - texel, b)) / 2,
-        gy = (ridges(a, b + texel) - ridges(a, b - texel)) / 2;
-      data[o + 3] = Math.round(Math.min(1, Math.abs(r) / Math.max(1e-5, Math.hypot(gx, gy)) / 6) * 255);
+      data[o + 3] = 255;
     }
   const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -134,12 +123,73 @@ export function woundNoise(size = 128) {
   return texture;
 }
 
+// ---- The arc's burns, made once: the current runs over wet skin in branching paths, like a
+// fern or a river seen from the air (the figures lightning leaves on skin), not in closed
+// loops. A few points in the tile each send out main branches that wander, fork into
+// thinner twigs and taper out; red: the burnt line itself, green: the skin cooked round it.
+// Drawn wrapped round, so the tile repeats without a seam.
+let arcTexture = null;
+export function arcBurns(size = 256) {
+  if (arcTexture) return arcTexture;
+  let seed = 51749;
+  const next = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const line = new Float32Array(size * size),
+    halo = new Float32Array(size * size);
+  // A soft disc of radius r (texels) at (x, y), kept as the most of any there.
+  function stamp(field, x, y, r, strength) {
+    const reach = Math.ceil(r + 1);
+    const fx = x - Math.floor(x),
+      fy = y - Math.floor(y);
+    for (let j = -reach; j <= reach; j++)
+      for (let i = -reach; i <= reach; i++) {
+        const d = Math.hypot(i - fx, j - fy);
+        const v = strength * Math.min(1, Math.max(0, r + 0.5 - d));
+        if (v <= 0) continue;
+        const k = ((((Math.floor(y) + j) % size) + size) % size) * size + ((((Math.floor(x) + i) % size) + size) % size);
+        if (v > field[k]) field[k] = v;
+      }
+  }
+  function branch(x, y, angle, length, width, depth) {
+    for (let s = 0; s < length; s++) {
+      const w = width * (1 - (0.7 * s) / length);
+      stamp(line, x, y, w * 0.5, 1);
+      stamp(halo, x, y, w * 2.2 + 2, 0.55 + 0.45 * (1 - s / length));
+      angle += (next() - 0.5) * 0.7;
+      x += Math.cos(angle);
+      y += Math.sin(angle);
+      // Forks: thinner, off to one side, shorter the deeper they are.
+      if (depth < 4 && next() < 0.07) branch(x, y, angle + (next() < 0.5 ? -1 : 1) * (0.35 + 0.6 * next()), (length - s) * (0.45 + 0.3 * next()), w * 0.62, depth + 1);
+    }
+  }
+  for (let n = 0; n < 5; n++) {
+    const x = next() * size,
+      y = next() * size;
+    const arms = 3 + Math.floor(next() * 3);
+    for (let a = 0; a < arms; a++) branch(x, y, next() * Math.PI * 2, 45 + 50 * next(), 2.4 + 1.2 * next(), 0);
+  }
+  const data = new Uint8Array(size * size * 4);
+  for (let k = 0; k < size * size; k++) {
+    data[k * 4] = Math.round(line[k] * 255);
+    data[k * 4 + 1] = Math.round(halo[k] * 255);
+    data[k * 4 + 3] = 255;
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  arcTexture = texture;
+  return texture;
+}
+
 // ---- The shader: the marks laid over a fish's skin. `slot` is a float node, the fish's
 // slot in `data` (below 0: no marks); `scale`, how big its wounds are drawn (the salmon's are
 // kept small).
 function markSkin(material, slot, data, { scale = 1 } = {}) {
   const base = material.colorNode;
   const map = woundNoise();
+  const arcs = arcBurns();
   // What the base shader works out and its lighting reads (anatomy.js): shared by name.
   const vSkinPoint = varyingProperty("vec3", "vSkinPoint");
   const gMetal = property("float", "fishMetal");
@@ -148,6 +198,7 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
   const gEnv = property("float", "fishEnv");
   const gCoat = property("float", "fishCoat");
   const gCoatEnv = property("float", "fishCoatEnv");
+  const gThrough = property("vec3", "fishThrough");
   const fishUV = uv();
   // (Which part of the fish: 7 is the eye.)
   const part = attribute("aPart", "vec2").x;
@@ -190,12 +241,14 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
       theta.assign(atan(p.z, p.y));
       const near = vec4(0).toVar(),
         fine = vec4(0).toVar(),
-        wide = vec4(0).toVar();
+        wide = vec4(0).toVar(),
+        arc = vec4(0).toVar();
       near.assign(texture(map, at).grad(ddx, ddy));
       // (Finer, for the torn edges: a few ragged lobes round each hole, and where its rim
       // shows raw flesh and where clotted blood.)
       fine.assign(texture(map, at.mul(4.3).add(vec2(0.21, 0.63))).grad(ddx.mul(4.3), ddy.mul(4.3)));
       wide.assign(texture(map, at.mul(0.3).add(vec2(0.37, 0.11))).grad(ddx.mul(0.3), ddy.mul(0.3)));
+      arc.assign(texture(arcs, at.mul(0.9).add(vec2(0.13, 0.58))).grad(ddx.mul(0.9), ddy.mul(0.9)));
       const ragged = float(0).toVar(),
         tufts = float(0).toVar();
       ragged.assign(fine.r.sub(0.5).mul(3.2).clamp(-1, 1));
@@ -262,38 +315,56 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
 
       // Round a wound the skin is smeared with blood and has lost its shine; behind it runs
       // the streak; in it the raw flesh and the clots, and in the middle the dark of the hole
-      // itself. Round a laser's pinhole the skin is cooked pale, its rim black.
-      const meat = mix(vec3(0.34, 0.05, 0.04), vec3(0.6, 0.26, 0.2), fine.b.mul(1.4).sub(0.3).clamp(0, 1));
+      // itself. Round a laser's pinhole the skin is cooked pale, its rim black. The flesh is
+      // a deep wet red, lighter only in soft patches: torn muscle, not a pale net (a mottle
+      // of light and dark cells read as a skin disease, not as a wound).
+      const meat = mix(vec3(0.19, 0.018, 0.014), vec3(0.4, 0.06, 0.045), smoothstep(0.35, 0.7, fine.r));
       skin.assign(mix(skin, skin.mul(vec3(0.5, 0.26, 0.24)).add(vec3(0.05, 0.004, 0.003)), smear.mul(0.75)));
       skin.assign(mix(skin, vec3(0.2, 0.014, 0.01), streak.mul(0.75)));
       skin.assign(mix(skin, skin.mul(0.45).add(vec3(0.22, 0.2, 0.17)), cooked.mul(0.7)));
       skin.assign(mix(skin, vec3(0.1, 0.009, 0.007), clot));
       skin.assign(mix(skin, meat, flesh));
       skin.assign(mix(skin, vec3(0.025, 0.016, 0.011), crust));
-      skin.assign(mix(skin, vec3(0.02, 0.002, 0.0015), cavity));
+      // (The hole goes dark through a rim of dark red: it has depth, it is not a black dot.)
+      skin.assign(mix(skin, vec3(0.07, 0.006, 0.004), smoothstep(0.2, 0.9, cavity).mul(0.8)));
+      skin.assign(mix(skin, vec3(0.012, 0.0015, 0.001), smoothstep(0.75, 1, cavity)));
 
       // Char: a black crust, patchy at first and over the whole fish when it has burnt a
-      // while, split into uneven plates with the pale cooked flesh showing in the cracks,
-      // grey ash on the plates; the eye cooked milky. Singe: the skin browned in patches.
-      const charred = smoothstep(burnt.mul(-1.25).add(1.02), burnt.mul(-1.25).add(1.2), wide.r).mul(smoothstep(0, 0.08, burnt)).mul(skinOnly);
-      const crack = fade(near.b, 0.05, 0.16).mul(smoothstep(0.35, 0.55, fine.r));
-      const crustColor = mix(vec3(0.018, 0.015, 0.013), vec3(0.07, 0.062, 0.055), near.r.mul(2.2).sub(0.8).clamp(0, 1));
+      // while, blistered, dusted with grey ash, split into uneven plates with the cooked
+      // flesh showing dull brown-red in the cracks (under water nothing glows; pale cracks
+      // on black read as marble); the eye cooked milky.
+      // (How much of the skin: a little at first, most of it after a few seconds in the
+      // flame, all of it when the flame has killed it.)
+      const reach = mix(float(0.78), float(0.08), burnt.pow(2.5));
+      const charred = smoothstep(reach, reach.add(0.16), wide.r).mul(smoothstep(0, 0.08, burnt)).mul(skinOnly);
+      const crack = fade(near.b, 0.05, 0.15).mul(smoothstep(0.3, 0.5, fine.r));
+      const crustColor = mix(vec3(0.014, 0.012, 0.011), vec3(0.05, 0.043, 0.037), near.r.mul(2.2).sub(0.8).clamp(0, 1));
+      const ash = smoothstep(0.55, 0.75, fine.g.mul(0.6).add(near.g.mul(0.4))).mul(0.55);
+      // (Round the char the skin is browned and has lost its shine: the heat reached
+      // further than the flame.)
+      const browned = smoothstep(reach.sub(0.14), reach.add(0.02), wide.r).mul(smoothstep(0, 0.08, burnt)).mul(skinOnly);
+      skin.assign(mix(skin, skin.mul(vec3(0.42, 0.32, 0.24)).add(vec3(0.02, 0.012, 0.006)), browned.mul(0.8)));
       skin.assign(mix(skin, crustColor, charred));
-      skin.assign(mix(skin, vec3(0.3, 0.22, 0.15), crack.mul(charred).mul(0.8)));
+      skin.assign(mix(skin, vec3(0.13, 0.125, 0.12), ash.mul(charred)));
+      skin.assign(mix(skin, vec3(0.2, 0.07, 0.035), crack.mul(charred).mul(0.85)));
       skin.assign(mix(skin, vec3(0.2, 0.19, 0.18), eye.mul(smoothstep(0.35, 0.8, burnt)).mul(0.75)));
+      // Singe: where the arcs ran over the skin it is dulled in feathered patches, and across
+      // them run the burns of the current itself (arcBurns): branching dark brown lines,
+      // the skin cooked pale along them, broken where the noise says the current jumped.
       const scorched = smoothstep(singed.mul(-1.2).add(1.02), singed.mul(-1.2).add(1.18), wide.g).mul(smoothstep(0, 0.06, singed)).mul(skinOnly);
-      // (Scorched brown in feathered patches where the arcs struck, darkest in their
-      // middles; the fine lines only there, broken, as the current ran out along the skin.)
-      const heart = smoothstep(0.35, 0.8, scorched.mul(wide.g.mul(2).sub(0.4)));
-      const lines = fade(near.a, fine.r.mul(0.08).add(0.02), fine.r.mul(0.1).add(0.08)).mul(smoothstep(0.35, 0.55, fine.g));
-      skin.assign(mix(skin, skin.mul(vec3(0.55, 0.42, 0.32)).add(vec3(0.01, 0.006, 0.003)), scorched.mul(fine.r.mul(0.5).add(0.45))));
-      skin.assign(mix(skin, vec3(0.04, 0.026, 0.016), heart.mul(0.7)));
-      skin.assign(mix(skin, vec3(0.025, 0.016, 0.01), lines.mul(heart).mul(0.85)));
+      const broken = smoothstep(0.3, 0.45, fine.g);
+      const burn = arc.r.mul(broken).mul(scorched);
+      const halo = arc.g.mul(broken.mul(0.5).add(0.5)).mul(scorched);
+      skin.assign(mix(skin, skin.mul(vec3(0.7, 0.62, 0.55)).add(vec3(0.02, 0.015, 0.01)), scorched.mul(0.6)));
+      skin.assign(mix(skin, skin.mul(0.45).add(vec3(0.17, 0.14, 0.11)), halo.mul(0.6)));
+      skin.assign(mix(skin, vec3(0.035, 0.018, 0.01), burn.mul(0.92)));
 
       // What that does to the light: no scales' mirror or colour film where the skin is torn
       // or burnt; wet and glossy where there is blood; dry and dull where there is crust.
+      // A charred body passes no light: the warm glow through the thin belly and the gills
+      // (the base fish's) goes with it.
       const opened = max(max(flesh, clot), max(cavity, crust));
-      const stripped = max(opened, max(smear.mul(0.7), max(charred, cooked.mul(0.6))));
+      const stripped = max(opened, max(smear.mul(0.7), max(max(charred, browned.mul(0.7)), max(cooked.mul(0.6), max(scorched.mul(0.4), halo)))));
       gMetal.assign(gMetal.mul(stripped.oneMinus()));
       gSilver.assign(gSilver.mul(stripped.oneMinus()));
       gEnv.assign(gEnv.mul(stripped.mul(-0.75).add(1)));
@@ -301,6 +372,7 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
       gRough.assign(mix(gRough, float(0.85), max(charred, crust)));
       gCoat.assign(gCoat.mul(charred.oneMinus()));
       gCoatEnv.assign(gCoatEnv.mul(charred.mul(-0.8).add(1)));
+      gThrough.assign(gThrough.mul(max(charred, burn).oneMinus()));
     });
     return skin;
   })();
@@ -422,8 +494,10 @@ export function createWounds() {
     const marks = marksOf(e);
     if (e.kind === "salmon") marks.fresh = true;
     const mode = info?.mode;
+    // (A fish still swimming keeps some patches of its own skin between the char: charred
+    // all over is how the flame leaves the ones it kills.)
     if (mode === "flame") {
-      marks.char = Math.min(1, marks.char + (info.burning ? 0.07 : 0.11));
+      marks.char = Math.min(0.8, marks.char + (info.burning ? 0.07 : 0.11));
       return;
     }
     if (mode === "arc") {

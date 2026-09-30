@@ -1726,6 +1726,10 @@ LOOK_SCENES.push(
   { name: "krater", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // The same with a bigger fish in the middle river (bigger blasts, no loose gravel drawn).
   { name: "krater-fluss", look: true, gore: true, run: "krater", stage: "smolt", at: 11790, season: "spring", hour: 12 },
+  // And on open gravel further down the brook, at noon.
+  { name: "krater-kies", look: true, gore: true, run: "krater", stage: "parr", at: 1800, season: "summer", hour: 12 },
+  // A badly hurt enemy swimming on with the thread of blood behind it.
+  { name: "blutspur", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // Blood in the water by day and at night.
   { name: "blut", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   { name: "blut-nacht", look: true, gore: true, run: "blut", stage: "parr", at: 2500, season: "summer", hour: 23 },

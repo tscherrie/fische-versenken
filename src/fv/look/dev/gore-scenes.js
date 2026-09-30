@@ -343,24 +343,37 @@ const SCENES = {
       p.y = course.bed(spot.s, spot.u) + over * k;
       return p;
     };
-    // (The fish is held where it is: the gravel is laid round it, and a blast would push it.)
+    // (The fish is held where it is and facing the marks: the gravel is laid round it, a
+    // blast would push it, and the game's camera behind it is to see them.)
+    // (Low over the bed, as a fish in a fight near the bottom is: from high in a deep pool
+    // the game's camera would look out over the marks.)
     const home = fish.position.clone();
+    {
+      course.locate(home.x, home.z, fish.river.s, spot);
+      home.y = Math.min(home.y, course.bed(spot.s, spot.u) + 0.5 * k);
+    }
+    const yaw = fish.yaw;
     const still = () => {
       fish.position.copy(home);
       fish.velocity?.set?.(0, 0, 0);
+      fish.yaw = yaw;
+      fish.yawRate = 0;
+      fish.heading.set(Math.cos(yaw), 0, Math.sin(yaw));
     };
     await salmon.run(0.2, still);
     const spots = [onBed(2.4, -0.7), onBed(3.8, 1.0), onBed(4.6, -0.5, 0.3), onBed(3.0, 2.2, 3)];
     const first = spots[0];
-    // From above the first, a little toward the fish; and low, from the fish's side.
-    // (Under the surface, whatever the depth.)
+    // From above and behind the first, far enough back to see a whole mark (a blast's radius
+    // is about a fish length and more), as high as the water lets the camera go; and low,
+    // from the fish's side.
     course.locate(first.x, first.z, fish.river.s, spot);
     const room = course.level(spot.s) - first.y - 0.3;
-    const above = first.clone().addScaledVector(ahead, -0.5 * k).add(new THREE.Vector3(0, Math.min(2.4 * k, room), 0));
-    const low = first.clone().addScaledVector(ahead, -1.4 * k).addScaledVector(left, 0.3 * k).add(new THREE.Vector3(0, 0.45 * k, 0));
-    const wide = fish.position.clone().addScaledVector(ahead, 0.4 * k).add(new THREE.Vector3(0, 1.4 * k, 0));
+    const above = first.clone().addScaledVector(ahead, -1.3 * k).add(new THREE.Vector3(0, Math.min(1.8 * k, room), 0));
+    const low = first.clone().addScaledVector(ahead, -2.6 * k).addScaledVector(left, 0.5 * k).add(new THREE.Vector3(0, Math.min(0.6 * k, room), 0));
     const middle = onBed(3.3, 0.4, 0);
-    await picture(ctx, "vorher", still, above, first);
+    const wide = fish.position.clone().addScaledVector(ahead, 0.4 * k);
+    wide.y = Math.min(middle.y + 5 * k, course.level(fish.river.s) - 0.15);
+    await picture(ctx, "vorher", still, wide, middle);
     // (What each blast costs the script, with its mark and without: the last is high over
     // the bed and leaves none.)
     const took = [];
@@ -374,8 +387,39 @@ const SCENES = {
     timed(spots[2], "raketen");
     timed(spots[3], "granate");
     record.push({ label: "blast ms", took });
+    // The cannon's ball strikes the bed going across the view.
+    const ball = { owner: 0, weapon: "kanone", position: onBed(2.0, 1.3, 0), velocity: left.clone().multiplyScalar(-20).add(new THREE.Vector3(0, -4, 0)), radius: WEAPONS.kanone.radius(L), size: WEAPONS.kanone.size(L), shooter: L, river: { s: fish.river.s, u: fish.river.u } };
+    firing.onBounce(ball, "bed");
+    await salmon.run(0.4, still);
+    // (With the water's haze here: a mark further off than the water is clear fades into it.)
+    record.push({ label: "marks", live: combat.gore.scorch.live(), fog: salmon.scene?.fog?.density, eye: +salmon.camera?.position.distanceTo(middle).toFixed(2) });
+    // (?xscorch=wire: the marks' grids drawn plain red over everything, to see where they lie;
+    // =red: their whole area tinted red where it is drawn, to see what hides them.)
+    const debug = new URLSearchParams(location.search).get("xscorch");
+    if (debug === "wire") combat.gore.scorch.mesh.material = new THREE.MeshBasicNodeMaterial({ color: 0xff0000, wireframe: true, depthTest: false });
+    if (debug === "red") {
+      combat.gore.scorch.mesh.material.colorNode = (await import("three/tsl")).vec3(1, 0.15, 0.15);
+      combat.gore.scorch.mesh.material.needsUpdate = true;
+    }
+    // (The pictures over time from high over the fish, where all the marks are in view;
+    // close ones from over the first, low from the side, and the game's own camera.)
+    await picture(ctx, "0s", still, wide, middle);
+    await salmon.run(3, still);
+    await picture(ctx, "3s", still, wide, middle);
+    await picture(ctx, "3s-nah", still, above, first);
+    await picture(ctx, "3s-flach", still, low, first);
+    // As the player sees it: the game's own camera behind the fish.
+    salmon.view(null);
+    await picture(ctx, "3s-spiel", still);
+    await salmon.run(12, still);
+    await picture(ctx, "15s", still, wide, middle);
+    await salmon.run(25, still);
+    await picture(ctx, "40s", still, wide, middle);
+    await salmon.run(22, still);
+    record.push({ label: "62s", live: combat.gore.scorch.live() });
+    await picture(ctx, "62s", still, wide, middle);
     // (And the marks alone, laid again and again, and what finding the stones and the gravel
-    // under one takes.)
+    // under one takes: after the last picture, as these marks would cover the others.)
     {
       const scorch = combat.gore.scorch;
       const random = Math.random;
@@ -392,39 +436,43 @@ const SCENES = {
       const t3 = performance.now();
       record.push({ label: "mark ms", lay: +((t1 - t0) / 20).toFixed(3), stones: +((t2 - t1) / 20).toFixed(3), gravel: +((t3 - t2) / 20).toFixed(3), gravelCount: list.length });
     }
-    // The cannon's ball strikes the bed going across the view.
-    const ball = { owner: 0, weapon: "kanone", position: onBed(2.0, 1.3, 0), velocity: left.clone().multiplyScalar(-20).add(new THREE.Vector3(0, -4, 0)), radius: WEAPONS.kanone.radius(L), size: WEAPONS.kanone.size(L), shooter: L, river: { s: fish.river.s, u: fish.river.u } };
-    firing.onBounce(ball, "bed");
-    await salmon.run(0.4, still);
-    record.push({ label: "marks", live: combat.gore.scorch.live() });
-    // (?xscorch: the marks' grids drawn plain red over everything, to see where they lie.)
-    // (?xscorch=wire: the marks' grids drawn plain red over everything, to see where they lie;
-    // =red: their whole area tinted red where it is drawn, to see what hides them.)
-    const debug = new URLSearchParams(location.search).get("xscorch");
-    if (debug === "wire") combat.gore.scorch.mesh.material = new THREE.MeshBasicNodeMaterial({ color: 0xff0000, wireframe: true, depthTest: false });
-    if (debug === "red") {
-      combat.gore.scorch.mesh.material.colorNode = (await import("three/tsl")).vec3(1, 0.15, 0.15);
-      combat.gore.scorch.mesh.material.needsUpdate = true;
-    }
-    await picture(ctx, "0s", still, above, first);
-    await salmon.run(3, still);
-    await picture(ctx, "3s", still, above, first);
-    await picture(ctx, "3s-flach", still, low, first);
-    await picture(ctx, "3s-weit", still, wide, middle);
-    // As the player sees it: the game's own camera behind the fish.
-    salmon.view(null);
-    await picture(ctx, "3s-spiel", still);
-    await salmon.run(12, still);
-    await picture(ctx, "15s", still, above, first);
-    await salmon.run(25, still);
-    await picture(ctx, "40s", still, above, first);
-    await salmon.run(22, still);
-    record.push({ label: "62s", live: combat.gore.scorch.live() });
-    await picture(ctx, "62s", still, above, first);
     salmon.view(null);
   },
 
-  // Blood in the water: fish sunk close to the eye, by day or at night (the scene's hour).
+  // A trout badly hurt swims slowly on across the view with a thread of blood behind it (it
+  // is led along a straight line at a steady speed, so the thread lies in the picture),
+  // pictured from the side as it goes.
+  async blutspur(ctx, record) {
+    const { salmon, extreme } = ctx;
+    const { fish, THREE } = salmon;
+    const { ahead, left } = frameOf(salmon);
+    const { list, hold } = place(ctx, [["trout", 3.5, 0.9, 0.3]], left);
+    const [trout] = list;
+    if (!trout) return;
+    await salmon.run(0.2, hold);
+    shoot(ctx, trout, "minigun", ahead.clone().negate(), { damage: trout.maxHp * 0.75, along: 0.05 });
+    // (Led on at a fish length a second, the way it faces: salmon.run calls this before each
+    // of its steps of a thirtieth of a second.)
+    const speed = 1 * trout.size;
+    const lead = () => {
+      hold();
+      trout.pin.addScaledVector(left, speed / 30);
+      trout.position.copy(trout.pin);
+      trout.velocity?.copy(left).multiplyScalar(speed);
+      trout.speed = speed;
+    };
+    const start = trout.position.clone();
+    await salmon.run(2.5, lead);
+    record.push({ label: "spur", hp: +trout.hp.toFixed(1), maxHp: trout.maxHp, size: +trout.size.toFixed(2), swum: +start.distanceTo(trout.position).toFixed(2), busy: extreme.combat.gore.busy });
+    const mid = start.clone().lerp(trout.position, 0.55);
+    const eye = mid.clone().addScaledVector(ahead, -2.6 * trout.size).add(new THREE.Vector3(0, 0.4 * trout.size, 0));
+    await picture(ctx, "seite", lead, eye, mid);
+    salmon.view(null);
+  },
+
+  // Blood in the water: fish sunk in front of the eye with open water behind them (a whole
+  // one sinking, one burnt through by the laser, two burst), and a big one badly hurt off to
+  // the side, bleeding; by day or at night (the scene's hour).
   async blut(ctx, record) {
     const { salmon, extreme } = ctx;
     const { fish, THREE } = salmon;
@@ -433,20 +481,20 @@ const SCENES = {
     const { list, hold } = place(
       ctx,
       [
-        ["trout", 2.8, 0.2, 0],
-        ["troutParr", 2.2, 1.0, -0.2],
-        ["perch", 3.0, 1.4, 0.2],
-        ["troutParr", 2.5, -0.5, 0.1],
+        ["trout", 4.6, 2.3, 0.35],
+        ["troutParr", 2.5, 1.0, 0.1],
+        ["perch", 3.0, 0.2, 0.3],
+        ["troutParr", 2.7, -0.4, -0.05],
       ],
       left,
     );
     await salmon.run(0.2, hold);
-    const mid = fish.position.clone().addScaledVector(ahead, 2.6 * k).addScaledVector(left, 0.5 * k);
-    const eye = mid.clone().addScaledVector(ahead, -2.2 * k).addScaledVector(left, 0.3 * k);
-    eye.y += 0.15 * k;
+    const mid = fish.position.clone().addScaledVector(ahead, 2.8 * k).addScaledVector(left, 0.6 * k);
+    const eye = mid.clone().addScaledVector(ahead, -2.7 * k).addScaledVector(left, -0.1 * k);
+    eye.y += 0.05 * k;
+    mid.y += 0.2 * k;
     const from = eye.clone().sub(mid).normalize();
     const [trout, parr, perch, parr2] = list;
-    // Hurt ones bleeding, and kills: a whole one sinking, two burst.
     if (trout) shoot(ctx, trout, "minigun", from, { damage: trout.maxHp * 0.7, along: 0.1 });
     if (parr) shoot(ctx, parr, "piu", from, { damage: parr.hp + 1 });
     if (perch) shoot(ctx, perch, "flinte", from, { damage: perch.hp + 1, pellets: 8 });

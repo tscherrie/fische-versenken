@@ -172,13 +172,14 @@ export function createScorch(scene, { light = false } = {}) {
         positions.array[o * 3 + 1] = h + lift;
         positions.array[o * 3 + 2] = pointZ(i, j);
         // How steep the ground is here: the most it rises or falls to a neighbour. The
-        // gravel's ups and downs are not steep in this sense; the flank of a big stone is.
+        // gravel's and the cobbles' ups and downs are not steep in this sense (soot lies on
+        // a cobbled bed as on any other); the flank of a big stone is.
         let rise = 0;
         if (i > 0) rise = Math.max(rise, Math.abs(h - raised[k - 1]));
         if (i < last) rise = Math.max(rise, Math.abs(h - raised[k + 1]));
         if (j > 0) rise = Math.max(rise, Math.abs(h - raised[k - SIDE]));
         if (j < last) rise = Math.max(rise, Math.abs(h - raised[k + SIDE]));
-        const shows = 1 - THREE.MathUtils.smoothstep(rise, 0.5 * step + 0.15, 1.5 * step + 0.35);
+        const shows = 1 - THREE.MathUtils.smoothstep(rise, step + 0.3, 2.5 * step + 0.6);
         marks.array[o * 4] = (i / last) * 2 - 1;
         marks.array[o * 4 + 1] = (j / last) * 2 - 1;
         marks.array[o * 4 + 2] = now;
@@ -320,7 +321,7 @@ function markMaterial() {
     const age = max(waterTime.sub(mark.z), 0);
     // Full a while, then fading out; fresh soot at first, greying as silt settles on it.
     const alive = fade(age, HOLD, LIFE).mul(min(age.mul(8), 1));
-    const settled = exp(age.mul(-1 / 10)).oneMinus();
+    const settled = exp(age.mul(-1 / 18)).oneMinus();
     const strength = mark.w.mul(alive).mul(shows);
     const world = positionWorld.xz;
     // (Read once, here: not inside a choice between the blast and the furrow, where the
@@ -329,16 +330,17 @@ function markMaterial() {
     n.assign(texture(map, world.div(size.mul(1.6)).add(seed.mul(7.3))));
     const r = length(q);
     const torn = r.mul(n.r.sub(0.5).mul(0.55).add(1));
-    const edge = fade(r, 0.82, 1);
-    // A blast: a dark stain thinning out to its ragged edge, the pit darker still, rays of
-    // flung grit, a few dark specks further out, and a faint pale ring of turned stones.
-    const stain = fade(torn, 0.45, 0.92);
-    const pit = fade(torn, 0.15, 0.5);
+    const edge = fade(r, 0.88, 1);
+    // A blast: a dark stain over most of the blast's reach thinning out to its ragged edge,
+    // the pit darker still, rays of flung grit, a few dark specks further out, and a faint
+    // pale ring of turned stones.
+    const stain = fade(torn, 0.58, 0.95);
+    const pit = fade(torn, 0.2, 0.55);
     const angle = atan(q.y, q.x);
-    const rays = sin(angle.mul(9).add(seed.mul(40)).add(n.g.mul(6))).max(0).pow(2).mul(smoothstep(0.25, 0.5, torn)).mul(fade(torn, 0.8, 1.1));
-    const ring = smoothstep(0.62, 0.72, torn).mul(fade(torn, 0.74, 0.88));
-    const grit = smoothstep(0.6, 0.66, n.g).mul(smoothstep(0.5, 0.7, torn)).mul(fade(torn, 0.95, 1.15));
-    const blastDark = max(stain.mul(0.85).add(pit.mul(0.15)), max(rays.mul(0.7), grit.mul(0.6)));
+    const rays = sin(angle.mul(9).add(seed.mul(40)).add(n.g.mul(6))).max(0).pow(2).mul(smoothstep(0.3, 0.55, torn)).mul(fade(torn, 0.85, 1.08));
+    const ring = smoothstep(0.7, 0.79, torn).mul(fade(torn, 0.81, 0.93));
+    const grit = smoothstep(0.6, 0.66, n.g).mul(smoothstep(0.55, 0.75, torn)).mul(fade(torn, 0.98, 1.15));
+    const blastDark = max(stain.mul(0.9).add(pit.mul(0.1)), max(rays.mul(0.75), grit.mul(0.65)));
     // A furrow: the groove along its length, wandering a little and ragged at its sides,
     // deepest where the ball first struck, with ridges of thrown gravel on both sides.
     const across = abs(q.y.add(n.g.sub(0.5).mul(0.5))).mul(n.r.sub(0.5).mul(0.9).add(1));
@@ -348,8 +350,10 @@ function markMaterial() {
     const isFurrow = smoothstep(0.4, 0.6, kind);
     const dark = mix(blastDark, groove.mul(0.6), isFurrow).mul(edge);
     const pale = mix(ring, ridges, isFurrow).mul(edge);
-    // (Soot: nearly black at first, a grey-brown once silt lies on it.)
-    const soot = mix(vec3(0.06, 0.055, 0.05), vec3(0.3, 0.27, 0.23), settled);
+    // (Soot and churned mud: black at first, a grey-brown once silt lies on it. What is
+    // multiplied here is the light the ground sends back, before the picture's tone curve,
+    // which lifts the darks: a quarter of it still reads as grey, not as a burnt pit.)
+    const soot = mix(vec3(0.02, 0.018, 0.016), vec3(0.28, 0.25, 0.21), settled);
     const factor = mix(vec3(1), soot, dark.mul(strength)).mul(mix(vec3(1), vec3(1.3, 1.24, 1.1), pale.mul(strength).mul(0.55)));
     const distance = length(positionWorld.sub(cameraPosition));
     const through = exp(fog.density.mul(distance).mul(extinction).negate());

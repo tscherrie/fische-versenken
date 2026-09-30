@@ -20,7 +20,9 @@
 // sink, the chunks are its remains), `wound` (0..1, how badly the fish that sinks whole is
 // torn; its bleeding follows it), `burnt` (the wound was burnt), and where the last shot went
 // in (`woundAlong`, `woundUp`, in body lengths). A burst fish is also marked `eaten`, which is
-// how enemies.js drops a body at its next step.
+// how enemies.js drops a body at its next step. The marks on its skin are kept in `marks`
+// (look/wounds.js), and a wounded fish's bleeding carries what is left over of its next puff
+// from step to step in `bleedRun`.
 //
 // Splatter draws from a random stream of its own, not the combat's: how much blood flies must
 // never change what the enemies or the director do next.
@@ -851,7 +853,10 @@ export function createGore(scene, camera, { light = false } = {}) {
   // Blood running out of `e` (a corpse, or a wounded fish still swimming): `count` small
   // puffs at its wound, left behind in the water. A light wound leaves a thin thread, a bad
   // one a thick ribbon.
-  function bleed(e, count, strength) {
+  // `thread`: a living fish's bleeding, a thin dark thread the water draws out behind it
+  // (smaller puffs, close together, never thinned for a hunter behind them: they are too
+  // small to hide one) rather than a corpse's billowing clouds.
+  function bleed(e, count, strength, thread = false) {
     const k = e.size;
     const kc = k > 1 ? Math.pow(k, 0.75) : k;
     // From one of its wounds (by turns, the ones the laser burnt shut left out), or where
@@ -864,12 +869,34 @@ export function createGore(scene, camera, { light = false } = {}) {
     }
     if (!(from >= 0 && wounds.holeAt(e, from, wound))) woundOf(e);
     survey(wound.x, wound.y, wound.z, e.river?.s ?? null);
+    // (A hurt bird flying over the river leaves no thread in the water under it.)
+    if (thread && wound.y > site.top) return;
     const what = stuffOf(e);
     for (let i = 0; i < count; i++) {
       sphere();
-      next.rate = 1.2;
       next.drag = 1.8;
       next.stuff = what;
+      if (thread) {
+        // (Dragged along a little by the water the fish carries with it, so a fresh puff
+        // is drawn out along the way the fish went before it comes to rest.)
+        const v = e.velocity;
+        next.rate = 1;
+        next.pop = 0.5;
+        puff(
+          wound.x + dir.x * 0.02 * k,
+          wound.y + dir.y * 0.02 * k,
+          wound.z + dir.z * 0.02 * k,
+          dir.x * 0.05 * kc + (v?.x ?? 0) * 0.3,
+          dir.y * 0.03 * kc + (v?.y ?? 0) * 0.3,
+          dir.z * 0.05 * kc + (v?.z ?? 0) * 0.3,
+          (0.08 + 0.03 * random()) * kc,
+          (0.17 + 0.1 * random()) * kc * strength,
+          3.5 + 1.5 * random(),
+          (0.8 + 0.15 * random()) * Math.min(1, 0.4 + strength),
+        );
+        continue;
+      }
+      next.rate = 1.2;
       next.ref = hunterLength(e);
       puff(
         wound.x + dir.x * 0.04 * k,
@@ -940,12 +967,20 @@ export function createGore(scene, camera, { light = false } = {}) {
             }
           }
         } else if (e.maxHp && e.hp < e.maxHp) {
-          // A wounded fish bleeds as it swims, the more the worse it is hurt; badly hurt, it
-          // leaves a thread of blood behind it in the water.
+          // A wounded fish bleeds as it swims, the more the worse it is hurt: a drop now and
+          // then at first; badly hurt, an unbroken thread of blood behind it in the water,
+          // laid down by the way it swims as well as by the clock (a puff every so far, so
+          // the thread holds together however fast the fish goes). What is left over of a
+          // puff is kept on the record (bleedRun) for the next step.
           const hurt = 1 - e.hp / e.maxHp;
-          const rate = (5 + 14 * Math.max(0, hurt - 0.4)) * hurt * Math.sqrt(e.size) * plenty;
-          count = Math.floor(clock * rate + offset) - Math.floor((clock - dt) * rate + offset);
-          strength = 0.5 + 0.4 * hurt;
+          const kc = e.size > 1 ? Math.pow(e.size, 0.75) : e.size;
+          const drip = 3 * hurt * Math.sqrt(e.size);
+          const swum = hurt > 0.35 ? (((e.speed ?? 0) * dt) / (0.11 * kc)) * Math.min(1, (hurt - 0.35) / 0.25) : 0;
+          const run = (e.bleedRun ?? offset) + (drip * dt + swum) * plenty;
+          count = Math.floor(run);
+          e.bleedRun = run - count;
+          if (count > 0) bleed(e, Math.min(count, 4), 0.5 + 0.5 * hurt, true);
+          continue;
         }
         if (count > 0) bleed(e, Math.min(count, 4), strength);
       }
@@ -958,7 +993,7 @@ export function createGore(scene, camera, { light = false } = {}) {
       salmonBody.river = f.river;
       const rate = 3 * (0.55 - f.energy) * plenty;
       const count = Math.floor(clock * rate + 0.3) - Math.floor((clock - dt) * rate + 0.3);
-      if (count > 0) bleed(salmonBody, 1, 0.45 + 0.4 * (0.55 - f.energy));
+      if (count > 0) bleed(salmonBody, 1, 0.45 + 0.4 * (0.55 - f.energy), true);
     }
     wounds.stepSalmon(salmonRef, f, random);
     // (The marks of enemies gone from the river free their places.)
