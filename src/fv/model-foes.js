@@ -833,7 +833,9 @@ function crossbow(k, s, string) {
     ].map(([x, y, zz]) => [S1(x), S1(y), S1(zz * z)]);
     k.tube(curve(path, 7), (t) => S1(0.007 - 0.004 * t), 5);
   }
-  // The string, drawn back to the latch (string part: slid forward, loose, when unloaded).
+  // The string, drawn back to the latch. (It stays there: the grayling cocks it again as soon
+  // as the bolt is gone, and only the bolt comes back with the reload. Slid forward as a whole
+  // to lie loose, its ends would leave the limb tips and stand out ahead of them like wires.)
   string.paint(0x2e2a24, ZONE.fabric);
   for (const z of [-1, 1])
     string.tube(
@@ -1225,7 +1227,7 @@ function gearGrayling() {
   string.push(T(...at));
   const muzzles = place(k, at, null, () => crossbow(k, 1.1, string));
   k.append(string);
-  return { frame: "fish", kit: k, pivot: P, muzzles, part: { pivot: [0, 0, 0], axis: [1, 0, 0], slide: true }, string: 0.1 * 1.1, items: 1, recoil: { d: 0.01, flip: 3 * DEG, time: 0.12 }, aim: [0.35, 0.35] };
+  return { frame: "fish", kit: k, pivot: P, muzzles, part: { pivot: [0, 0, 0], axis: [1, 0, 0], slide: true }, items: 1, recoil: { d: 0.01, flip: 3 * DEG, time: 0.12 }, aim: [0.35, 0.35] };
 }
 
 // The perch: a heavy pistol in a clamp on its right flank behind the gill cover, under the

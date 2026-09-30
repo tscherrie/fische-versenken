@@ -202,6 +202,25 @@ async function gearCheck(ctx, record) {
   if (programs() !== programs0 || built.length) errors.push(`built after the warm-up: ${programs() - programs0} programs, node builds for ${[...new Set(built)].join(", ")}`);
   record.push({ label: "gebaut", programs: programs() - programs0, builds: [...new Set(built)] });
 
+  // What placing the gear costs the script in this fight, each call of update as the frame
+  // makes it with the fight going on and the game's camera. (The page's clock is coarse, a
+  // tenth of a millisecond: the mean of many calls, not the median, says how long one takes.)
+  await view(null);
+  const update = foes.update;
+  let spent = 0,
+    calls = 0;
+  foes.update = function () {
+    const t = performance.now();
+    const out = update.apply(this, arguments);
+    spent += performance.now() - t;
+    calls++;
+    return out;
+  };
+  await run(3);
+  foes.update = update;
+  extreme.frame(1 / 60);
+  record.push({ label: "kosten", enemies: enemies.list.filter((e) => !e.neutral).length, drawn: foes.counts(), placing: +(spent / Math.max(1, calls)).toFixed(4), calls });
+
   // The states. Each is tried on an enemy whose gear is drawn now: the count of its kind must
   // go down by one (or stay, for a corpse) and come back when the state is taken away again.
   // (Seen from well back, so that most are in view; the camera then stays where it is.)

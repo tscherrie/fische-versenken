@@ -147,7 +147,7 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
   const states = new WeakMap();
   const stateOf = (e) => {
     let st = states.get(e);
-    if (!st) states.set(e, (st = { t: timeOf(), yaw: 0, pitch: 0, kickAt: -9, shot: 0, thrust: 0, swing: 0, open: 0, openAt: -9, spin: 0, angle: 0, cyl: 0, cylShown: 0, string: 0, glow: 0 }));
+    if (!st) states.set(e, (st = { t: timeOf(), yaw: 0, pitch: 0, kickAt: -9, shot: 0, thrust: 0, swing: 0, open: 0, openAt: -9, spin: 0, angle: 0, cyl: 0, cylShown: 0, glow: 0 }));
     return st;
   };
   let larvae = null;
@@ -321,11 +321,6 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
       if (g.throws) st.loaded = empty ? g.items - 1 : g.items;
       else if (g.melee !== "shock") st.loaded = empty ? 0 : g.items;
     }
-    if (g.string !== undefined) {
-      // The string lies loose, forward at the limbs, until it is drawn again for the next bolt.
-      st.string += ((st.loaded > 0 ? 0 : g.string) - st.string) * ease(dt, st.loaded > 0 ? 6 : 30);
-      st.a = st.string;
-    }
     if (g.bombs) {
       // A bomb under each wing until it has let them go; both back once it has reloaded.
       st.loaded = (e.reload ?? 0) > 0 ? (e.dropping ?? 0) : g.bombs;
@@ -368,17 +363,18 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
         const e = list[i];
         const g = gear[e.kind];
         if (!g || g.n >= g.capacity || !armed(e, g)) continue;
-        if (!frameOf(e, g, body)) continue;
-        // (Out of the view, or too far to make out, it is not drawn; its state waits. Not so a
-        // bird's: a bird is drawn for the water's mirror and the window in the surface too,
-        // which see what the camera does not, and there are never more than a few.)
-        const m = body.elements;
-        sphere.center.set(m[12], m[13], m[14]);
-        sphere.radius = e.size * 1.2;
+        // (Out of the view, or too far to make out, it is not drawn and its state waits: tried
+        // on the body's middle before its pose is worked out. Not so a bird's: a bird is drawn
+        // for the water's mirror and the window in the surface too, which see what the camera
+        // does not, and there are never more than a few.)
         if (camera && g.layer === 1) {
+          sphere.center.copy(e.position);
+          sphere.radius = e.size * 1.2;
           if (!frustum.intersectsSphere(sphere)) continue;
           if (sphere.center.distanceTo(camera.position) > 12 + e.size * 60) continue;
         }
+        if (!frameOf(e, g, body)) continue;
+        const m = body.elements;
         const st = advance(e, g, stateOf(e), body, now);
         const o = g.n++ * STRIDE,
           d = g.data;
