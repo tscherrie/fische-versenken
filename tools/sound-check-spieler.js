@@ -8,6 +8,11 @@
 // A held weapon is told every frame, as the game tells it every step; the combat sound
 // (the scene's own, which the sound check hands the events third) is updated every frame by
 // the sound check, as the game's is (the loops let go of what nothing keeps).
+//
+// And the two together: the player's minigun and beam held in a fight with a shoal of
+// enemy guns and blasts going off round it (fight_*), to see that the cap and its reserve
+// hold with both, the blasts still sound, the enemies are still heard under the player's
+// held weapons, and nothing clips.
 
 const FRAME = 1 / 30;
 // Every frame from `from` to `to`: `call(sfx, t)`.
@@ -84,21 +89,22 @@ function loopMeasure(on, off, from, to, f0 = 150, f1 = 4000) {
 // together): where a hot laser's harsher boil shows, whatever else rises in the scene.
 const hissAfter = (m) => ({ hiss: 10 * Math.log10([1, 2.5, 4, 5.5].reduce((sum, t) => sum + Math.pow(10, m.band(t, t + 0.25, 4000, 10000) / 10), 0) / 4) });
 
-export function weaponScenes() {
-  // The laser as the game fires it: `pulses` shots 0.11 s apart, then the beam for
-  // `beam` seconds, again and again while held.
-  function laserHeld(L, pulses, beam, from = 1, to = 6, heat = 0) {
-    const events = [];
-    let t = from;
-    const beams = [];
-    while (t < to) {
-      for (let i = 0; i < pulses && t < to; i++, t += 0.11) events.push(...at([t], (s) => s.piu(L, heat)));
-      beams.push([t, Math.min(to, t + beam)]);
-      t += beam + 0.11;
-    }
-    events.push(...frames(0.3, to + 0.5, (s, time) => s.hold("beam", beams.some(([a, b]) => time >= a && time < b), heat, L)));
-    return events;
+// The laser as the game fires it: `pulses` shots 0.11 s apart, then the beam for `beam`
+// seconds, again and again while held (each shot `pulse(sfx)`, if not just so).
+function laserHeld(L, pulses, beam, from = 1, to = 6, heat = 0, pulse = (s) => s.piu(L, heat)) {
+  const events = [];
+  let t = from;
+  const beams = [];
+  while (t < to) {
+    for (let i = 0; i < pulses && t < to; i++, t += 0.11) events.push(...at([t], pulse));
+    beams.push([t, Math.min(to, t + beam)]);
+    t += beam + 0.11;
   }
+  events.push(...frames(0.3, to + 0.5, (s, time) => s.hold("beam", beams.some(([a, b]) => time >= a && time < b), heat, L)));
+  return events;
+}
+
+export function weaponScenes() {
   return [
     // ---- What the new sounds are measured against.
     four("ref_flinte", (s) => s.flinte(0.4)),
@@ -188,5 +194,91 @@ export function weaponScenes() {
       ...at(series(2, 8, 0.14), (s) => s.rocket(2.5)),
       ...at([3, 4.5], (s) => (s.cannon(7), s.explosion(2, 2))),
     ], { seconds: 8, measure: (m) => ({ loudest: m.loudest(1, 7, 0.4) }) }),
+
+    // ---- The two together: the player's minigun and laser held in a fight, near and nearer;
+    // and the same fight without the player's weapons, and without the shoal's, to hear each
+    // side against.
+    fight("fight", 4),
+    fight("fight_near", 2),
+    fight("fight_enemies", 4, { armed: false }),
+    fight("fight_player", 4, { shoal: false }),
   ];
+}
+
+// A fight: the player's minigun (the belly) and laser (the back: its pulses, then the beam)
+// held for eight seconds while a shoal shoots round it `d` units off and more -- mackerels'
+// rifles, perches' pistols, a trout's machine pistol, the pike's elephant gun, the old
+// king's minigun, an otter's machete and a trout's knife landing -- and blasts go off: the
+// salmon's own, a sea mine, the gannet's bombs. Counted: which of the enemies' shots and
+// blows were let sound (the voices going up as they were called), which of the laser's
+// pulses, and whether every blast did. (The rounds fall on the scene's frames, as the game's
+// step sets them off, and a gun's rounds never come within its shortest interval: a shot
+// not heard is one the cap held back.) Not `armed`, the player holds no weapon; without the
+// `shoal`, only the blasts go off round it.
+function fight(name, d, { armed = true, shoal = true } = {}) {
+  const tally = { enemy: [], pulse: [], blast: [] };
+  const on = (x) => Math.round(x * 30) / 30;
+  // `call(sfx)` at `t`, counted in `list`.
+  const counted = (list, t, call) => [
+    on(t),
+    (s, now, sfx) => {
+      const before = sfx.playing;
+      call(sfx);
+      list.push(sfx.playing > before);
+    },
+  ];
+  const shot = (id, distance) => (s) => s.enemyShot(id, distance);
+  const rounds = (id, from, n, every, distance) => Array.from({ length: n }, (_, i) => counted(tally.enemy, from + i * every, shot(id, distance)));
+  const events = [
+    [0, () => Object.values(tally).forEach((list) => (list.length = 0))],
+    ...(armed
+      ? [
+          ...spun("minigun", { trigger: (t) => t >= 1 && t < 9, until: 10.4 }),
+          ...laserHeld(1.2, 4, 0.9, 1, 9, 0, (s) => {
+            const before = s.playing;
+            s.piu(1.2, 0);
+            tally.pulse.push(s.playing > before);
+          }),
+        ]
+      : []),
+    ...(shoal
+      ? [
+          // Four mackerels' bursts of three (0.1 s apart), a burst every 0.8 s.
+          ...series(1.2, 9, 0.8).flatMap((t, i) => rounds("rifle", t, 3, 0.1, d + 1 + 2 * (i % 4))),
+          // Three perches' pairs, a trout's two bursts of six.
+          ...series(1.5, 6, 1.2).flatMap((t, i) => rounds("pistol", t, 2, 0.2, d + 2 * (i % 3))),
+          ...[2.3, 5.9].flatMap((t) => rounds("smg", t, 6, 0.1, d + 2)),
+          // The pike: its hammer, and the shot 1.3 s later.
+          ...at([3], (s) => s.enemyAim("elephantgun", d + 6, 1.3)),
+          counted(tally.enemy, 4.3, shot("elephantgun", d + 6)),
+          // Blades landing.
+          ...at([4.8], (s) => s.enemyStrike("machete", 3, false)),
+          counted(tally.enemy, 5.1, (s) => s.enemyStrike("machete", 3, true)),
+          counted(tally.enemy, 7.1, (s) => s.enemyStrike("knife", 2, true)),
+          // The king's minigun spun up, and a burst of a second and a bit, a round each frame.
+          ...at([6.4], (s) => s.enemyAim("minigun", d + 5, 0.8)),
+          ...at(series(7.2, 36, 1 / 30), (s) => s.enemyShot("minigun", d + 5)),
+        ]
+      : []),
+    // The blasts: the salmon's own, a sea mine, the gannet's bombs whistling down.
+    counted(tally.blast, 5, (s) => s.explosion(1.5, 3)),
+    counted(tally.blast, 5.6, (s) => s.enemyBlast("seamine", d + 4, 1.75)),
+    ...at([6.6], (s) => s.enemyAim("bombs", d + 8, 0.8)),
+    ...at([7.4], (s) => s.enemyEntry("bombs", d + 5)),
+    counted(tally.blast, 7.9, (s) => s.enemyBlast("bombs", d + 2, 2)),
+  ];
+  const share = (list) => (list.length ? list.filter(Boolean).length / list.length : 0);
+  return weapon(name, events, {
+    seconds: 13,
+    active: [1, 9],
+    measure: (m) => ({
+      loudest: m.loudest(1, 9.5, 0.4),
+      held: m.loud(1.5, 4.8),
+      enemy: share(tally.enemy),
+      enemies: `${tally.enemy.filter(Boolean).length}/${tally.enemy.length}`,
+      pulses: share(tally.pulse),
+      blasts: `${tally.blast.filter(Boolean).length}/${tally.blast.length}`,
+      after: m.loud(12, 12.8),
+    }),
+  });
 }

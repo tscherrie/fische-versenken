@@ -343,10 +343,26 @@ if (W("saw_cut")?.extra && W("saw_idle")?.extra) {
 }
 const weapons = byKind("weapon");
 if (weapons.length) {
-  const over = weapons.filter((r) => r.voices > 26);
-  check(`weapons: never more than the cap's 26 voices at once (most ${Math.max(...weapons.map((r) => r.voices))}${over.length ? `: ${over.map((r) => r.name).join(", ")}` : ""})`, !over.length);
+  // (Either side on its own never more than 26 voices, the two together in a fight never more
+  // than the cap's 36: sfx.js, ALONE and CAP.)
+  const most = (r) => (r.name.startsWith("fight") ? 36 : 26);
+  const over = weapons.filter((r) => r.voices > most(r));
+  check(`weapons: never more than 26 voices at once on either side alone, 36 in a fight of both (most ${Math.max(...weapons.map((r) => r.voices))}${over.length ? `: ${over.map((r) => `${r.name} ${r.voices}`).join(", ")}` : ""})`, !over.length);
   const long = ["laser_held_20s", "minigun_20s", "saw_20s"].map(W).filter(Boolean);
   check(`twenty seconds of fire leave nothing behind (voices at the end ${long.map((r) => r.voicesEnd).join("/")}) and make at most 80 nodes a second (${long.map((r) => (r.shotNodes / 20).toFixed(0)).join("/")})`, long.every((r) => r.voicesEnd === 0 && r.shotNodes / 20 <= 80));
+}
+// The two together: the player's minigun and laser held in a fight (fight, fight_near).
+// Every blast sounds; neither side takes the other's voices -- the enemies' shots and blows
+// are let sound about as often as in the same fight without the player's weapons
+// (fight_enemies), the laser's pulses as often as without the shoal (fight_player); at its
+// loudest a blast near over the din, not much more; nothing left after it.
+const [enemiesAlone, playerAlone] = [W("fight_enemies")?.extra, W("fight_player")?.extra];
+for (const name of ["fight", "fight_near"]) {
+  const r = W(name);
+  if (!r?.extra || !enemiesAlone || !playerAlone) continue;
+  const e = r.extra,
+    blast = W("ref_explosion")?.full ?? -18;
+  check(`${name}: every blast heard (${e.blasts}), the enemies' shots and blows as often as without the player's minigun and beam (${e.enemies} against ${enemiesAlone.enemies}), the laser's pulses as often as without the shoal (${Math.round(e.pulses * 100)} % against ${Math.round(playerAlone.pulses * 100)} %), at its loudest ${e.loudest} LUFS (a blast alone ${blast}: 4 more at most), none left at the end (${r.voicesEnd})`, e.blasts === "3/3" && e.enemy >= enemiesAlone.enemy - 0.1 && e.pulses >= playerAlone.pulses - 0.05 && e.loudest <= blast + 4 && r.voicesEnd === 0);
 }
 // Extreme's combat sounds: the enemies' weapons against the salmon's own (sound-check-enemies.mjs).
 enemyChecks(get, check);

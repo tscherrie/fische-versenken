@@ -10,7 +10,11 @@
 //
 // A voice counts against the cap only while it sounds (from its start to its end, however
 // far ahead it was scheduled), and the last RESERVE voices are kept for what must not go
-// silent: blasts and kills.
+// silent: blasts and kills. Under the reserve the salmon's own sounds and the enemies' each
+// have a share of their own (SHARE), so that neither side silences the other: a shoal
+// shooting never takes the voices of the gun in the player's hand, and the player's minigun
+// and beam held never leave the shoal unheard. Neither side ever has more than ALONE voices
+// of its own, blasts and all; the two together never more than CAP.
 //
 // The player's own weapons (the laser and its beam, the minigun, the chainsaw, the arc, the
 // nodachi, the cannon, the torpedoes, rockets, mines, the harpoon, the anti-tank rifle, a
@@ -21,36 +25,54 @@
 import { createPlayerSounds } from "./sfx-spieler.js";
 import { createEnemySfx } from "./sfx-enemies.js";
 
-const CAP = 26;
+const CAP = 36;
 const RESERVE = 10;
+const ALONE = 26;
+// Whose a voice is: the salmon's own, or the enemies'; and each one's share under the
+// reserve (together CAP - RESERVE).
+const OURS = 0;
+const THEIRS = 1;
+const SHARE = [16, 10];
 
 export function createSfx(sound) {
   const last = new Map();
-  // Every scheduled voice's start and end (context seconds), the ended ones pruned as they
-  // go; and the voices of running loops.
+  // Every scheduled voice's start and end (context seconds) and whose it is, the ended ones
+  // pruned as they go; and the voices of running loops, each side's.
   const starts = [];
   const ends = [];
-  let looping = 0;
+  const whose = [];
+  const looping = [0, 0];
+  // Whose the voices being made are (the enemies' makings set it while they play).
+  let side = OURS;
   let white = null,
     brown = null;
   // (One curve for each drive: a boom driven harder clips harder.)
   const curves = new Map();
 
-  // How many voices sound at `now`.
-  function sounding(now) {
-    let n = looping;
+  // How many voices sound at `now` (only `who`'s, if given).
+  function sounding(now, who) {
+    let n = who === undefined ? looping[OURS] + looping[THEIRS] : looping[who];
     for (let i = ends.length - 1; i >= 0; i--) {
       if (ends[i] <= now) {
         const j = ends.length - 1;
         ends[i] = ends[j];
         starts[i] = starts[j];
+        whose[i] = whose[j];
         ends.pop();
         starts.pop();
+        whose.pop();
         continue;
       }
-      if (starts[i] <= now + 0.02) n++;
+      if (starts[i] <= now + 0.02 && (who === undefined || whose[i] === who)) n++;
     }
     return n;
+  }
+  // Whether `cost` more voices of `who`'s may sound at `now`: within that side's share and
+  // under the reserve, or -- `vital` -- anywhere under the cap (and that side's ALONE).
+  function room(now, cost, vital = false, who = OURS) {
+    const all = sounding(now) + cost,
+      mine = sounding(now, who) + cost;
+    return vital ? all <= CAP && mine <= ALONE : all <= CAP - RESERVE && mine <= SHARE[who];
   }
   // The groups and the context, if this kind may sound now (its interval, the cap). `cost`:
   // how many voices it has sounding at once at most; `vital`: it may use the reserve.
@@ -58,7 +80,7 @@ export function createSfx(sound) {
     const buses = sound.buses?.();
     if (!buses) return null;
     const now = buses.context.currentTime;
-    if (now - (last.get(kind) ?? -1) < interval || sounding(now) + cost > CAP - (vital ? 0 : RESERVE)) return null;
+    if (now - (last.get(kind) ?? -1) < interval || !room(now, cost, vital)) return null;
     last.set(kind, now);
     return buses;
   }
@@ -114,6 +136,7 @@ export function createSfx(sound) {
     const t = at ?? node.context.currentTime;
     starts.push(t);
     ends.push(t + seconds + 0.05);
+    whose.push(side);
     node.stop(t + seconds + 0.05);
   }
   // A gain that rises fast and dies away: the shape of every short sound here.
@@ -182,7 +205,7 @@ export function createSfx(sound) {
     const l = loops.get(kind);
     if (!l) return;
     loops.delete(kind);
-    looping -= l.voices ?? 0;
+    looping[OURS] -= l.voices ?? 0;
     const t = l.context.currentTime;
     l.gain.gain.cancelScheduledValues(t);
     l.gain.gain.setValueAtTime(Math.max(0.0001, l.gain.gain.value), t);
@@ -190,12 +213,34 @@ export function createSfx(sound) {
     for (const s of l.sources) s.stop(t + release + 0.05);
   }
 
-  // A held weapon's voices, counted while it is held (`n` more, or fewer when let go).
-  const hold = (n) => (looping += n);
   // The player's weapons (the laser among them) and the enemies', made from the same helpers
-  // and counted against the same cap.
-  const { tick, ...weapons } = createPlayerSounds({ sound, ready, sounding, noise, tone, click, dry, envelope, filter, voice, CAP, RESERVE, hold });
-  const enemies = createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, tone, click, filter, saturate, whiteBuffer, hold });
+  // and counted against the same cap, each side in its own share. (`hold(n)`: a held
+  // weapon's voices, counted while it is held, `n` more or fewer when it is let go.)
+  const { tick, ...weapons } = createPlayerSounds({ sound, ready, room, noise, tone, click, dry, envelope, filter, voice, hold: (n) => (looping[OURS] += n) });
+  // The enemies' makings are the same, but what they make is counted as theirs.
+  function theirs(make) {
+    return (...args) => {
+      const was = side;
+      side = THEIRS;
+      try {
+        return make(...args);
+      } finally {
+        side = was;
+      }
+    };
+  }
+  const enemies = createEnemySfx({
+    sound,
+    room: (now, cost, vital) => room(now, cost, vital, THEIRS),
+    voice: theirs(voice),
+    noise: theirs(noise),
+    tone: theirs(tone),
+    click: theirs(click),
+    filter,
+    saturate,
+    whiteBuffer,
+    hold: (n) => (looping[THEIRS] += n),
+  });
 
   return {
     ...enemies,
@@ -363,7 +408,7 @@ export function createSfx(sound) {
       }
       const c = buses.context;
       if (!running) {
-        if (sounding(c.currentTime) + 6 > CAP - RESERVE) return;
+        if (!room(c.currentTime, 6)) return;
         // Ignition.
         click(c, buses.water, { frequency: 3000, peak: 0.12 });
         noise(c, buses.water, { type: "highpass", frequency: 2000, peak: 0.08, decay: 0.12 });
@@ -409,7 +454,7 @@ export function createSfx(sound) {
         boil.connect(boilBand).connect(boilGain).connect(gain);
         for (const s of [roar, hiss, boil, lfo, wobble]) s.start(t);
         // (Three voices that sound; the two slow oscillators only move them.)
-        looping += 3;
+        looping[OURS] += 3;
         loops.set("flame", { context: c, gain, sources: [roar, hiss, boil, lfo, wobble], voices: 3 });
       }
       // Crackles now and then, and a sputter as the fuel runs low.

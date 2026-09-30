@@ -229,7 +229,7 @@ const RECIPES = {
 const NEEDS = { piu: ["tchk", "tsss", "sizzle", "pops"], strahl: ["pops"], blitz: ["snaps", "crackle"], minigun: ["rounds"] };
 
 export function createPlayerSounds(kit) {
-  const { sound, ready, sounding, noise, tone, click, dry, envelope, filter, voice, CAP, RESERVE } = kit;
+  const { sound, ready, room, noise, tone, click, dry, envelope, filter, voice } = kit;
   // Each recipe's takes as buffers (each take a buffer per layer), for the rate they were
   // made at.
   const banks = new Map();
@@ -363,7 +363,7 @@ export function createPlayerSounds(kit) {
     const f = (78 - 30 * g) * (1 + 0.08 * h);
     let l = running;
     if (!l) {
-      if (sounding(t) + 2 > CAP - RESERVE) return;
+      if (!room(t, 2)) return;
       l = begin("beam", c, 2, buses.water);
       glide(l.gain.gain, 0.2, t, 0.012);
       // The hum: a buzz (a sawtooth) under a lowpass that flickers at random, and its
@@ -442,7 +442,7 @@ export function createPlayerSounds(kit) {
     const s = clamp01(spin);
     const h = clamp01(heat);
     if (!l) {
-      if (sounding(t) + 2 > CAP - RESERVE) return;
+      if (!room(t, 2)) return;
       l = begin(kind, c, 2, buses.water);
       const whine = c.createOscillator();
       whine.type = "triangle";
@@ -491,7 +491,7 @@ export function createPlayerSounds(kit) {
       return;
     }
     if (!r) {
-      if (sounding(t) + 2 > CAP - RESERVE) return;
+      if (!room(t, 2)) return;
       r = begin(stream, c, 2, buses.water);
       r.gain.gain.setValueAtTime(0.0001, t);
       r.gain.gain.exponentialRampToValueAtTime(0.32, t + 0.004);
@@ -542,7 +542,7 @@ export function createPlayerSounds(kit) {
     const t = c.currentTime;
     const s = clamp01(spin);
     if (!l) {
-      if (sounding(t) + 3 > CAP - RESERVE) return;
+      if (!room(t, 3)) return;
       l = begin(kind, c, 3, buses.water);
       l.born = t;
       l.idleSince = t;

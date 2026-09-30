@@ -15,8 +15,8 @@
   frame (`watch`) and count the nodes its events made (eventNodes). Extreme's combat sounds
   (src/fv/sfx.js) play over it, handed to the events third and to `watch` second, updated
   every frame as the game updates them; their scenes are in tools/sound-check-spieler.js
-  (the player's weapons) and tools/sound-check-enemies.mjs (the enemies'). Run by
-  tools/sound-check.mjs; open it by hand and call runAll() to look at it.
+  (the player's weapons, and fights of both) and tools/sound-check-enemies.mjs (the
+  enemies'). Run by tools/sound-check.mjs; open it by hand and call runAll() to look at it.
   (The scenes also run against an older src/sound.js, for a before and after: what it did
   not have yet is called with ?. and it is told `above` as well as `submerged`.)
 -->
@@ -402,8 +402,8 @@
     solo("solo_dive_L1", (s) => s.dive?.(1)),
     solo("solo_dive_L5", (s) => s.dive?.(5)),
     ...["kingfisher", "heron", "merganser", "seal", "bear"].map((kind) => solo(`solo_call_${kind}`, (s) => s.call(kind))),
-    // Extreme's combat sounds (src/fv/sfx.js): the player's weapons
-    // (tools/sound-check-spieler.js) and the enemies' (tools/sound-check-enemies.mjs), each
+    // Extreme's combat sounds (src/fv/sfx.js): the player's weapons and fights of both
+    // (tools/sound-check-spieler.js), and the enemies' (tools/sound-check-enemies.mjs), each
     // with the salmon's older weapons they are measured against.
     ...weaponScenes(),
     ...ENEMY_SCENES,

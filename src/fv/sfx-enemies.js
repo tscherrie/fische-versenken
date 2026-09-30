@@ -11,18 +11,16 @@
 //
 // A shoal fires together: the shots of one gun in the same moment are one sound, raised to
 // the nearest of them, and a shot inside a gun's shortest interval after the last is not
-// heard again. The enemies never take the last voices: under the reserve kept for blasts and
-// kills (sfx.js) OWN more are kept for the salmon's own weapons, so a shoal shooting never
-// silences the gun in the player's hand. The charges (the sea mine, the bombs) may use the
-// reserve as every blast does, and when even that is full they are heard smaller rather
-// than not at all. The old king's minigun is one looping voice while its barrels spin, as the
-// flamethrower is: a sound per round twenty times a second would be noise and a pile of
-// voices.
+// heard again. The enemies have a share of the voices of their own, beside the salmon's and
+// under the reserve kept for blasts and kills (sfx.js), so a shoal shooting never silences
+// the gun in the player's hand, nor the player's weapons the shoal. The charges (the sea
+// mine, the bombs) may use the reserve as every blast does, and when even that is full they
+// are heard smaller rather than not at all. The old king's minigun is one looping voice
+// while its barrels spin, as the flamethrower is: a sound per round twenty times a second
+// would be noise and a pile of voices.
 //
 // Nothing comes out the same twice: pitch, levels and the noise vary with every shot.
 
-// The voices kept for the salmon's own weapons, over the reserve.
-const OWN = 6;
 // Farther than this (units) an enemy is not heard at all.
 const FAR = 60;
 // The minigun's level, and how fast its barrels turn at full spin (Hz of the motor's hum).
@@ -39,7 +37,7 @@ const cutoff = (k) => 400 + 9600 * Math.pow(k, 1.6);
 const vary = (x, by = 0.06) => x * (1 + by * (Math.random() * 2 - 1));
 const any = (a, b) => a + (b - a) * Math.random();
 
-export function createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, tone, click, filter, saturate, whiteBuffer, hold }) {
+export function createEnemySfx({ sound, room, voice, noise, tone, click, filter, saturate, whiteBuffer, hold }) {
   // The last sound of each kind: when, and its way into the group (to raise it to a nearer
   // shot of the same moment).
   const recent = new Map();
@@ -62,7 +60,7 @@ export function createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, to
   // A sound of `kind` from `distance`, if it is to be heard now: its way in, or null. Not
   // within `interval` of the last of its kind (one that comes in the same moment raises that
   // one instead, if it is nearer), and only while there is room for its `cost` in voices:
-  // under the reserve and the salmon's own, or -- `vital` -- anywhere under the cap.
+  // in the enemies' share, or -- `vital` -- anywhere under the cap.
   function begin(kind, interval, cost, distance, { group = "water", level = 1, vital = false } = {}) {
     const k = nearness(distance);
     const buses = k > 0 ? sound.buses?.() : null;
@@ -79,7 +77,7 @@ export function createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, to
       }
       return null;
     }
-    if (sounding(now) + cost > CAP - (vital ? 0 : RESERVE + OWN)) return null;
+    if (!room(now, cost, vital)) return null;
     const way = route(buses, group, k, level);
     way.at = now;
     recent.set(kind, way);
@@ -292,7 +290,7 @@ export function createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, to
     const t = c.currentTime;
     if (spin && spin.c !== c) letGo();
     if (!spin) {
-      if (sounding(t) + 3 > CAP - RESERVE - OWN) return;
+      if (!room(t, 3)) return;
       const out = c.createGain();
       out.gain.value = MINIGUN * k;
       const top = filter(c, "lowpass", cutoff(k), 0.5);
