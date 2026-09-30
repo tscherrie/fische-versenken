@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { randomGenerator } from "../../shared/random.js";
 import { STAGES } from "../salmon.js";
-import { clamp } from "../course.js";
+import { clamp, level as surface } from "../course.js";
 import "./i18n.js";
 import { createAim } from "./aim.js";
 import { createBosses } from "./bosses.js";
@@ -28,7 +28,7 @@ import { createProjectiles, createRibbons, createSmoke } from "./projectiles.js"
 import { createRules } from "./rules.js";
 import { createSfx } from "./sfx.js";
 import { createSignals } from "./signals.js";
-import { WEAPONS, createArsenal, createFiring } from "./weapons.js";
+import { SKY, WEAPONS, createArsenal, createFiring, damageScale } from "./weapons.js";
 import { tameTheWild } from "./wild.js";
 
 // How far (as a tangent) from the middle of the view an enemy draws a phone's auto-fire: a
@@ -182,7 +182,8 @@ export function createCombat(game) {
         continue;
       }
       const t = aim.target;
-      auto[place] = !!t && !t.dead && t.position.distanceTo(f.position) - t.size * 0.45 < w.reach(L);
+      // (A bird circling high over the water is out of every weapon's reach: no use firing.)
+      auto[place] = !!t && !t.dead && t.position.distanceTo(f.position) - t.size * 0.45 < w.reach(L) && !(t.spec.flies && t.position.y > surface(t.river.s) + SKY);
     }
   }
 
@@ -316,10 +317,96 @@ export function createCombat(game) {
       hud.say("Versenkt!", e.spec.title);
     }
     sfx.sunk(e.size);
+    // A jellyfish's mine goes off as it dies, whatever killed it: at once when a shot did, a
+    // moment later when another blast did, so that a field goes up one after another. Its
+    // own mine tears it apart then, not what killed it; the chain is the killer's too.
+    const gun = e.spec.weapon;
+    if (gun?.kind === "contact") {
+      charges.push({ source: e, gun, at: e.position.clone(), fuse: by >= 0 && !info?.blast ? 0 : 0.12 + 0.1 * random(), body: true, by });
+      return;
+    }
     // What it leaves in the water is the splatter's (gore.js); here only the air it had.
     gore.kill(e, dir, weapon, info, player?.fish.length);
     fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(4 + 2 * e.size), size: 0.01 + 0.008 * e.size, spread: e.size * 0.3, random: look });
   }
+
+  // The enemies' charges -- the jellyfish's sea mines, the gannet's bombs -- set off during
+  // the step (a touch, a bomb's fuse, a death) and going off after the shots have flown,
+  // each on its own short fuse: { source, gun, at, fuse, body (the charge tears its source
+  // apart), by (whose the kills are: -1, the enemies') }.
+  const charges = [];
+  // The shared blast of the enemies' charges. The salmon within its radius takes `damage`
+  // of its strength, less toward the edge (`edge` of it there), and bleeds where it was
+  // struck; every player in reach is thrown outward, and the enemies caught in it take it
+  // as they would a blast of the salmon's own -- hurt, thrown, stunned, the salmon's own
+  // mines near it set off -- so a jellyfish caught in it goes off in turn: weapons.js's
+  // blast(), which also shows it, as the salmon's sea mines look going off.
+  const blastAt = new THREE.Vector3();
+  const blastDir = new THREE.Vector3();
+  const bodyTail = new THREE.Vector3();
+  const bodyHead = new THREE.Vector3();
+  const bodyNear = new THREE.Vector3();
+  const along = new THREE.Vector3();
+  const boom = { cause: null, damage: 0, hitDamage: 0 };
+  // (A charge as blast() reads a weapon: drawn as big as a salmon's mine that blows as wide,
+  // doing `harm` hit points at its heart.)
+  const charged = {};
+  const chargeSize = (gun) => gun.blast / 1.6;
+  const chargeOf = (gun) => (charged[gun.id] ??= { blast: () => gun.blast, damage: gun.harm / damageScale(chargeSize(gun)), edge: gun.edge, shove: WEAPONS.minen.shove, stun: WEAPONS.minen.stun, flash: WEAPONS.minen.flash });
+  function explode(c) {
+    const gun = c.gun,
+      e = c.source;
+    blastAt.copy(c.body ? e.position : c.at);
+    if (c.body) gore.kill(e, UP, gun.id);
+    const R = gun.blast;
+    for (const player of players) {
+      const f = player.fish;
+      if (player.down || f.airborne) continue;
+      bodyTail.copy(f.position).addScaledVector(f.heading, -0.5 * f.length);
+      bodyHead.copy(f.position).addScaledVector(f.heading, 0.44 * f.length);
+      along.subVectors(bodyHead, bodyTail);
+      const t = clamp(blastDir.subVectors(blastAt, bodyTail).dot(along) / Math.max(1e-6, along.lengthSq()), 0, 1);
+      bodyNear.copy(bodyTail).addScaledVector(along, t);
+      const d = Math.max(0, bodyNear.distanceTo(blastAt) - 0.1 * f.length);
+      if (d > R) continue;
+      boom.cause = gun.cause;
+      boom.damage = boom.hitDamage = gun.damage * (1 - (1 - gun.edge) * (d / R));
+      hurt(player, e, stepOutcome, boom);
+      blastDir.subVectors(bodyNear, blastAt);
+      if (blastDir.lengthSq() < 1e-8) blastDir.set(0, 1, 0);
+      gore.hit?.(struckBody(f), bodyNear, blastDir.normalize(), gun.id);
+    }
+    firing.blast(c.by, blastAt, chargeOf(gun), gun.id, chargeSize(gun));
+    // (blast() is heard only for the local player's own; the enemies' are heard here.)
+    if (c.by !== local.id) sfx.explosion(chargeSize(gun), camera.position.distanceTo(blastAt) / Math.max(0.3, fish.length));
+  }
+  // The charges whose fuse is up go off (and those they set off with no fuse left, at once).
+  function detonations(dt) {
+    const n = charges.length;
+    for (let i = 0; i < n; i++) charges[i].fuse -= dt;
+    for (let i = 0; i < charges.length; i++) {
+      const c = charges[i];
+      if (c.fuse > 0) continue;
+      charges.splice(i--, 1);
+      explode(c);
+    }
+  }
+  // What the enemies do that ends in a blast: a jellyfish touched dies with its mine, a bomb
+  // goes off where it is; and where a bomb goes into the water, it splashes.
+  const chargeHooks = {
+    touch(e) {
+      if (e.dead) return;
+      enemies.hit(e, e.hp + 1, null, -1);
+      charges.push({ source: e, gun: e.spec.weapon, at: e.position.clone(), fuse: 0, body: true, by: -1 });
+    },
+    blast(at, gun, source) {
+      charges.push({ source, gun, at: at.clone(), fuse: 0, body: false, by: -1 });
+    },
+    water(x, y, z, size) {
+      game.falls?.splash?.(x, y, z, size);
+      game.ripples?.add?.(x, z, size);
+    },
+  };
 
   // A small sunk fish can be eaten where it lies, and so can a small one stunned belly-up,
   // and the chunks a burst one left (gore.eat).
@@ -327,7 +414,9 @@ export function createCombat(game) {
     const f = player.fish;
     if (player.down) return;
     for (const e of enemies.list) {
-      if (e.eaten || e.burst || e.size > 1.1 * f.length) continue;
+      // (Nor a jellyfish with its mine: a live one goes off at a touch, and a dead one's own
+      // mine is about to tear it apart.)
+      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact") continue;
       if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
         if (!e.dead) {
@@ -407,7 +496,7 @@ export function createCombat(game) {
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12, game.now.time);
     neutrals.update(fish);
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null });
+    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null, ...chargeHooks });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
     // (The splatter's records for the salmon are free again: gore.update let go of them.)
@@ -421,6 +510,8 @@ export function createCombat(game) {
     // What the shots left: the grenades' trails, one splatter call a shell.
     firing.trails(dt);
     firing.flush();
+    // The enemies' charges that are due.
+    detonations(dt);
     eatCorpses(local);
     rules.after(local);
     fx.update(dt);
@@ -477,6 +568,7 @@ export function createCombat(game) {
   const UP = new THREE.Vector3(0, 1, 0);
   function nightSigns() {
     const night = 1 - (game.daylight?.state?.daylight ?? 1);
+    enemies.night?.(night);
     for (const e of enemies.list) {
       if (e.dead || e.neutral || e.passive || e.spec.flies) continue;
       const d = e.position.distanceTo(camera.position);

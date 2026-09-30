@@ -31,7 +31,9 @@ export function createNeutrals({ life, enemies, players, clock }) {
     const group = e.group;
     const player = players.find((p) => p.id === by) ?? players[0];
     standing.delete(m);
-    const strong = !!e.spec.weapon && odds(m, player.fish, e.spec.temper ?? group?.spec?.temper ?? 1) >= 1;
+    // (A blast of the enemies' own -- a jellyfish's mine, a gannet's bomb, `by` -1 -- is no
+    // salmon's doing: it only scares the fish off, it does not turn it on anyone.)
+    const strong = by >= 0 && !!e.spec.weapon && odds(m, player.fish, e.spec.temper ?? group?.spec?.temper ?? 1) >= 1;
     if (group) group.panic = 1;
     if (enemies.count(e.kind) >= e.spec.capacity) {
       // (No place left in its kind's crowd: it stays the shoal's, fleeing or nipping as the

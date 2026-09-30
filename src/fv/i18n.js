@@ -104,6 +104,13 @@ const WORDS = [
   // The otter (its name, "Otter", the base game's tables have already).
   ["Machete", "Machete", "砍刀", "マチェーテ", "Мачете"],
   ["Von einem Otter mit der Machete zerhackt", "Hacked to pieces by an otter with a machete", "被一只水獭用砍刀砍碎", "カワウソにマチェーテで切り刻まれた", "Насечена с мачете от видра"],
+  // The sea's enemies: the jellyfish with its sea mine, the gannet with its bombs.
+  ["Qualle", "Jellyfish", "水母", "クラゲ", "Медуза"],
+  ["Seemine", "Sea mine", "水雷", "機雷", "Морска мина"],
+  ["Von einer Qualle mit Seemine zerrissen", "Torn apart by a jellyfish with a sea mine", "被一只挂着水雷的水母炸碎", "機雷を抱えたクラゲに引き裂かれた", "Разкъсана от медуза с морска мина"],
+  ["Basstölpel", "Gannet", "鲣鸟", "カツオドリ", "Рибояд"],
+  ["Fliegerbomben", "Aerial bombs", "航空炸弹", "航空爆弾", "Авиобомби"],
+  ["Von einem Basstölpel mit Fliegerbomben zerfetzt", "Blown to pieces by a gannet with aerial bombs", "被一只带着航空炸弹的鲣鸟炸成碎片", "航空爆弾を抱えたカツオドリに木っ端みじんにされた", "Разкъсана на парчета от рибояд с авиобомби"],
 ];
 
 for (const [de, en, zh, ja, bg] of WORDS) {
