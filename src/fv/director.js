@@ -11,6 +11,11 @@ import { KINDS } from "./kinds.js";
 const CAP = [0, 4, 5, 6, 8, 8, 8, 9, 9, 10];
 const PRESSURE = 26,
   BREATHER = 14;
+// How high over the bed the salmon may swim for a cod to be sent (units). The cod comes up
+// only at a salmon within about 14 units of it (enemies.js); one laid under a salmon swimming
+// high over the deep sea bed would never reach it, and would only hold a place in the count
+// until it was left behind.
+const LOW = 12;
 
 export function createDirector({ random }) {
   let clock = 0,
@@ -29,7 +34,8 @@ export function createDirector({ random }) {
     return w;
   }
 
-  function choose(stage, s, enemies) {
+  // (`above`: how high the salmon swims over the bed.)
+  function choose(stage, s, enemies, above) {
     const options = [];
     if (suits("troutParr", s) > 0.2) options.push(["troutParr", 3]);
     if (suits("bullhead", s) > 0.2) options.push(["bullhead", 2]);
@@ -37,10 +43,11 @@ export function createDirector({ random }) {
     if (suits("minnow", s) > 0.2) options.push(["minnow", 1.2]);
     // The river's and the sea's own fish, armed (kinds.js), in their waters.
     if (stage >= 3 && suits("grayling", s) > 0.3) options.push(["grayling", 0.9]);
-    // (The perch come often, a whole pack at once; the pike, the sniper, one at a time.)
+    // (The perch come often, a whole pack at once; the pike, the sniper, one at a time; the
+    // cod, lying on the bed, only for a salmon swimming low enough over it.)
     if (stage >= 4 && suits("perch", s) > 0.3) options.push(["perch", 1.3]);
     if (stage >= 4 && suits("pike", s) > 0.3 && !enemies.list.some((e) => e.kind === "pike" && !e.dead)) options.push(["pike", 0.5]);
-    if (stage >= 6 && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
+    if (stage >= 6 && above < LOW && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
     if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
@@ -84,6 +91,13 @@ export function createDirector({ random }) {
     return c.thalweg;
   }
 
+  // Under the salmon's line at river place s, a few units to either side of it, where the
+  // water is deep enough for a fish of `size`; null where it is not.
+  function under(fish, s, size) {
+    const u = fish.river.u + range(-3, 3);
+    return level(s) - bed(s, u) > size * 0.8 ? u : null;
+  }
+
   return {
     get travel() {
       return travel;
@@ -106,7 +120,7 @@ export function createDirector({ random }) {
       let alive = 0;
       for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
-      const kind = choose(stage, fish.river.s, enemies);
+      const kind = choose(stage, fish.river.s, enemies, fish.position.y - bed(fish.river.s, fish.river.u));
       if (!kind) {
         nextSpawn = clock + 3;
         return;
@@ -126,6 +140,16 @@ export function createDirector({ random }) {
       // nearer bank, in the weed there -- a long shot from where the salmon will pass, not out
       // of its sight on a far bank of a wide river.
       if (spec.bank && where.s < S.coast) where.u = aside(fish, where.s, spec.size[1]);
+      // One that rises off the bed (the cod) lies right under the salmon's way, not off to one
+      // side of it anywhere across the open sea: it comes up only at a salmon passing close.
+      if (spec.rises) {
+        const u = under(fish, where.s, spec.size[1]);
+        if (u === null) {
+          nextSpawn = clock + 1;
+          return;
+        }
+        where.u = u;
+      }
       for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-2, 2), where.u + range(-1.5, 1.5));
       nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1));
     },

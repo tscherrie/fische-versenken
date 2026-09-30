@@ -77,9 +77,10 @@ export const SCENES = [
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
   { name: "lauf-parr", stage: "parr", at: 1800, season: "summer", hour: 14, pilot: 60 },
   // The same in the middle river, where the perch packs and the pike come, and at sea, where
-  // the cod lies on the bed.
+  // the cod lies on the bed. (There the pilot keeps `low` units over the bed: the cod is sent
+  // only to a salmon swimming that low, and mid-water over the deep sea bed is too high.)
   { name: "lauf-barsch-hecht", stage: "parr", at: 10500, season: "summer", hour: 14, pilot: 60 },
-  { name: "lauf-dorsch", stage: "postsmolt", at: 16200, season: "summer", hour: 12, pilot: 60 },
+  { name: "lauf-dorsch", stage: "postsmolt", at: 16200, season: "summer", hour: 12, pilot: 60, low: 5 },
   // The same with each weapon (`arm`), the trigger only within `fireRange` fish lengths.
   { name: "lauf-flinte", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60, arm: "flinte", fireRange: 6 },
   { name: "lauf-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, pilot: 60, arm: "granate", fireRange: 12 },
@@ -367,7 +368,9 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
     } else {
       const target = course.place(fish.river.s + 6, fish.river.u * 0.8, {});
       look.yaw = Math.atan2(target.z - fish.position.z, target.x - fish.position.x);
-      look.pitch = 0;
+      // (With `low` it keeps about that many units over the bed, as a salmon hunting down
+      // there would, instead of holding the height it has.)
+      look.pitch = scene.low ? Math.max(-0.7, Math.min(0.7, Math.atan2(course.bed(fish.river.s, fish.river.u) + scene.low - fish.position.y, 4 * fish.length))) : 0;
     }
     combat.fire(!!near && !scene.nofire && (!scene.fireRange || near.position.distanceTo(fish.position) - near.size * 0.45 < scene.fireRange * fish.length));
     const dead = extreme.game.now.dead > 0;

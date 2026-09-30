@@ -498,8 +498,10 @@ export function createEnemies(scene, { random }) {
     let speed = 0,
       rate = spec.turn;
     if (!p) {
-      // Nobody to go for: drift and hold.
+      // Nobody to go for: drift and hold (one that had come up off the bed, the cod, sinks
+      // back onto it rather than hanging where it last rose to).
       e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
+      e.rising = false;
       speed = spec.cruise * 0.3;
       return speed;
     }
