@@ -1668,6 +1668,7 @@ export const LOOK_SCENES = [
 // end to go on to the following scene.
 export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
+  if (ctx.scene.birds) return (await import("../look/dev/bird-scenes.js")).runBirdScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1707,4 +1708,27 @@ LOOK_SCENES.push(
   // What 24 of each cost, in the redd where the larvae come, seen by the game's own camera: the
   // frame timed with and without them, and draw() on the processor.
   { name: "modelle-kosten", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+);
+
+// ---- The birds (look/birds.js): each posed in every state its plan has, close up from the side,
+// from above and from under the water; the wingbeat frame by frame; and what they cost (run
+// in src/fv/look/dev/bird-scenes.js).
+LOOK_SCENES.push(
+  // The kingfisher over the brook: flying, hovering, plunging, under the water, dead.
+  { name: "vogel-eisvogel", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  // The goosander: swimming, lunging, up on the water for air, dead.
+  { name: "vogel-saeger", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The heron in the shallows: standing, the tell, the lunge with the shot, toppled dead.
+  { name: "vogel-reiher", look: true, birds: true, stage: "parr", at: 12500, season: "summer", hour: 14 },
+  // The gannet over the sea: gliding, beating, the tell, the plunge, pulling out, dead.
+  { name: "vogel-toelpel", look: true, birds: true, stage: "postsmolt", at: 17000, season: "summer", hour: 13 },
+  // The kingfisher's wingbeat, a picture every sixtieth of a second.
+  { name: "vogel-schlag", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  // Each bird as the game runs it, the camera tracking it through its plan, then shot dead.
+  { name: "vogel-live-eisvogel", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  { name: "vogel-live-saeger", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "vogel-live-reiher", look: true, birds: true, stage: "parr", at: 12500, season: "summer", hour: 14 },
+  { name: "vogel-live-toelpel", look: true, birds: true, stage: "postsmolt", at: 17000, season: "summer", hour: 13 },
+  // Six birds in view: the frame with and without them, the posing on the processor.
+  { name: "vogel-kosten", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
 );
