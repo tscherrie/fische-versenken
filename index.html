@@ -271,47 +271,66 @@
       <div id="glow"></div>
       <div id="veil"></div>
       <div id="loading" role="status"><p>Der Fluss entsteht…</p></div>
+      <!-- The title card, which is also the pause (intro.js): the title, the start with the
+           saved stage under it, the settings, the keys, and GitHub with the version at the
+           foot. What a graphics step does and what vegan mode means are in the tooltips, so
+           that the card itself stays short. -->
       <div id="intro" role="dialog" aria-modal="false" aria-labelledby="intro-title" hidden>
         <div class="card">
           <p class="kicker" hidden>Pause</p>
           <h1 id="intro-title">Salmon Survival Extreme</h1>
           <p class="lead">Schlüpf in der Quelle, wachs im Fluss heran, zieh ins Meer – und kehr zum Laichen heim.</p>
           <p class="homescreen" hidden><b>Vollbild auf iPhone und iPad:</b> <span>Tippe auf Teilen</span> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11M8 7.5l4-4 4 4" /><path d="M8.5 10.5H6.5v10h11v-10h-2" /></svg> <span>(oder erst auf „…“) und dann auf „Zum Home-Bildschirm“ – von dort startet das Spiel ohne Adressleiste, mit eigenem Spielstand.</span></p>
-          <div class="for-desktop">
-            <ul class="keys">
-              <li><span class="mouse" aria-hidden="true"></span> Maus: lenken</li>
-              <li><kbd>W</kbd> schwimmen · <kbd>S</kbd> bremsen</li>
-              <li><kbd>A</kbd><kbd>D</kbd> ausweichen</li>
-              <li><kbd>Leertaste</kbd> Spurt, Biss, Sprung</li>
-              <li><kbd>M</kbd> Karte · <kbd>L</kbd> Logbuch</li>
-            </ul>
-            <ul class="keys touch-keys">
-              <li><kbd class="touch-key look"></kbd> Wischen: umschauen und lenken</li>
-              <li><kbd class="touch-key go"></kbd> halten: schwimmen</li>
-              <li><kbd class="touch-key bite"></kbd> Spurt, Biss, Sprung</li>
-              <li><kbd class="touch-key map"></kbd> Karte ein/aus im Pausemenü</li>
-            </ul>
-            <label class="vegan" for="intro-vegan">
-              <input id="intro-vegan" type="checkbox" />
-              <span class="switch" aria-hidden="true"></span>
-              <span class="text"><b>Vegan-Modus</b> <span>Keiner jagt dich, und du jagst keinen – ohne Hunger wächst du mit der Zeit und auf deinem Weg.</span></span>
-            </label>
+          <div class="primary for-desktop">
             <button id="intro-start" type="button" disabled>Der Fluss entsteht …</button>
-            <p id="intro-status" class="status"></p>
-            <button id="intro-new" class="quiet" type="button" hidden>Neues Spiel starten</button>
-            <p class="note">Speichert automatisch. Am besten mit Ton.</p>
-            <p class="note touch-note">Am besten quer halten und mit Ton.</p>
-            <div class="quality-slot"></div>
+            <p class="sub"><span id="intro-status" class="status"></span><button id="intro-new" class="quiet" type="button" hidden>Neues Spiel starten</button></p>
           </div>
+          <!-- The place for an extension's own panel (src/mods.js), right under the start: it
+               appends its panel here as its module loads, and the card goes up with it.
+               Empty, it takes no room. -->
+          <div id="intro-extension" class="extension for-desktop"></div>
           <div class="for-phone">
             <p class="phone-note">Salmon Survival läuft vorerst nur auf dem Computer – Mac, Windows oder Linux, mit Tastatur und Maus. Öffne den Link am besten an deinem Rechner.</p>
             <button id="intro-copy" type="button">Link kopieren</button>
           </div>
-          <div class="langs" role="group" aria-label="Language / Sprache"></div>
-          <p class="links">
-            <a href="https://github.com/tscherrie/salmon-survival-extreme" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><span>Mitmachen / Feedback auf GitHub</span></a>
+          <!-- The settings: one row each, its label on the left, its control on the right, all
+               rows equally high. An extension adds a row of its own as its module loads
+               (settingsRow in intro.js): a label and a .seg of buttons, the look comes with
+               the grid. On the phone notice only the languages are left. -->
+          <div class="settings">
+            <div class="row for-desktop">
+              <p class="label">Grafik</p>
+              <div class="quality-slot"></div>
+            </div>
+            <div class="row">
+              <p class="label">Sprache</p>
+              <div class="langs seg" role="group" aria-label="Language / Sprache"></div>
+            </div>
+            <div class="row for-desktop" title="Keiner jagt dich, und du jagst keinen – ohne Hunger wächst du mit der Zeit und auf deinem Weg.">
+              <label class="label" for="intro-vegan">Vegan-Modus</label>
+              <label class="vegan">
+                <input id="intro-vegan" type="checkbox" />
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+            </div>
+          </div>
+          <!-- The keys, small, at the bottom. The map's and the logbook's are left out: their
+               buttons stand in the corner, with their keys on them, whenever the card is up. -->
+          <ul class="keys for-desktop">
+            <li><span class="mouse" aria-hidden="true"></span> Maus: lenken</li>
+            <li><kbd>W</kbd> schwimmen · <kbd>S</kbd> bremsen</li>
+            <li><kbd>A</kbd><kbd>D</kbd> ausweichen</li>
+            <li><kbd>Leertaste</kbd> Spurt, Biss, Sprung</li>
+          </ul>
+          <ul class="keys touch-keys for-desktop">
+            <li><kbd class="touch-key look"></kbd> Wischen: umschauen und lenken</li>
+            <li><kbd class="touch-key go"></kbd> halten: schwimmen</li>
+            <li><kbd class="touch-key bite"></kbd> Spurt, Biss, Sprung</li>
+          </ul>
+          <p class="foot">
+            <span class="links"><a href="https://github.com/tscherrie/salmon-survival-extreme" target="_blank" rel="noopener" title="Mitmachen / Feedback auf GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><span>GitHub</span></a></span>
+            <span class="version"></span>
           </p>
-          <p class="version"></p>
         </div>
       </div>
       <div id="error" role="alert" hidden></div>
