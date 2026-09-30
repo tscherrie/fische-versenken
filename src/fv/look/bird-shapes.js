@@ -329,6 +329,10 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
 // hand reaching `length` back from there to the tip over the rump or the tail; each column
 // from the leading edge at `top` (radians round from the back) down the flank toward
 // `bottom`, the band narrowing to the tip.
+// The arm's edges are tucked in under the body's surface -- its front under the breast
+// feathers, its upper edge under the scapulars, its lower edge under the flank -- as a real
+// folded wing's are: laid on top of the body whole, its square outline read as a panel stuck
+// on the side. Only the hand lies free over the rump, where the primaries' tips show.
 function folder(stations, { shoulder, sW, length, top, bottom, reach = 0.32, rise = 0, gap = 0.015 }) {
   const size = sizeAlong(stations);
   return (s, c, isTop, lift) => {
@@ -340,7 +344,12 @@ function folder(stations, { shoulder, sW, length, top, bottom, reach = 0.32, ris
     const w = b.w,
       h = b.h;
     const n = new THREE.Vector3(0, Math.cos(phi) / h, Math.sin(phi) / w).normalize();
-    const out = gap * length + (isTop ? Math.abs(lift) : 0) * 0.8 + rise * g * g;
+    const free = gap * length + (isTop ? Math.abs(lift) : 0) * 0.8 + rise * g * g;
+    // (How far the arm's edges are drawn in: fully at the front, along the top and the bottom
+    // of the band, and not at all once the hand begins.)
+    const arm = 1 - smooth(reach * 0.8, reach * 1.6, g);
+    const tuck = Math.max(1 - smooth(0.02, 0.16, g), arm * Math.max(1 - smooth(0.04, 0.2, c), smooth(0.72, 0.98, c)));
+    const out = free + (-0.035 * length - free) * tuck;
     return [x, b.y + h * Math.cos(phi) + n.y * out, w * Math.sin(phi) + n.z * out];
   };
 }
@@ -547,7 +556,8 @@ export function kingfisherShape() {
       if (!top) return [...(c < 0.45 ? hex(0xc98446) : hex(0x3a3532)), DOWN];
       // The coverts deep blue-green (spotted pale blue: the shader's spots), the flight
       // feathers blackish, their outer vanes blue.
-      const c0 = c < 0.42 ? hex(0x185c74) : mix3(hex(0x15465a), hex(0x10242c), smooth(0.5, 0.9, c));
+      // (Blue still where the flight feathers show on the folded wing: only their tips dark.)
+      const c0 = c < 0.42 ? hex(0x185c74) : mix3(hex(0x185a72), hex(0x122e3a), smooth(0.6, 0.98, c));
       return [...c0, DOWN];
     },
     null,
@@ -586,8 +596,8 @@ export function kingfisherShape() {
 // ---- The goosander drake: 62 cm, long and low in the water; the head a glossy bottle green
 // that shows black at a distance, with a smooth bulge on the nape; the thin red bill with its
 // saw teeth and dark hooked nail; the body white washed salmon-pink, the back black, the rump
-// and tail grey, the folded wing a white panel with black primaries; big red feet set far
-// back.
+// and tail grey, the folded wing black along the back and white along the flank with the
+// black primaries over the rump; big red feet set far back.
 export function merganserShape() {
   const b = new Plumage({ feathers: 3.4, ruffle: 0.025, grain: 3 });
   const body = smoothed([
@@ -708,12 +718,16 @@ export function merganserShape() {
     fold: folder(body, { shoulder: [0.75, 0.45, 0.42], sW: 0.43, length: 2.85, top: 0.52, bottom: 1.3 }),
   });
   addWings(b, w, (s, c, top) => {
-    // The inner wing white (the secondaries and their coverts), its leading part black above
+    // The inner wing white (the secondaries and their coverts), its leading half black above
     // (where the black scapulars lie over it, so folded it shows as the drake's does: black
-    // along the back, white along the flank); the hand black-brown; the root black.
+    // over the whole back, the white only low on the flank, most of it tucked under the flank
+    // feathers); the hand black-brown; the root black. (The goosander never flies here: the
+    // wing is seen folded.)
     const hand = smooth(w.sW - 0.02, w.sW + 0.03, s);
-    let col = hex(0xf2f0ea);
-    if (top) col = mix3(hex(0x151517), col, smooth(0.28, 0.36, c));
+    // (The white washed a little salmon as the flank it lies on, so the folded wing does not
+    // show as a whiter panel stuck on it.)
+    let col = hex(0xf2e4da);
+    if (top) col = mix3(hex(0x151517), col, smooth(0.5, 0.6, c));
     col = mix3(col, hex(0x1e1c1c), hand);
     if (top) col = mix3(col, BLACK, 1 - smooth(0.06, 0.14, s));
     if (!top) col = mix3(col, hex(0xd6d6d2), hand * 0.3);
@@ -823,8 +837,9 @@ export function heronShape() {
       // Grey above, paler grey-white below; the black patches on the sides of the breast
       // at the bend of the wing.
       let c = mix3(GREY, hex(0xcfcfcb), smooth(1.4, 2.0, phi));
-      const patch = smooth(0.95, 1.2, local.x) * (1 - smooth(1.55, 1.75, local.x)) * smooth(0.9, 1.1, phi) * (1 - smooth(1.7, 1.9, phi));
-      c = mix3(c, BLACK, patch);
+      // (A soft oval, darkest at its middle: with square edges it read as a patch stuck on.)
+      const patch = 1 - smooth(0.55, 1, Math.hypot((local.x - 1.4) / 0.38, (phi - 1.3) / 0.36));
+      c = mix3(c, BLACK, 0.9 * patch);
       const k = 0.93 + 0.12 * hash(p.x * 9, p.y * 9, p.z * 9);
       return [...tint(c, k), DOWN];
     },
@@ -1021,19 +1036,22 @@ export function gannetShape() {
   b.add(loft(body, { radial: 26, belly: 0.92 }), { paint: (p) => [...tint(WHITE, 0.95 + 0.07 * hash(p.x * 8, p.y * 8, p.z * 8)), DOWN] });
   const B = [2.0, 0.12, 0],
     J0 = [2.75, 0.22, 0];
-  b.add(neckTube(B, J0, (t) => 0.5 - 0.14 * t, { radial: 18 }), {
+  // (The neck as thick as the back of the head where it goes into it, and thinning inside the
+  // head, so the two surfaces cross at an angle: a thinner neck showed the head as a helmet
+  // set on it, one as thick all the way ran along the head's surface and flickered with it.)
+  b.add(neckTube(B, J0, (t) => 0.5 - 0.08 * t - 0.1 * smooth(0.6, 1, t), { radial: 18 }), {
     part: PART.neck,
     pivot: B,
     joint: J0,
     weight: along,
-    paint: (p, n, i) => [...mix3(WHITE, BUFF, smooth(0.5, 1, along(p, i)) * smooth(-0.1, 0.5, n.y)), DOWN],
+    paint: (p, n, i) => [...mix3(WHITE, BUFF, smooth(0.35, 1, along(p, i)) * smooth(-0.3, 0.3, n.y)), DOWN],
   });
   const head = { part: PART.head, pivot: J0 };
   const skull = [
-    { x: 2.3, w: 0, h: 0, y: 0.19 },
-    { x: 2.38, w: 0.37, h: 0.39, y: 0.2 },
-    { x: 2.7, w: 0.44, h: 0.46, y: 0.28 },
-    { x: 3.0, w: 0.43, h: 0.44, y: 0.27 },
+    { x: 2.2, w: 0, h: 0, y: 0.2 },
+    { x: 2.3, w: 0.36, h: 0.38, y: 0.22 },
+    { x: 2.7, w: 0.43, h: 0.45, y: 0.27 },
+    { x: 3.0, w: 0.42, h: 0.43, y: 0.27 },
     { x: 3.3, w: 0.34, h: 0.34, y: 0.2 },
     { x: 3.52, w: 0.24, h: 0.25, y: 0.13 },
     { x: 3.6, w: 0, h: 0, y: 0.11 },
@@ -1046,8 +1064,9 @@ export function gannetShape() {
       const { phi } = around(headSize, p);
       // The buff-yellow crown and nape, white throat; the bare black skin round the eye and
       // forward to the bill, and the black line down the throat.
-      // (The wash strongest on the crown and the nape, fading down the neck.)
-      let c = mix3(BUFF, WHITE, Math.max(smooth(1.3, 1.9, phi), 1 - smooth(2.4, 2.6, p.x)));
+      // (The wash strongest on the crown and the nape, going on down the neck as the neck's
+      // own does, so no line shows where the head joins it.)
+      let c = mix3(BUFF, WHITE, smooth(1.25, 1.95, phi));
       const dEye = Math.hypot(p.x - EYE_AT[0], p.y - EYE_AT[1], Math.abs(p.z) - EYE_AT[2]);
       const mask = 1 - smooth(0.1, 0.14, dEye);
       const lore = smooth(3.22, 3.3, p.x) * smooth(1.05, 1.2, phi) * (1 - smooth(1.6, 1.75, phi));

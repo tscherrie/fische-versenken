@@ -257,26 +257,31 @@ function glide(st, dt, lift = 0.07, hand = -0.04) {
   st.pose.handFlap = toward(st.pose.handFlap, hand, 6, dt);
 }
 // The limp, crumpled wings of a bird shot dead: a flutter in the first moment as it falls,
-// half open and hanging; once it lies on the water (`floating`) spread flat on it.
+// half open and hanging; once it lies on the water (`floating`) spread flat on it, swept back
+// and drooping onto it. (Opened all the way: between spread and folded a wing is twisted
+// half round, and on the water that showed as a wing standing on its edge.)
 function limp(st, e, dt, { fold = 0.45, droop = -0.45, floating }) {
   const p = st.pose;
   const spasm = Math.max(0, 1 - (e.corpse ?? 0) / 0.5);
   st.phase = (st.phase + dt * 9 * TAU) % TAU;
-  p.fold = toward(p.fold, floating ? fold * 0.75 : fold, 3, dt);
-  p.sweep = toward(p.sweep, 0.12, 3, dt);
-  p.armFlap = toward(p.armFlap, (floating ? -0.1 : droop) + 0.35 * spasm * Math.sin(st.phase), 5, dt);
-  p.handFlap = toward(p.handFlap, floating ? 0.06 : -0.35, 4, dt);
+  p.fold = toward(p.fold, floating ? 0 : fold, 3, dt);
+  p.sweep = toward(p.sweep, floating ? 0.3 : 0.12, 3, dt);
+  p.armFlap = toward(p.armFlap, (floating ? -0.12 : droop) + 0.35 * spasm * Math.sin(st.phase), 5, dt);
+  p.handFlap = toward(p.handFlap, floating ? -0.08 : -0.35, 4, dt);
   p.tailSpread = toward(p.tailSpread, 0.35, 3, dt);
   p.tailPitch = toward(p.tailPitch, 0, 3, dt);
-  p.hipL = toward(p.hipL, 0.25, 3, dt);
-  p.hipR = toward(p.hipR, -0.35, 3, dt);
-  p.heel = toward(p.heel, 0.8, 3, dt);
+  // (The legs hang back, one further than the other: swung forward, the feet lay flat on the
+  // belly and the flank.)
+  p.hipL = toward(p.hipL, -0.45, 3, dt);
+  p.hipR = toward(p.hipR, -0.85, 3, dt);
+  p.heel = toward(p.heel, 0.35, 3, dt);
 }
-// How a dead bird lies: tumbling as it falls, then on the water on its belly, tipped a little
-// to one side (which side its id says), the head down in the water.
+// How a dead bird lies: tumbling as it falls, then on the water on its belly, hardly tipped
+// (which way its id says; tipped further, the wing on the high side would stand up out of the
+// water as no limp wing does), the head down in the water.
 function lying(st, e, dt, floating, tumble) {
   const side = e.id % 2 ? 1 : -1;
-  if (floating) st.roll = toward(st.roll, side * 0.32, 2, dt);
+  if (floating) st.roll = toward(st.roll, side * 0.07, 2, dt);
   else st.roll = side * Math.min(e.rolled ?? 0, 1.4) + tumble * Math.sin((e.corpse ?? 0) * 9);
   st.pitch = toward(st.pitch, 0, 3, dt);
   const p = st.pose;
@@ -351,7 +356,8 @@ const POSES = {
   merganser(e, st, dt) {
     const p = st.pose;
     if (e.dead) {
-      p.fold = toward(p.fold, 0.85, 2, dt);
+      // (Its wings stay shut: it dies under the water or on it, where they were shut already.)
+      p.fold = toward(p.fold, 1, 2, dt);
       p.armFlap = toward(p.armFlap, -0.2, 2, dt);
       // (The neck limp, the head hanging in the water.)
       p.headX = toward(p.headX, -0.2, 2, dt);
@@ -359,9 +365,10 @@ const POSES = {
       p.headPitch = toward(p.headPitch, -0.9, 2, dt);
       p.basePitch = toward(p.basePitch, -0.6, 2, dt);
       p.curl = toward(p.curl, 0.36, 2, dt);
-      p.hipL = toward(p.hipL, 0.3, 2, dt);
-      p.hipR = toward(p.hipR, -0.5, 2, dt);
-      p.heel = toward(p.heel, 0.9, 2, dt);
+      // (The feet hanging back and down: swung forward, the big webs lay on the flank.)
+      p.hipL = toward(p.hipL, -0.6, 2, dt);
+      p.hipR = toward(p.hipR, -1.0, 2, dt);
+      p.heel = toward(p.heel, 0.3, 2, dt);
       p.tailSpread = toward(p.tailSpread, 0.3, 2, dt);
       st.pitch = toward(st.pitch, 0, 2, dt);
       st.roll = toward(st.roll, (e.id % 2 ? 1 : -1) * 0.45, 2, dt);
@@ -422,7 +429,18 @@ const POSES = {
   heron(e, st, dt) {
     const p = st.pose;
     if (e.dead) {
-      limp(st, e, dt, { fold: 0.55, droop: -0.3, floating: (e.corpse ?? 0) > 1.2 });
+      const floating = (e.corpse ?? 0) > 1.2;
+      limp(st, e, dt, { fold: 0.55, droop: -0.3, floating });
+      // (Afloat it lies toppled forward, so its wings' turns are the standing bird's: about
+      // its upright, which now lies along the water, a sweep lifts both wings into a V and a
+      // sweep forward lowers them; about its length, which now points down, a flap sweeps
+      // them back. So they are flapped back, and swept forward just enough to bring their
+      // tips down from the shoulders onto the water.)
+      if (floating) {
+        p.sweep = toward(p.sweep, -0.12, 3, dt);
+        p.armFlap = toward(p.armFlap, -0.3, 3, dt);
+        p.handFlap = toward(p.handFlap, -0.2, 3, dt);
+      }
       p.headPitch = toward(p.headPitch, -0.9, 2.5, dt);
       p.headYaw = toward(p.headYaw, 0.3, 2.5, dt);
       p.basePitch = toward(p.basePitch, -1.9, 2.5, dt);
@@ -622,6 +640,7 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
   function placeBird(e, st, entry, out) {
     const { shape, length, middle } = entry;
     X.copy(e.heading);
+    X.y *= 1 - st.level;
     if (X.lengthSq() < 1e-8) X.set(1, 0, 0);
     X.normalize();
     Z.crossVectors(X, UP);
@@ -704,6 +723,10 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
         kept.set(e, st);
       }
       st.top = e.river?.s != null ? level(e.river.s) : (st.top ?? 0);
+      // A corpse on the water lies level whatever way it was going when it was shot (killed in
+      // the plunge, its heading still points down, and drawn along it the bird stood on its
+      // head in the water with its wings up).
+      st.level = toward(st.level ?? 0, e.dead && e.position.y <= st.top + 0.05 ? 1 : 0, 3, dt);
       if (e.hitAt !== undefined && e.hitAt !== st.hitAt) {
         st.hitAt = e.hitAt;
         st.jolt = 1;

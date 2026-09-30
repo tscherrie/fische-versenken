@@ -272,10 +272,14 @@ const SCENES = {
     e.position.copy(air);
     look(air, ahead, [0.3, 0.3, 2.4]);
     await picture(ctx, "tot-faellt", flock, list, 0.25);
-    Object.assign(e, { corpse: 4, rolled: Math.PI });
+    // (Shot in the plunge, its heading still steeply down: on the water it lies level all the
+    // same.)
+    Object.assign(e, { corpse: 4, rolled: Math.PI, heading: steep.clone() });
     e.position.y = here.top - e.size * 0.07;
     look(e.position, ahead, [0.8, 1.6, 1.6]);
     await picture(ctx, "tot-treibt", flock, list, 1.5);
+    look(e.position, ahead, [0.3, 0.35, 2.2]);
+    await picture(ctx, "tot-treibt-seite", flock, list, 0.1);
     // The head close, from the side.
     Object.assign(e, { dead: false, mode: "circle", corpse: 0, rolled: 0, heading: ahead.clone() });
     e.position.copy(air);
@@ -332,6 +336,12 @@ const SCENES = {
     e.position.y = here.top - e.size * 0.07;
     look(e.position, ahead, [2, 3.5, 6]);
     await picture(ctx, "tot", flock, list, 2.5);
+    look(e.position, ahead, [0.6, 5.5, 1.2]);
+    await picture(ctx, "tot-oben", flock, list, 0.1);
+    // Alive on the water, from above: the black back between the folded wings.
+    Object.assign(e, { dead: false, mode: "breathe", corpse: 0, rolled: 0, heading: ahead.clone().setY(0.15).normalize() });
+    look(e.position, ahead, [0.4, 5, 1.4]);
+    await picture(ctx, "atmet-oben", flock, list, 1.6);
     // The head, close, from the side and a little above, on the water.
     Object.assign(e, { dead: false, mode: "breathe", corpse: 0, rolled: 0, heading: ahead.clone().setY(0.15).normalize() });
     e.position.y = here.top - e.size * 0.06;
@@ -432,6 +442,9 @@ const SCENES = {
     e.position.copy(stand).addScaledVector(facing, 1.5).setY(top);
     look(stand.clone().setY(top), facing, [20, 12, 6]);
     await picture(ctx, "tot-treibt", flock, list, 2.5);
+    // (Low over the water from out on the river: how the wings lie on it.)
+    look(stand.clone().setY(top), facing, [18, 1.5, 5]);
+    await picture(ctx, "tot-treibt-seite", flock, list, 0.1);
   },
 
   // The gannet over the sea: gliding high, seen from under the water as the salmon sees it,
