@@ -71,6 +71,13 @@ const WORDS = [
   ["Von einer Groppe niedergeschossen", "Shot down by a bullhead", "被一条杜父鱼击倒", "カジカに撃ち倒された", "Застреляна от главоч"],
   ["Von einer Bachforelle erschossen", "Shot dead by a brown trout", "被一条褐鳟射杀", "ブラウントラウトに射殺された", "Застреляна от балканска пъстърва"],
   ["Abgesägte Schrotflinte", "Sawn-off shotgun", "短管猎枪", "ソードオフ・ショットガン", "Рязана пушка"],
+  // The perch, the cod and the pike (their names are the base game's already).
+  ["Pistole", "Pistol", "手枪", "拳銃", "Пистолет"],
+  ["Pumpgun", "Pump-action shotgun", "泵动式霰弹枪", "ポンプアクション・ショットガン", "Помпена пушка"],
+  ["Elefantenbüchse", "Elephant gun", "猎象枪", "エレファントガン", "Пушка за слонове"],
+  ["Von Flussbarschen erschossen", "Shot dead by perch", "被河鲈射杀", "パーチに射殺された", "Застреляна от костури"],
+  ["Von einem Dorsch mit der Pumpgun erlegt", "Brought down by a cod with a pump-action shotgun", "被一条鳕鱼用泵动式霰弹枪击毙", "タラにポンプアクション・ショットガンで仕留められた", "Повалена от треска с помпена пушка"],
+  ["Von einem Hecht aus dem Hinterhalt erschossen", "Shot from ambush by a pike", "被一条埋伏的白斑狗鱼射杀", "待ち伏せていたパイクに射殺された", "Застреляна от засада от щука"],
   ["Libellenlarve", "Dragonfly larva", "蜻蜓幼虫", "ヤゴ", "Ларва на водно конче"],
   ["Gelbrandkäferlarve", "Diving beetle larva", "龙虱幼虫", "ゲンゴロウの幼虫", "Ларва на плавач"],
   ["Von einer Libellenlarve gepackt", "Seized by a dragonfly larva", "被一只蜻蜓幼虫抓住", "ヤゴに捕まった", "Хваната от ларва на водно конче"],
@@ -94,6 +101,16 @@ const WORDS = [
   ["Neue Waffe", "New weapon", "新武器", "新しい武器", "Ново оръжие"],
   ["Kampfmesser", "Combat knife", "战斗刀", "コンバットナイフ", "Боен нож"],
   ["Maschinenpistole", "Submachine gun", "冲锋枪", "サブマシンガン", "Автомат"],
+  // The otter (its name, "Otter", the base game's tables have already).
+  ["Machete", "Machete", "砍刀", "マチェーテ", "Мачете"],
+  ["Von einem Otter mit der Machete zerhackt", "Hacked to pieces by an otter with a machete", "被一只水獭用砍刀砍碎", "カワウソにマチェーテで切り刻まれた", "Насечена с мачете от видра"],
+  // The sea's enemies: the jellyfish with its sea mine, the gannet with its bombs.
+  ["Qualle", "Jellyfish", "水母", "クラゲ", "Медуза"],
+  ["Seemine", "Sea mine", "水雷", "機雷", "Морска мина"],
+  ["Von einer Qualle mit Seemine zerrissen", "Torn apart by a jellyfish with a sea mine", "被一只挂着水雷的水母炸碎", "機雷を抱えたクラゲに引き裂かれた", "Разкъсана от медуза с морска мина"],
+  ["Basstölpel", "Gannet", "鲣鸟", "カツオドリ", "Рибояд"],
+  ["Fliegerbomben", "Aerial bombs", "航空炸弹", "航空爆弾", "Авиобомби"],
+  ["Von einem Basstölpel mit Fliegerbomben zerfetzt", "Blown to pieces by a gannet with aerial bombs", "被一只带着航空炸弹的鲣鸟炸成碎片", "航空爆弾を抱えたカツオドリに木っ端みじんにされた", "Разкъсана на парчета от рибояд с авиобомби"],
 ];
 
 for (const [de, en, zh, ja, bg] of WORDS) {

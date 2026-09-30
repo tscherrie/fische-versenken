@@ -8,8 +8,10 @@
 // phone, placing, the parts of the river told apart, silence when muted or hushed, no
 // clipping, voices and nodes bounded; and what goes on for a while: a hunter's pulses
 // thinning out, the heart when strength stays low, a miss heard only when there was one,
-// loops that never come round the same, the sea's heave a few decibels). No dependencies:
-// Node's own http, and Chrome.
+// loops that never come round the same, the sea's heave a few decibels; and Extreme's
+// combat sounds: the player's weapons and a fight of both below, the enemies' weapons against
+// the salmon's own in tools/sound-check-enemies.mjs). No dependencies: Node's own http, and
+// Chrome.
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -17,6 +19,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enemyChecks, enemyTable } from "./sound-check-enemies.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -126,15 +129,18 @@ if (byKind("solo").length) {
   console.log(`\non their own              LUFS(400ms) centroid  %<150 150-500 .5-1.5k 1.5-4k >4k`);
   for (const r of byKind("solo")) console.log(`${r.name.padEnd(23)} ${pad(r.full, 8)} ${pad(r.centroid, 9)}   ${r.bands.map((b) => pad(b.toFixed(1), 5)).join(" ")}`);
 }
-if (byKind("weapon").length) {
+// (The enemies' scenes, en_*, have a table of their own: enemyTable.)
+const own = byKind("weapon").filter((r) => !r.name.startsWith("en_"));
+if (own.length) {
   console.log(`\nthe player's weapons     peak  LUFS400  phone  LUFS3s  centr   %<150 150-500 .5-1.5k 1.5-4k >4k  nodes  voices end`);
-  for (const r of byKind("weapon")) console.log(`${r.name.padEnd(23)} ${pad(r.peak, 5)} ${pad(r.full, 8)} ${pad(r.phone, 6)} ${pad(r.short, 7)} ${pad(r.centroid, 6)}   ${r.bands.map((b) => pad(b.toFixed(1), 5)).join(" ")}  ${pad(r.shotNodes, 5)}  ${pad(r.voices, 6)} ${pad(r.voicesEnd, 3)}`);
+  for (const r of own) console.log(`${r.name.padEnd(23)} ${pad(r.peak, 5)} ${pad(r.full, 8)} ${pad(r.phone, 6)} ${pad(r.short, 7)} ${pad(r.centroid, 6)}   ${r.bands.map((b) => pad(b.toFixed(1), 5)).join(" ")}  ${pad(r.shotNodes, 5)}  ${pad(r.voices, 6)} ${pad(r.voicesEnd, 3)}`);
 }
 if (byKind("stress").length) {
   console.log(`\nstress                   LUFS  loudest  peak  most voices  nodes made  base  sample MB  update µs`);
   for (const r of byKind("stress")) console.log(`${r.name.padEnd(23)} ${pad(r.full, 5)} ${pad(r.loudest, 8)} ${pad(r.peak, 5)} ${pad(r.maxLive, 12)} ${pad(r.nodes, 11)} ${pad(r.baseNodes, 5)} ${pad(((r.bytes ?? 0) / 1e6).toFixed(1), 10)} ${pad(r.updateUs, 10)}`);
 }
-const extras = results.filter((r) => r.extra);
+enemyTable(results, pad);
+const extras = results.filter((r) => r.extra && r.kind !== "weapon");
 if (extras.length) {
   console.log(`\nmeasured for their checks`);
   for (const r of extras) console.log(`${r.name.padEnd(23)} ${Object.entries(r.extra).map(([k, v]) => `${k} ${Array.isArray(v) ? v.join("/") : v}`).join("  ")}`);
@@ -342,6 +348,8 @@ if (weapons.length) {
   const long = ["laser_held_20s", "minigun_20s", "saw_20s"].map(W).filter(Boolean);
   check(`twenty seconds of fire leave nothing behind (voices at the end ${long.map((r) => r.voicesEnd).join("/")}) and make at most 80 nodes a second (${long.map((r) => (r.shotNodes / 20).toFixed(0)).join("/")})`, long.every((r) => r.voicesEnd === 0 && r.shotNodes / 20 <= 80));
 }
+// Extreme's combat sounds: the enemies' weapons against the salmon's own (sound-check-enemies.mjs).
+enemyChecks(get, check);
 // Nothing clips: the limiter holds every scene's peaks under full scale.
 const peaky = results.filter((r) => r.peak > -1);
 check(`every scene's peak ≤ -1 dBFS: ${peaky.length ? peaky.map((r) => `${r.name} ${r.peak}`).join(", ") : `loudest ${Math.max(...results.map((r) => r.peak))}`}`, !peaky.length);

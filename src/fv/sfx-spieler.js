@@ -316,7 +316,7 @@ export function createPlayerSounds(kit) {
     gain.connect(into);
     const l = { kind, context: c, gain, sources: [], voices, touched: c.currentTime };
     held.set(kind, l);
-    kit.holdVoices(voices);
+    kit.hold(voices);
     return l;
   }
   function start(l, ...sources) {
@@ -331,7 +331,7 @@ export function createPlayerSounds(kit) {
     const l = held.get(kind);
     if (!l) return;
     held.delete(kind);
-    kit.holdVoices(-l.voices);
+    kit.hold(-l.voices);
     const t = l.context.currentTime;
     for (const g of [l.gain, ...(l.also ?? [])]) {
       g.gain.cancelScheduledValues(t);

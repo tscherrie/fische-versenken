@@ -5,27 +5,19 @@
 // the flamethrower) to measure their loudness against. The checks are in
 // tools/sound-check.mjs, under "the player's weapons".
 //
-// A held weapon is told every frame, as the game tells it every step, and the sound's
-// update() runs every frame as the game's does (the loops let go of what nothing keeps).
+// A held weapon is told every frame, as the game tells it every step; the combat sound
+// (the scene's own, which the sound check hands the events third) is updated every frame by
+// the sound check, as the game's is (the loops let go of what nothing keeps).
 
-import { createSfx } from "../src/fv/sfx.js";
-
-// One combat sound per scene's sound (the scene makes a new sound every time).
-const made = new WeakMap();
-export function fx(sound) {
-  let s = made.get(sound);
-  if (!s) made.set(sound, (s = createSfx(sound)));
-  return s;
-}
 const FRAME = 1 / 30;
 // Every frame from `from` to `to`: `call(sfx, t)`.
 function frames(from, to, call) {
   const out = [];
-  for (let t = from; t < to - 1e-9; t += FRAME) out.push([t, (s) => call(fx(s), t)]);
+  for (let t = from; t < to - 1e-9; t += FRAME) out.push([t, (s, now, sfx) => call(sfx, t)]);
   return out;
 }
 // At each of `times`: `call(sfx, t)`.
-const at = (times, call) => times.map((t) => [t, (s) => call(fx(s), t)]);
+const at = (times, call) => times.map((t) => [t, (s, now, sfx) => call(sfx, t)]);
 // Evenly from `from`, `count` of them `every` seconds apart.
 const series = (from, count, every) => Array.from({ length: count }, (_, i) => from + i * every);
 
@@ -42,9 +34,8 @@ const later = (m) => ({
   edges: (moments, a, b) => m.edges(moments.map((t) => t + UP), a + UP, b + UP),
   repeats: (a, b, ...rest) => m.repeats(a + UP, b + UP, ...rest),
 });
-// A weapon's scene: the beds stopped (`alone`), the sound's update() every frame, what it
-// plays counted (the combat sound's voices, frame by frame). `active`: the stretch whose
-// spectrum is taken.
+// A weapon's scene: the beds stopped (`alone`), what it plays counted (the combat sound's
+// voices, frame by frame). `active`: the stretch whose spectrum is taken.
 function weapon(name, events, { seconds = 8, params = {}, active = [1, 7], measure = null } = {}) {
   return {
     name,
@@ -53,8 +44,8 @@ function weapon(name, events, { seconds = 8, params = {}, active = [1, 7], measu
     seconds: seconds + UP,
     params,
     active: active.map((t) => t + UP),
-    events: [...frames(0.2, seconds + UP - 0.05, (s) => s.update()), ...events.map(([t, call]) => [t + UP, call])],
-    watch: (sound) => ({ voices: fx(sound).playing }),
+    events: events.map(([t, call]) => [t + UP, call]),
+    watch: (sound, sfx) => ({ voices: sfx.playing }),
     measure: measure && ((m) => measure(later(m))),
   };
 }
@@ -101,7 +92,7 @@ export function weaponScenes() {
     let t = from;
     const beams = [];
     while (t < to) {
-      for (let i = 0; i < pulses && t < to; i++, t += 0.11) events.push([t, (s) => fx(s).piu(L, heat)]);
+      for (let i = 0; i < pulses && t < to; i++, t += 0.11) events.push(...at([t], (s) => s.piu(L, heat)));
       beams.push([t, Math.min(to, t + beam)]);
       t += beam + 0.11;
     }

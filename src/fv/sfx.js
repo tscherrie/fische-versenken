@@ -14,9 +14,12 @@
 //
 // The player's own weapons (the laser and its beam, the minigun, the chainsaw, the arc, the
 // nodachi, the cannon, the torpedoes, rockets, mines, the harpoon, the anti-tank rifle, a
-// capsule taken) are in src/fv/sfx-spieler.js, made from the helpers here.
+// capsule taken) are in src/fv/sfx-spieler.js, made from the helpers here. The enemies'
+// weapons are heard where the enemies are, with these same makings, in sfx-enemies.js
+// (enemyShot, enemyAim, enemyStrike, enemyEntry, enemyBlast).
 
 import { createPlayerSounds } from "./sfx-spieler.js";
+import { createEnemySfx } from "./sfx-enemies.js";
 
 const CAP = 26;
 const RESERVE = 10;
@@ -187,11 +190,15 @@ export function createSfx(sound) {
     for (const s of l.sources) s.stop(t + release + 0.05);
   }
 
-  // The player's weapons (the laser among them), made from the same helpers.
-  const player = createPlayerSounds({ sound, ready, sounding, noise, tone, click, dry, envelope, filter, voice, CAP, RESERVE, holdVoices: (n) => (looping += n) });
-  const { tick, ...weapons } = player;
+  // A held weapon's voices, counted while it is held (`n` more, or fewer when let go).
+  const hold = (n) => (looping += n);
+  // The player's weapons (the laser among them) and the enemies', made from the same helpers
+  // and counted against the same cap.
+  const { tick, ...weapons } = createPlayerSounds({ sound, ready, sounding, noise, tone, click, dry, envelope, filter, voice, CAP, RESERVE, hold });
+  const enemies = createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, tone, click, filter, saturate, whiteBuffer, hold });
 
   return {
+    ...enemies,
     ...weapons,
     // The laser locks: a relay clack, a steam-vent hiss, a small fan spinning up.
     overheat(id = "piu") {
@@ -425,6 +432,7 @@ export function createSfx(sound) {
     // Each frame: a loop left running with nothing to keep it (the game stopped stepping,
     // the tab hidden) is let go.
     update() {
+      enemies.update();
       if (loops.size && performance.now() - lastTouch > 200) for (const kind of [...loops.keys()]) stopLoop(kind, 0.2);
       tick();
     },
