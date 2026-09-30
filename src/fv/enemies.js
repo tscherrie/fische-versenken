@@ -184,8 +184,8 @@ const ACROSS = new THREE.Vector3(0, 0, 1);
 const TAU = Math.PI * 2;
 // How long a dead enemy stays before it goes (the look fades it out on the same beat).
 export const CORPSE_SECONDS = 40;
-// How far (u) the salmon may get from an ambusher, or every salmon from a jellyfish, before
-// it gives up its place and is gone.
+// How far (u) the salmon may get from an enemy that is not a boss (every salmon, from a
+// jellyfish) before it gives up its place and is gone.
 const LEFT_BEHIND = 120;
 // How far (u) a bird that has given up flies off before it is gone.
 const GONE = 90;
@@ -559,6 +559,12 @@ export function createEnemies(scene, { random }) {
     const fish = p?.fish;
     const L = fish?.length ?? 1;
     const reachable = !!fish && !fish.safe && !fish.captive && !fish.airborne && top - fish.position.y < spec.depth + 0.5 * L;
+    // (Outswum -- or the salmon grown past the small fish it takes -- it gives up its place in
+    // the director's count, as the fish do, instead of holding it for good.)
+    if (fish && fish.position.distanceToSquared(e.position) > LEFT_BEHIND * LEFT_BEHIND) {
+      e.leave = true;
+      return;
+    }
     let speed = 0;
     switch (e.mode) {
       case "circle": {
@@ -1090,10 +1096,10 @@ export function createEnemies(scene, { random }) {
     const L = fish.length;
     to.subVectors(fish.position, e.position);
     const dist = to.length();
-    // An ambusher waits where it lies: once the salmon has gone far away it gives up its
-    // place and goes, as the heron does, instead of holding a place in the director's count
-    // for good (and keeping the next pike away).
-    if (spec.behaviour === "ambush" && !spec.boss && dist > LEFT_BEHIND) {
+    // Once the salmon has gone far away -- an ambusher waits where it lies, a hunter can be
+    // outswum -- it gives up its place and goes, as the heron does, instead of holding a place
+    // in the director's count for good (and keeping the next pike or otter away).
+    if (!spec.boss && dist > LEFT_BEHIND) {
       e.leave = true;
       return 0;
     }

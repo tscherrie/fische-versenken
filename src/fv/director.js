@@ -48,12 +48,15 @@ export function createDirector({ random }) {
     // (The perch come often, a whole pack at once; the pike, the sniper, one at a time; the
     // cod, lying on the bed, only for a salmon swimming low enough over it.)
     if (stage >= 4 && suits("perch", s) > 0.3) options.push(["perch", 1.3]);
-    if (stage >= 4 && suits("pike", s) > 0.3 && !enemies.list.some((e) => e.kind === "pike" && !e.dead)) options.push(["pike", 0.5]);
+    // (The two heavy hunters of the lower river, the pike and the otter, never come together:
+    // with a perch pack and an eel about as well, a parr at night had no chance.)
+    const heavy = enemies.list.some((e) => (e.kind === "pike" || e.kind === "otter") && !e.dead);
+    if (stage >= 4 && suits("pike", s) > 0.3 && !heavy) options.push(["pike", 0.5]);
     if (stage >= 6 && above < LOW && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
     // (The otter comes one at a time, more often the further down the river, and far more
     // often at night: see below.)
-    if (stage >= 4 && suits("otter", s) > 0.2 && !enemies.list.some((e) => e.kind === "otter" && !e.dead)) options.push(["otter", 1.6 * suits("otter", s)]);
+    if (stage >= 4 && suits("otter", s) > 0.2 && !heavy) options.push(["otter", 1.6 * suits("otter", s)]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
     // (The jellyfish come as a field, the gannet one at a time.)
     if (stage >= 5 && suits("jellyfish", s) > 0.3) options.push(["jellyfish", 0.7]);

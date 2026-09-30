@@ -235,7 +235,7 @@ Gemessen wird auf WebGPU, WebGL2 und Eco.
 
 ## 7. Meilensteine
 
-Stand 30.09.2026: M0 fertig. M1 fertig bis auf die letzten Tempo-Arbeiten (die Schüsse der Spieler). Aus M2 feuern alle 16 Waffen mit ihren Modi (der Laser mit Puls und Strahl, die Kanone als Geheimwaffe im Wrack und in der Grotte), und die Vögel (Eisvogel, Gänsesäger, Graureiher) und die Elritzenschwärme sind im Gegner-System. Offen in M2: die übrigen Gegner der Tabelle 4a, die fünf weiteren Bosse, der Regisseur mit Arenen, der schießende Schwarm. M3 wartet auf das Cloudflare-Konto.
+Stand 30.09.2026: M0 und M1 fertig. Aus M2 feuern alle 16 Waffen mit ihren Modi (der Laser mit Puls und Strahl, die Kanone als Geheimwaffe im Wrack und in der Grotte), und alle Gegner der Tabelle 4a außer den Bossen sind im Gegner-System: dazu seit 0.23 Flussbarsch-Rudel, Dorsch, Hecht, Otter, Qualle und Basstölpel. Offen in M2: die fünf weiteren Bosse, der Regisseur mit Arenen, der schießende Schwarm. M3: Koop Teil 1 (Raum-Dienst, Lobby, gemeinsamer Start, Mitspieler sehen) ist seit 0.22 öffentlich.
 
 | | Inhalt | Aufwand | Du testest |
 |---|---|---|---|
