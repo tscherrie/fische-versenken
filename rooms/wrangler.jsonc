@@ -1,0 +1,12 @@
+{
+  // The room service of Salmon Survival Extreme (src/index.js): one Durable Object per room.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "salmon-rooms",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-30",
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "observability": { "enabled": true }
+}

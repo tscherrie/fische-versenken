@@ -1,0 +1,14 @@
+{
+  "name": "salmon-survival-extreme-rooms",
+  "private": true,
+  "type": "module",
+  "description": "The room service of Salmon Survival Extreme: a Cloudflare Worker with one Durable Object per co-op room.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/relay.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.144.0"
+  }
+}
