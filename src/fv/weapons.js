@@ -2815,5 +2815,15 @@ export function createFiring(ctx) {
     }
   }
 
-  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, stunned, stats, burning, blades, beams, options };
+  // A thin straight line of light from a to b in this frame (combat's enemy laser sights):
+  // `width` at its least, colours as a beam's, `k` how bright.
+  function line(a, b, width, tint, core, k) {
+    if (!camera) return;
+    camera.getWorldPosition(eye);
+    camera.getWorldDirection(forward);
+    const tall = 2 * Math.tan(((camera.fov ?? 62) * Math.PI) / 360);
+    chain(a, b, width, tint, core, k, Math.min(24, Math.max(4, Math.ceil(a.distanceTo(b) / 0.8))), tall);
+  }
+
+  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, line, stunned, stats, burning, blades, beams, options };
 }

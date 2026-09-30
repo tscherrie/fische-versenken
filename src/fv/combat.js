@@ -430,6 +430,7 @@ export function createCombat(game) {
     models.enemies?.(enemies.list);
     // The shots in flight, the grenades' bodies, the weapons' own lights.
     firing.draw(local);
+    nightSigns();
     projectiles.draw();
     // The enemies' rounds; a spent one, sinking, is only a faint glint until it gets a look
     // of its own (then the look draws them all: fx.drawsRounds).
@@ -448,6 +449,47 @@ export function createCombat(game) {
     smoke.frame();
     sfx.update?.();
     gore.frame();
+  }
+
+  // Seeing the enemies at night without lighting the river up: their eyes shine as many
+  // hunting fish's do (a mirror behind the retina throws back what little light there is),
+  // two small green-gold points turned toward the salmon; and a gunner drawing a bead shows
+  // a thin red laser line through the water (by day as well, faintly: the tell before the
+  // shot). Only near the camera, and not for the birds over the water.
+  const EYE = [1.1, 1.3, 0.45];
+  const LASER = [3.2, 0.25, 0.15];
+  const LASER_CORE = [4, 1.2, 1];
+  const eyeAt = new THREE.Vector3();
+  const across = new THREE.Vector3();
+  const aimAt = new THREE.Vector3();
+  const muzzleAt = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0);
+  function nightSigns() {
+    const night = 1 - (game.daylight?.state?.daylight ?? 1);
+    for (const e of enemies.list) {
+      if (e.dead || e.neutral || e.passive || e.spec.flies) continue;
+      const d = e.position.distanceTo(camera.position);
+      if (d > 30) continue;
+      if (night > 0.05 && !e.spec.wades && !e.spec.render) {
+        across.crossVectors(e.heading, UP);
+        if (across.lengthSq() < 1e-6) across.set(0, 0, 1);
+        across.normalize();
+        // (Brighter the more it faces the eye: a mirror throws the light back the way it came.)
+        const facing = Math.max(0, -e.heading.dot(eyeAt.subVectors(e.position, camera.position).normalize()));
+        const k = night * (0.35 + 0.65 * facing) * (1 - d / 30);
+        const size = Math.max(0.012 * e.size, 0.004 * d);
+        for (const side of [-1, 1]) {
+          eyeAt.copy(e.position).addScaledVector(e.heading, 0.3 * e.size).addScaledVector(across, side * 0.055 * e.size);
+          eyeAt.y += 0.04 * e.size;
+          fx.add(eyeAt.x, eyeAt.y, eyeAt.z, size, EYE[0] * k, EYE[1] * k, EYE[2] * k, 1);
+        }
+      }
+      if (e.mode === "aim" && e.target?.fish) {
+        if (!models.enemyMuzzle?.(e, muzzleAt)) enemies.snout(e, muzzleAt);
+        aimAt.copy(e.target.fish.position);
+        firing.line(muzzleAt, aimAt, 0.006 + 0.004 * e.size, LASER, LASER_CORE, 0.25 + 0.55 * night);
+      }
+    }
   }
 
   return {
