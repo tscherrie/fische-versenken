@@ -65,7 +65,7 @@ export function createCombat(game) {
     return lifeLight.call(this, value, ...rest);
   };
   const hud = createCombatHud(habitat, { weapons: WEAPONS });
-  const difficulty = createDifficulty(habitat);
+  const difficulty = createDifficulty();
   const director = createDirector({ random });
   const gravel = createGravel({ random, hud: game.hud });
   const ground = createGround({ terrain, pebbles: game.pebbles });
@@ -79,13 +79,6 @@ export function createCombat(game) {
   const aim = createAim(camera);
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
-  // The weapon on the title card's list of keys, after the lunge.
-  const keys = habitat.querySelector("#intro .keys:not(.touch-keys)");
-  if (keys) {
-    const item = document.createElement("li");
-    item.innerHTML = '<span class="mouse" aria-hidden="true"></span> Linke Maustaste: schießen';
-    keys.insertBefore(item, keys.children[3] ?? null);
-  }
   const local = players[0];
   // The peaceful fish of the shoals, open to attack (neutrals.js).
   neutrals = createNeutrals({ life, enemies, players, clock: () => game.now.time });

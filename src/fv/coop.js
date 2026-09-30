@@ -4,11 +4,13 @@
 // Without ?room the title card only offers to open a room: that asks the room service for
 // a code and comes back to the page with ?room=<code>&new (a fresh brood at the spring: a
 // game swum together never starts from the solo save, and never writes it either). With
-// ?room the card shows the room: its link to send, the players (their places' colours, who
-// is ready), a nickname and a ready button in place of the start button. When everyone in
-// the room is ready the room counts down, and at its moment every page starts its game --
-// all hatch together in the gravel of the spring. Coming back into a room that is already
-// under way starts at once.
+// ?room the card shows the room: its code (a click copies the link to send), the players
+// (their places' colours, who is ready), a nickname and a ready button in place of the
+// start button. When everyone in the room is ready the room counts down, and at its moment
+// every page starts its game -- all hatch together in the gravel of the spring. Coming back
+// into a room that is already under way starts at once. Once hatched, the pause shows only
+// the code and the players: the rest has done its work. (Where the panel sits on the card,
+// and the look it shares with the rest of it, is card.js's.)
 //
 // The day's hour is the host's: it sends it every few seconds and the others follow it.
 
@@ -24,64 +26,114 @@ const NAME = "extreme-name";
 const HOUR_EVERY = 4;
 const HOUR_SLACK = 0.05;
 
+// The panel's own look; its place on the card and the card's rhythm are card.js's. (The
+// card's rule for all its buttons -- the big start pill -- is undone for these.)
 const CSS = `
-#intro .fv-coop { margin: 0 auto 16px; max-width: 30em; display: grid; gap: 10px; text-align: left; }
-#intro .fv-coop .offer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; font-size: 13px; opacity: 0.9; }
-#intro .fv-coop button.small { padding: 6px 14px; font-size: 13px; }
-#intro .fv-coop .room { display: grid; gap: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); }
-#intro .fv-coop .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-#intro .fv-coop .code { font: 700 18px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.12em; }
-#intro .fv-coop .link { display: flex; gap: 6px; }
-#intro .fv-coop .link input { flex: 1; min-width: 0; font: 12px ui-monospace, Menlo, monospace; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: inherit; }
-#intro .fv-coop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-#intro .fv-coop li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; }
+#intro .fv-coop { display: grid; gap: 8px; text-align: left; }
+#intro .fv-coop button { min-width: 0; font: 700 13px/1 var(--hud-font); box-shadow: none; }
+#intro .fv-coop button:hover:not(:disabled) { transform: none; }
+#intro .fv-coop .fv-open { width: 100%; height: 36px; padding: 0 16px; border-radius: 999px; color: inherit; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); opacity: 0.9; }
+#intro .fv-coop .fv-open:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+#intro .fv-coop .room { display: grid; gap: 12px; padding: 12px 16px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+#intro .fv-coop .head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
+#intro .fv-coop .head .title { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; opacity: 0.6; }
+#intro .fv-coop .code { height: 28px; padding: 0 8px; border-radius: 8px; font: 700 16px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.14em; color: inherit; background: none; }
+#intro .fv-coop .copy { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; min-width: 28px; padding: 0 7px; border-radius: 8px; color: inherit; background: rgba(255, 255, 255, 0.08); }
+#intro .fv-coop .code:hover, #intro .fv-coop .copy:hover { background: rgba(255, 255, 255, 0.14); }
+#intro .fv-coop .copy svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#intro .fv-coop .copy .done { display: none; font-size: 12px; }
+#intro .fv-coop .copy.copied { color: #8fe3c0; }
+#intro .fv-coop .copy.copied .done { display: inline; }
+#intro .fv-coop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#intro .fv-coop li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; font-weight: 700; }
 #intro .fv-coop li i { width: 10px; height: 10px; border-radius: 50%; }
-#intro .fv-coop li .state { font-size: 12px; opacity: 0.8; }
+#intro .fv-coop li .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#intro .fv-coop li .state { font-size: 12px; font-weight: 600; opacity: 0.65; }
 #intro .fv-coop li.away { opacity: 0.5; }
 #intro .fv-coop .me { display: flex; gap: 8px; }
-#intro .fv-coop .me input { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: inherit; font: inherit; }
-#intro .fv-coop .note { font-size: 12.5px; opacity: 0.8; margin: 0; }
-#intro .fv-coop .warn { color: #ffb08a; }
-#intro.fv-in-room:not(.paused) #intro-start, #intro.fv-in-room #intro-new { display: none; }
-#intro .fv-coop.hatched .me, #intro .fv-coop.hatched .link { display: none; }
+#intro .fv-coop .me input { flex: 1; min-width: 0; height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 0; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); background: rgba(0, 0, 0, 0.25); color: inherit; font: 600 14px/1 var(--hud-font); }
+#intro .fv-coop .me input:focus-visible { outline: 3px solid #ffd98a; outline-offset: 2px; }
+.touch #intro .fv-coop .me input { font-size: 16px; }
+#intro .fv-coop .me button { flex: none; height: 36px; padding: 0 20px; border-radius: 999px; font-size: 14px; font-weight: 800; }
+#intro .fv-coop .me button.on { color: inherit; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+#intro .fv-coop .fv-note { margin: 0; font-size: 12px; line-height: 1.4; opacity: 0.7; }
+#intro .fv-coop .warn { color: #ffb08a; opacity: 1; }
+#intro.fv-in-room:not(.paused) #intro-start, #intro.fv-in-room #intro-new, #intro.fv-in-room #intro-status { display: none; }
+#intro .fv-coop.hatched .me, #intro .fv-coop.hatched #fv-status, #intro .fv-coop.hatched li .state.lobby { display: none; }
 #fv-countdown { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; pointer-events: none; font: 800 clamp(64px, 14vw, 160px)/1 var(--hud-font, var(--font-body)); color: #fff4ea; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
 #fv-countdown[hidden] { display: none; }
 `;
 
-export function createCoop(game) {
-  const { query, habitat } = game;
-  const code = (query.get("room") ?? "").toUpperCase();
-  const base = query.get("rooms") || ROOMS;
-  // (No room service yet: nothing of co-op shows.)
-  if (!base) return { active: false, step() {}, frame() {} };
+// The room's code in the address (six of the characters the room service hands out), or "".
+function roomCode() {
+  const code = (new URLSearchParams(location.search).get("room") ?? "").toUpperCase();
+  return /^[A-Z2-9]{6}$/.test(code) ? code : "";
+}
+// The room service: ?rooms=<url> in the address (one run locally), else the live one.
+const service = () => new URLSearchParams(location.search).get("rooms") || ROOMS;
+const savedName = () => {
+  try {
+    return localStorage.getItem(NAME) || "";
+  } catch {
+    return "";
+  }
+};
+const keepName = (name) => {
+  try {
+    localStorage.setItem(NAME, name);
+  } catch {
+    // (Asked again next time.)
+  }
+};
+
+// The panel on the title card: without a room the offer to open one (a quiet button under
+// the start; what it is for goes in its tooltip, so the card carries one line less), in a
+// room the room -- its code, the players, a name and the ready button. It is built once,
+// when card.js lays the card out as the page loads, so that it is on the card from its first
+// frame, and in a room the lead and the start button never are; createCoop brings it to
+// life at init. It is null where there is no room service to offer.
+let built;
+export function coopPanel() {
+  if (built !== undefined) return built;
+  built = null;
+  if (typeof document === "undefined" || !service()) return built;
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
-  const intro = habitat.querySelector("#intro");
-  const start = habitat.querySelector("#intro-start");
   const panel = document.createElement("div");
   panel.className = "fv-coop";
-  start?.parentNode.insertBefore(panel, start);
+  const code = roomCode();
+  if (!code) {
+    panel.innerHTML = `<button class="fv-open" type="button" title="${t("Zu zweit bis zu viert spielen")}">${t("Koop-Raum eröffnen")}</button><p class="fv-note warn" hidden></p>`;
+  } else {
+    document.querySelector("#intro")?.classList.add("fv-in-room");
+    panel.innerHTML = `
+    <div class="room">
+      <div class="head"><span class="title">${t("Koop-Raum")}</span><button class="code" type="button" title="${t("Link kopieren")}">${code}</button><button class="copy" type="button" id="fv-copy" title="${t("Link kopieren")}" aria-label="${t("Link kopieren")}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></svg><span class="done">${t("Kopiert")}</span></button></div>
+      <ul id="fv-seats"></ul>
+      <div class="me"><input id="fv-name" type="text" maxlength="16" autocomplete="nickname" aria-label="${t("Dein Name")}" placeholder="${t("Dein Name")}"><button type="button" id="fv-ready" disabled>${t("Bereit")}</button></div>
+      <p class="fv-note" id="fv-status">${t("Verbinde mit dem Raum …")}</p>
+    </div>`;
+    panel.querySelector("#fv-name").value = savedName() || `${t("Lachs")} ${Math.floor(10 + Math.random() * 90)}`;
+  }
+  built = panel;
+  return built;
+}
 
-  const savedName = () => {
-    try {
-      return localStorage.getItem(NAME) || "";
-    } catch {
-      return "";
-    }
-  };
-  const keepName = (name) => {
-    try {
-      localStorage.setItem(NAME, name);
-    } catch {
-      // (Asked again next time.)
-    }
-  };
+export function createCoop(game) {
+  const { query, habitat } = game;
+  const code = roomCode();
+  const base = service();
+  const panel = coopPanel();
+  // (No room service yet: nothing of co-op shows.)
+  if (!panel) return { active: false, step() {}, frame() {} };
+  // (Where card.js has not placed it, the panel stands above the start button.)
+  const start = habitat.querySelector("#intro-start");
+  if (!panel.isConnected) start?.parentNode.insertBefore(panel, start);
 
-  // ---- No room: only the offer to open one.
-  if (!/^[A-Z2-9]{6}$/.test(code)) {
-    panel.innerHTML = `<div class="offer"><span>${t("Zu zweit bis zu viert spielen:")}</span><button class="small quiet" type="button">${t("Koop-Raum eröffnen")}</button></div><p class="note warn" hidden></p>`;
-    const button = panel.querySelector("button");
+  // ---- No room: the offer, which asks the room service for a code and comes back with it.
+  if (!code) {
+    const button = panel.querySelector(".fv-open");
     const warn = panel.querySelector(".warn");
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -100,41 +152,54 @@ export function createCoop(game) {
   }
 
   // ---- In a room.
-  intro?.classList.add("fv-in-room");
   // A game swum together never writes the solo save.
   if (game.save) game.save.store = () => {};
   const net = createNet({ base, version: VERSION, player: query.get("player") ?? "" });
   const mates = createMates(game, net);
   const link = `${location.origin}${location.pathname}?room=${code}&new`;
-  panel.innerHTML = `
-    <div class="room">
-      <div class="head"><span>${t("Koop-Raum")}</span><span class="code">${code}</span></div>
-      <div class="link"><input id="fv-room-link" type="text" readonly aria-label="${t("Link zum Raum")}"><button class="small" type="button" id="fv-copy">${t("Link kopieren")}</button></div>
-      <ul id="fv-seats"></ul>
-      <div class="me"><input id="fv-name" type="text" maxlength="16" autocomplete="nickname" aria-label="${t("Dein Name")}" placeholder="${t("Dein Name")}"><button type="button" id="fv-ready" disabled>${t("Bereit")}</button></div>
-      <p class="note" id="fv-status">${t("Verbinde mit dem Raum …")}</p>
-    </div>`;
-  const linkBox = panel.querySelector("#fv-room-link");
-  linkBox.value = link;
+  // The link to send: copied by the button beside the code, or by the code itself. (Where
+  // the clipboard is closed to the page, the old way through a selected text; the code
+  // itself can still be read out.)
   const copy = panel.querySelector("#fv-copy");
-  copy.addEventListener("click", async () => {
+  let copiedTimer = 0;
+  async function copyLink() {
+    let done = false;
     try {
       await navigator.clipboard.writeText(link);
-      copy.textContent = t("Kopiert");
+      done = true;
     } catch {
-      linkBox.select();
+      const area = document.createElement("textarea");
+      area.value = link;
+      area.setAttribute("readonly", "");
+      area.style.cssText = "position: fixed; opacity: 0; pointer-events: none;";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        done = document.execCommand("copy");
+      } catch {}
+      area.remove();
     }
-  });
+    if (!done) return;
+    copy.classList.add("copied");
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => copy.classList.remove("copied"), 1600);
+  }
+  copy.addEventListener("click", copyLink);
+  panel.querySelector(".code").addEventListener("click", copyLink);
   const nameBox = panel.querySelector("#fv-name");
-  nameBox.value = savedName() || `Lachs ${Math.floor(10 + Math.random() * 90)}`;
   nameBox.addEventListener("change", () => {
-    const name = nameBox.value.trim().slice(0, 16) || "Lachs";
+    const name = nameBox.value.trim().slice(0, 16) || t("Lachs");
     nameBox.value = name;
     keepName(name);
     net.rename(name);
   });
   const readyButton = panel.querySelector("#fv-ready");
   const status = panel.querySelector("#fv-status");
+  // The line under the room says only what is needed now; empty, it takes no room.
+  const say = (text) => {
+    status.textContent = text;
+    status.hidden = !text;
+  };
   const seatsList = panel.querySelector("#fv-seats");
   let ready = false,
     started = false,
@@ -145,20 +210,21 @@ export function createCoop(game) {
     ready = !ready;
     net.send({ t: "ready", ready });
     readyButton.textContent = ready ? t("Doch nicht") : t("Bereit");
+    readyButton.classList.toggle("on", ready);
   });
 
   net.on("status", (n) => {
-    if (n.state === "connecting") status.textContent = t("Verbinde mit dem Raum …");
-    if (n.state === "refused") status.textContent = t("Der Raum ist voll: vier spielen schon.");
-    if (n.state === "replaced") status.textContent = t("Du spielst in diesem Raum schon in einem anderen Fenster.");
+    if (n.state === "connecting") say(t("Verbinde mit dem Raum …"));
+    if (n.state === "refused") say(t("Der Raum ist voll: vier spielen schon."));
+    if (n.state === "replaced") say(t("Du spielst in diesem Raum schon in einem anderen Fenster."));
   });
   net.on("welcome", (m) => {
     readyButton.disabled = false;
-    status.textContent = m.version && m.version !== VERSION ? t("Ihr habt verschiedene Versionen: bitte alle neu laden.") : t("Wenn alle bereit sind, geht es los.");
+    say(m.version && m.version !== VERSION ? t("Ihr habt verschiedene Versionen: bitte alle neu laden.") : t("Wenn alle bereit sind, geht es los."));
     if (m.started) {
       started = true;
       startAt = m.startAt;
-      status.textContent = t("Das Spiel läuft schon: du steigst gleich ein.");
+      say(t("Das Spiel läuft schon: du steigst gleich ein."));
     }
   });
   net.on("lobby", (m) => {
@@ -169,10 +235,13 @@ export function createCoop(game) {
       const dot = document.createElement("i");
       dot.style.background = SEAT_COLOURS[s.seat] ?? "#fff";
       const who = document.createElement("span");
+      who.className = "who";
       who.textContent = s.name + (s.seat === net.seat ? ` (${t("du")})` : "") + (s.seat === m.host ? ` · ${t("Gastgeber")}` : "");
       const state = document.createElement("span");
       state.className = "state";
       state.textContent = !s.connected ? t("weg") : s.version && s.version !== VERSION ? t("andere Version") : s.ready ? t("bereit") : t("wartet");
+      // (Who is ready matters only until the start; who is away, or on another version, stays.)
+      if (s.connected && !(s.version && s.version !== VERSION)) state.classList.add("lobby");
       li.append(dot, who, state);
       seatsList.appendChild(li);
     }
@@ -180,7 +249,8 @@ export function createCoop(game) {
   net.on("start", (m) => {
     started = true;
     startAt = m.at;
-    status.textContent = t("Gleich geht es los!");
+    // (The countdown says it from here on.)
+    say("");
   });
   // The day's hour: the host's, followed by the others.
   net.on("ev", (m) => {
@@ -214,7 +284,7 @@ export function createCoop(game) {
         start.click();
       } else {
         countdown.hidden = true;
-        status.textContent = t("Der Fluss entsteht noch …");
+        say(t("Der Fluss entsteht noch …"));
       }
     }
     if (!hatched) requestAnimationFrame(tick);
