@@ -65,7 +65,10 @@ export function createScorch(scene, { light = false } = {}) {
       }
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
-  geometry.setDrawRange(0, 0);
+  // (One mark's grid at first, all of its points in one place: the warm-up render draws it,
+  // so the shader is compiled then, and no pixel is covered. An empty draw would be a
+  // warning on WebGPU; afterwards the mesh is hidden while there is no mark.)
+  geometry.setDrawRange(0, quads * 6);
 
   const mesh = new THREE.Mesh(geometry, markMaterial());
   mesh.name = "Combat scorch";
