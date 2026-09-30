@@ -60,6 +60,8 @@ const WORDS = [
   ["So, wie es gedacht ist.", "The way it is meant to be.", "游戏本来的样子。", "本来の想定どおり。", "Така, както е замислено."],
   ["Mehr Gegner, die härter zuschlagen und mehr aushalten.", "More enemies, who hit harder and take more to sink.", "更多敌人，下手更狠，也更耐打。", "敵が増え、攻撃はより激しく、よりしぶとい。", "Повече врагове, които удрят по-силно и издържат повече."],
   ["Empfohlen für dieses Gerät.", "Recommended for this device.", "推荐用于此设备。", "このデバイスにおすすめ。", "Препоръчано за това устройство."],
+  // (In a co-op room, where a reload starts the fish afresh.)
+  ["Ein Wechsel lädt das Spiel neu.", "Switching reloads the game.", "切换会重新加载游戏。", "切り替えるとゲームを読み込み直します。", "Смяната презарежда играта."],
   // The weapon cards' places, on a phone.
   ["Rücken", "Back", "背部", "背中", "Гръб"],
   ["Bauch", "Belly", "腹部", "腹", "Корем"],

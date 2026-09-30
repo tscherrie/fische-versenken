@@ -55,49 +55,85 @@ const CSS = `
 #intro .fv-coop .me input:focus-visible { outline: 3px solid #ffd98a; outline-offset: 2px; }
 .touch #intro .fv-coop .me input { font-size: 16px; }
 #intro .fv-coop .me button { flex: none; height: 36px; padding: 0 20px; border-radius: 999px; font-size: 14px; font-weight: 800; }
+#intro .fv-coop .me button.on { color: inherit; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
 #intro .fv-coop .fv-note { margin: 0; font-size: 12px; line-height: 1.4; opacity: 0.7; }
 #intro .fv-coop .warn { color: #ffb08a; opacity: 1; }
 #intro.fv-in-room:not(.paused) #intro-start, #intro.fv-in-room #intro-new, #intro.fv-in-room #intro-status { display: none; }
-#intro .fv-coop.hatched .me, #intro .fv-coop.hatched #fv-status { display: none; }
+#intro .fv-coop.hatched .me, #intro .fv-coop.hatched #fv-status, #intro .fv-coop.hatched li .state.lobby { display: none; }
 #fv-countdown { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; pointer-events: none; font: 800 clamp(64px, 14vw, 160px)/1 var(--hud-font, var(--font-body)); color: #fff4ea; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
 #fv-countdown[hidden] { display: none; }
 `;
 
-export function createCoop(game) {
-  const { query, habitat } = game;
-  const code = (query.get("room") ?? "").toUpperCase();
-  const base = query.get("rooms") || ROOMS;
-  // (No room service yet: nothing of co-op shows.)
-  if (!base) return { active: false, step() {}, frame() {} };
+// The room's code in the address (six of the characters the room service hands out), or "".
+function roomCode() {
+  const code = (new URLSearchParams(location.search).get("room") ?? "").toUpperCase();
+  return /^[A-Z2-9]{6}$/.test(code) ? code : "";
+}
+// The room service: ?rooms=<url> in the address (one run locally), else the live one.
+const service = () => new URLSearchParams(location.search).get("rooms") || ROOMS;
+const savedName = () => {
+  try {
+    return localStorage.getItem(NAME) || "";
+  } catch {
+    return "";
+  }
+};
+const keepName = (name) => {
+  try {
+    localStorage.setItem(NAME, name);
+  } catch {
+    // (Asked again next time.)
+  }
+};
+
+// The panel on the title card: without a room the offer to open one (a quiet button under
+// the start; what it is for goes in its tooltip, so the card carries one line less), in a
+// room the room -- its code, the players, a name and the ready button. It is built once,
+// when card.js lays the card out as the page loads, so that it is on the card from its first
+// frame, and in a room the lead and the start button never are; createCoop brings it to
+// life at init. It is null where there is no room service to offer.
+let built;
+export function coopPanel() {
+  if (built !== undefined) return built;
+  built = null;
+  if (typeof document === "undefined" || !service()) return built;
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
-  const intro = habitat.querySelector("#intro");
-  const start = habitat.querySelector("#intro-start");
   const panel = document.createElement("div");
   panel.className = "fv-coop";
-  start?.parentNode.insertBefore(panel, start);
-
-  const savedName = () => {
-    try {
-      return localStorage.getItem(NAME) || "";
-    } catch {
-      return "";
-    }
-  };
-  const keepName = (name) => {
-    try {
-      localStorage.setItem(NAME, name);
-    } catch {
-      // (Asked again next time.)
-    }
-  };
-
-  // ---- No room: only the offer to open one (a quiet button under the start; what it is
-  // for goes in its tooltip, so the card carries one line less).
-  if (!/^[A-Z2-9]{6}$/.test(code)) {
+  const code = roomCode();
+  if (!code) {
     panel.innerHTML = `<button class="fv-open" type="button" title="${t("Zu zweit bis zu viert spielen")}">${t("Koop-Raum eröffnen")}</button><p class="fv-note warn" hidden></p>`;
-    const button = panel.querySelector("button");
+  } else {
+    document.querySelector("#intro")?.classList.add("fv-in-room");
+    panel.innerHTML = `
+    <div class="room">
+      <div class="head"><span class="title">${t("Koop-Raum")}</span><button class="code" type="button" title="${t("Link kopieren")}">${code}</button><button class="copy" type="button" id="fv-copy" title="${t("Link kopieren")}" aria-label="${t("Link kopieren")}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></svg><span class="done">${t("Kopiert")}</span></button></div>
+      <ul id="fv-seats"></ul>
+      <div class="me"><input id="fv-name" type="text" maxlength="16" autocomplete="nickname" aria-label="${t("Dein Name")}" placeholder="${t("Dein Name")}"><button type="button" id="fv-ready" disabled>${t("Bereit")}</button></div>
+      <p class="fv-note" id="fv-status">${t("Verbinde mit dem Raum …")}</p>
+    </div>`;
+    panel.querySelector("#fv-name").value = savedName() || `${t("Lachs")} ${Math.floor(10 + Math.random() * 90)}`;
+  }
+  built = panel;
+  return built;
+}
+
+export function createCoop(game) {
+  const { query, habitat } = game;
+  const code = roomCode();
+  const base = service();
+  const panel = coopPanel();
+  // (No room service yet: nothing of co-op shows.)
+  if (!panel) return { active: false, step() {}, frame() {} };
+  // (Where card.js has not placed it, the panel stands above the start button.)
+  const start = habitat.querySelector("#intro-start");
+  if (!panel.isConnected) start?.parentNode.insertBefore(panel, start);
+
+  // ---- No room: the offer, which asks the room service for a code and comes back with it.
+  if (!code) {
+    const button = panel.querySelector(".fv-open");
     const warn = panel.querySelector(".warn");
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -116,19 +152,11 @@ export function createCoop(game) {
   }
 
   // ---- In a room.
-  intro?.classList.add("fv-in-room");
   // A game swum together never writes the solo save.
   if (game.save) game.save.store = () => {};
   const net = createNet({ base, version: VERSION, player: query.get("player") ?? "" });
   const mates = createMates(game, net);
   const link = `${location.origin}${location.pathname}?room=${code}&new`;
-  panel.innerHTML = `
-    <div class="room">
-      <div class="head"><span class="title">${t("Koop-Raum")}</span><button class="code" type="button" title="${t("Link kopieren")}">${code}</button><button class="copy" type="button" id="fv-copy" title="${t("Link kopieren")}" aria-label="${t("Link kopieren")}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></svg><span class="done">${t("Kopiert")}</span></button></div>
-      <ul id="fv-seats"></ul>
-      <div class="me"><input id="fv-name" type="text" maxlength="16" autocomplete="nickname" aria-label="${t("Dein Name")}" placeholder="${t("Dein Name")}"><button type="button" id="fv-ready" disabled>${t("Bereit")}</button></div>
-      <p class="fv-note" id="fv-status">${t("Verbinde mit dem Raum …")}</p>
-    </div>`;
   // The link to send: copied by the button beside the code, or by the code itself. (Where
   // the clipboard is closed to the page, the old way through a selected text; the code
   // itself can still be read out.)
@@ -159,7 +187,6 @@ export function createCoop(game) {
   copy.addEventListener("click", copyLink);
   panel.querySelector(".code").addEventListener("click", copyLink);
   const nameBox = panel.querySelector("#fv-name");
-  nameBox.value = savedName() || `${t("Lachs")} ${Math.floor(10 + Math.random() * 90)}`;
   nameBox.addEventListener("change", () => {
     const name = nameBox.value.trim().slice(0, 16) || t("Lachs");
     nameBox.value = name;
@@ -183,6 +210,7 @@ export function createCoop(game) {
     ready = !ready;
     net.send({ t: "ready", ready });
     readyButton.textContent = ready ? t("Doch nicht") : t("Bereit");
+    readyButton.classList.toggle("on", ready);
   });
 
   net.on("status", (n) => {
@@ -212,6 +240,8 @@ export function createCoop(game) {
       const state = document.createElement("span");
       state.className = "state";
       state.textContent = !s.connected ? t("weg") : s.version && s.version !== VERSION ? t("andere Version") : s.ready ? t("bereit") : t("wartet");
+      // (Who is ready matters only until the start; who is away, or on another version, stays.)
+      if (s.connected && !(s.version && s.version !== VERSION)) state.classList.add("lobby");
       li.append(dot, who, state);
       seatsList.appendChild(li);
     }
