@@ -6,9 +6,9 @@
 // connection with the same token. What the messages mean is the lobby's (lobby.js) and the
 // mates' (mates.js).
 
-// Where the room service runs (empty until it is online: co-op then stays hidden); ?rooms=
-// <url> points a test at another (e.g. `wrangler dev`).
-export const ROOMS = "";
+// Where the room service runs (Cloudflare's workers.dev; empty would hide co-op again);
+// ?rooms=<url> points a test at another (e.g. `wrangler dev`).
+export const ROOMS = "https://salmon-rooms.salmon-survival-extreme-rooms.workers.dev";
 
 const TOKENS = "extreme-rooms";
 // How long to wait before trying again after a dropped connection (s), doubling up to the

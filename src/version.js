@@ -1,2 +1,2 @@
 // Written by tools/stage-salmon.sh.
-export const VERSION = "Extreme 0.21 · 30.09.2026";
+export const VERSION = "Extreme 0.22 · 30.09.2026";
