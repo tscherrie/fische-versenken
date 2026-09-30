@@ -17,7 +17,10 @@
 //   pellets  a shell of pellets in a cone, two barrels, a break-action reload (the shotgun)
 //   lob      a grenade on an arc solved to land at the crosshair, bounces, blast (launcher)
 //   blade    a cut over an arc in front of the snout; Space with the blade out is a dash cut
-//   flame    a held jet: a cone that burns what it touches, and burning spreads
+//   flame    a held jet: a cone that burns what it touches, and burning spreads; under
+//            water a flame can only burn in its own bubble of gas and oxygen, as a cutting
+//            torch does, so it burns blue-white, deep blue at its edges, and boils the water
+//            to steam instead of smoking
 //   spin     held: the barrels wind up, then a stream of rounds that brakes the fish (minigun)
 //   torpedo  from the belly: a torpedo that speeds up, homes on what is ahead of it and
 //            bursts in a blast (2 tubes, 4 from the postsmolt)
@@ -48,7 +51,7 @@
 
 import * as THREE from "three";
 import { bed, level, locate } from "../course.js";
-import { GAS, GRIT, POWDER, SILT, SOOT } from "./projectiles.js";
+import { GAS, GRIT, POWDER, SILT } from "./projectiles.js";
 
 const GRAVITY = 98;
 // How long the katana's cut stays in the water as a thin arc of light (s).
@@ -203,7 +206,7 @@ export const WEAPONS = {
     // Up through the surface (L).
     sky: 1,
     size: (L) => 0.085 * L,
-    tint: [2.1, 1.0, 0.27],
+    tint: [1.3, 2.2, 5],
     glow: [0.5, 0.8, 3.2],
   },
   minigun: {
@@ -711,9 +714,10 @@ function rayStone(o, d, far, c) {
 }
 
 // The flame's puffs (tints and how they cool: kept, not made per puff).
-const FLAME_CORE_COOL = [0.9, 0.2, 0.03];
-const FLAME_BILLOW = [1.5, 0.6, 0.13];
-const FLAME_BILLOW_COOL = [0.4, 0.05, 0.01];
+// (Blue-white where it is hottest, cooling to a deep blue: a torch's flame in its bubble.)
+const FLAME_CORE_COOL = [0.15, 0.4, 2];
+const FLAME_BILLOW = [0.6, 1.2, 3.5];
+const FLAME_BILLOW_COOL = [0.04, 0.1, 0.7];
 // What the jet and a burn tell the splatter (the same every time).
 const FIRE_INFO = Object.freeze({ mode: "flame", fire: true });
 const BURN_INFO = Object.freeze({ mode: "flame", fire: true, burning: true });
@@ -2173,11 +2177,11 @@ export function createFiring(ctx) {
         p.stretch = 1.3;
       }
     }
-    // Black smoke rolling off the end of the jet, and the water boiling round it (a few
-    // small beads, not a froth).
-    if (look() < dt * 12) {
-      tmp.copy(flameAt).addScaledVector(flameDir, reach * (0.35 + 0.45 * look()));
-      puff(SOOT, tmp.x, tmp.y, tmp.z, flameDir.x * speed * 0.2, flameDir.y * speed * 0.2 + 0.2 * L, flameDir.z * speed * 0.2, 0.25 * L, 3.8, 1.6 + 0.8 * look(), 0.55, 1.6, 0.35 * L, f.river.s);
+    // The water boiling to steam along the jet and at its end: bubbles (no smoke: nothing
+    // under water smokes).
+    if (look() < dt * 16) {
+      tmp.copy(flameAt).addScaledVector(flameDir, reach * (0.35 + 0.55 * look()));
+      fx.fizz(tmp.x, tmp.y, tmp.z, { count: 3, size: 0.012 * L + 0.005, spread: 0.25 * L, rise: 1.6, random: look });
     }
     if (look() < dt * 12) {
       tmp.copy(flameAt).addScaledVector(flameDir, reach * (0.2 + 0.7 * look()));
@@ -2227,7 +2231,7 @@ export function createFiring(ctx) {
       bodyEnds(e, tail, head);
       if (look() < dt * 16) {
         tmp.lerpVectors(tail, head, look());
-        fx.spark(tmp.x, tmp.y + e.size * 0.05, tmp.z, { vx: (look() - 0.5) * 0.3 * e.size, vy: 0.5 * e.size, vz: (look() - 0.5) * 0.3 * e.size, size: e.size * (0.1 + 0.08 * look()), life: 0.22, r: 3.2, g: 1.2, b: 0.25, stretch: 1.2 });
+        fx.spark(tmp.x, tmp.y + e.size * 0.05, tmp.z, { vx: (look() - 0.5) * 0.3 * e.size, vy: 0.5 * e.size, vz: (look() - 0.5) * 0.3 * e.size, size: e.size * (0.1 + 0.08 * look()), life: 0.22, r: 0.9, g: 1.6, b: 4, stretch: 1.2 });
       }
       if (look() < dt * 6) {
         tmp.lerpVectors(tail, head, look());
@@ -2235,7 +2239,7 @@ export function createFiring(ctx) {
       }
       if (look() < dt * 4) {
         tmp.lerpVectors(tail, head, look());
-        puff(SOOT, tmp.x, tmp.y + e.size * 0.1, tmp.z, 0, 0.3 * e.size, 0, 0.15 * e.size, 3, 1.3 + 0.5 * look(), 0.32, 1.5, 0.25 * e.size, e.river?.s ?? null);
+        fx.fizz(tmp.x, tmp.y + e.size * 0.1, tmp.z, { count: 2, size: 0.01 * e.size + 0.004, spread: 0.2 * e.size, rise: 1.2, random: look });
       }
     }
   }
