@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Der Stand von Salmon Survival Extreme: Meilensteine, Waffen, Gegner, Bosse.">
+<link rel="icon" href="../icons/icon-192.png">
+<title>Extreme Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700;800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a control-room sheet for one river — milestones across the top, what is moving now
+   beside what shipped, then the weapons laid out along the salmon's ten stages of life,
+   the enemies by river section, the bosses, and the technical tracks. */
+:root {
+  --bg: #edf1ef;
+  --surface: #f9fbfa;
+  --sunk: #e2e8e5;
+  --ink: #13201c;
+  --muted: #5b6a65;
+  --line: #cfd8d4;
+  --accent: #d44b33;
+  --accent-soft: #f6ddd6;
+  --ok: #2b8456;
+  --ok-soft: #d8eee2;
+  --doing: #b67a0e;
+  --doing-soft: #f5e7c8;
+  --blocked: #b8322a;
+  --blocked-soft: #f4d6d3;
+  --open: #74827d;
+  --open-soft: #e3e8e6;
+  --display: "Saira Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1513; --surface: #141f1c; --sunk: #1a2724; --ink: #e2ebe7; --muted: #8e9f99; --line: #27352f;
+    --accent: #ff7659; --accent-soft: #3a211b; --ok: #4fc08b; --ok-soft: #173024; --doing: #e8b24c; --doing-soft: #33280f;
+    --blocked: #ff6a5c; --blocked-soft: #3a1917; --open: #7d8c87; --open-soft: #1f2a27; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1513; --surface: #141f1c; --sunk: #1a2724; --ink: #e2ebe7; --muted: #8e9f99; --line: #27352f;
+  --accent: #ff7659; --accent-soft: #3a211b; --ok: #4fc08b; --ok-soft: #173024; --doing: #e8b24c; --doing-soft: #33280f;
+  --blocked: #ff6a5c; --blocked-soft: #3a1917; --open: #7d8c87; --open-soft: #1f2a27; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--body); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+a { color: var(--accent); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 22px 48px; display: grid; gap: 22px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; letter-spacing: 0.01em; }
+h1 { font-size: clamp(30px, 4.4vw, 44px); font-weight: 800; line-height: 1; text-transform: uppercase; }
+h2 { font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+h3 { font-size: 17px; font-weight: 700; }
+.label { font: 600 11px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Header */
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
+.top .sub { color: var(--muted); max-width: 60ch; margin-top: 6px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font: 600 12px/1.3 var(--mono); white-space: nowrap; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--open); display: inline-block; }
+.live.on i { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: reduce) { .live.on i { animation: none; } }
+.headline { font-size: 17px; line-height: 1.45; max-width: 75ch; }
+
+/* State pills */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font: 600 11px/1.4 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.s-done { color: var(--ok); background: var(--ok-soft); }
+.s-doing { color: var(--doing); background: var(--doing-soft); }
+.s-blocked { color: var(--blocked); background: var(--blocked-soft); }
+.s-open { color: var(--open); background: var(--open-soft); }
+
+/* Milestones */
+.miles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 980px) { .miles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .miles { grid-template-columns: minmax(0, 1fr); } }
+.mile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 12px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.mile .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mile .code { font: 800 26px/1 var(--display); }
+.mile.active { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+.bar { height: 6px; border-radius: 3px; background: var(--sunk); overflow: hidden; }
+.bar b { display: block; height: 100%; background: var(--ink); border-radius: 3px; transition: width 0.4s; }
+.mile.active .bar b { background: var(--accent); }
+.mile .sum { color: var(--muted); font-size: 13.5px; }
+.mile .blocker { font-size: 13px; color: var(--blocked); font-weight: 600; }
+
+/* Two panels */
+.pair { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 16px; }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+ul.plain li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.log li { grid-template-columns: 5.5em minmax(0, 1fr); }
+.log time { font: 600 12px/1.4 var(--mono); color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 2px; background: var(--doing); margin-top: 6px; }
+.dot.next { background: var(--open); }
+
+/* Weapons along the stages of life */
+.stages { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.track { display: grid; grid-template-columns: repeat(10, minmax(118px, 1fr)); min-width: 1180px; }
+.stage { padding: 12px 10px 14px; border-left: 1px solid var(--line); display: grid; gap: 8px; align-content: start; }
+.stage:first-child { border-left: 0; }
+.stage .len { font: 600 11px/1.2 var(--mono); color: var(--muted); }
+.stage h3 { font-size: 16px; line-height: 1.1; }
+.wpn { border-radius: 6px; padding: 6px 8px; background: var(--sunk); display: grid; gap: 2px; font-size: 13px; line-height: 1.25; border-left: 3px solid var(--open); hyphens: auto; overflow-wrap: anywhere; min-width: 0; }
+.wpn.done { border-left-color: var(--ok); }
+.wpn.doing { border-left-color: var(--doing); }
+.wpn .where { font: 600 10.5px/1.2 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.wpn .note { color: var(--muted); font-size: 12px; }
+.secret { border-left-style: dashed; }
+
+/* Enemies and bosses */
+.cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.section h3 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; color: var(--muted); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.row small { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+.count { font: 700 13px/1 var(--mono); color: var(--muted); }
+
+/* Tracks */
+.tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.empty { color: var(--muted); font-style: italic; }
+footer { color: var(--muted); font-size: 12.5px; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="label">Salmon Survival Extreme</div>
+      <h1>Extreme Roadmap</h1>
+      <p class="sub" id="headline">Der Stand wird geladen …</p>
+    </div>
+    <div class="meta">
+      <span class="chip num" id="version">Version –</span>
+      <span class="chip" id="updated">Stand –</span>
+      <span class="chip live" id="live"><i></i><span>verbinde …</span></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-miles" style="display:grid;gap:10px">
+    <h2 id="h-miles">Meilensteine</h2>
+    <div class="miles" id="miles"><p class="empty">Die Meilensteine erscheinen, sobald der Stand geladen ist.</p></div>
+  </section>
+
+  <div class="pair">
+    <section class="panel" aria-labelledby="h-now">
+      <h2 id="h-now">Gerade in Arbeit</h2>
+      <ul class="plain" id="now"><li class="empty">–</li></ul>
+      <div class="label" style="margin-top:4px">Als Nächstes</div>
+      <ul class="plain" id="next"><li class="empty">–</li></ul>
+    </section>
+    <section class="panel" aria-labelledby="h-log">
+      <h2 id="h-log">Zuletzt ausgeliefert <span class="count" id="log-count"></span></h2>
+      <ul class="plain log" id="log"><li class="empty">–</li></ul>
+    </section>
+  </div>
+
+  <section aria-labelledby="h-wpn" style="display:grid;gap:10px">
+    <h2 id="h-wpn">Waffen nach Lebensstufe <span class="count" id="wpn-count"></span></h2>
+    <div class="stages"><div class="track" id="track"></div></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="h-foes">
+      <h2 id="h-foes">Gegner nach Flussabschnitt <span class="count" id="foe-count"></span></h2>
+      <div class="sections" id="foes"><p class="empty">Die Gegner erscheinen, sobald der Stand geladen ist.</p></div>
+    </section>
+    <section class="panel" aria-labelledby="h-boss">
+      <h2 id="h-boss">Bosse <span class="count" id="boss-count"></span></h2>
+      <div id="bosses"><p class="empty">–</p></div>
+    </section>
+  </div>
+
+  <section aria-labelledby="h-tracks" style="display:grid;gap:10px">
+    <h2 id="h-tracks">Technik, Look und Koop</h2>
+    <div class="tracks" id="tracks"><p class="empty">–</p></div>
+  </section>
+
+  <footer>Der Stand wird bei jeder Auslieferung eingetragen, die Seite lädt ihn jede Minute neu. <a href="../">Zum Spiel</a> · <a href="https://github.com/tscherrie/salmon-survival-extreme">Quellcode</a></footer>
+</div>
+
+<script>
+(() => {
+  const STAGES = [
+    ["alevin", "Dottersackbrut", "0,22–0,3"], ["fry", "Brütling", "0,3–0,45"], ["fingerling", "Sömmerling", "0,45–0,65"],
+    ["yearling", "Jährling", "0,65–1,0"], ["parr", "Parr", "1,0–1,4"], ["smolt", "Smolt", "1,4–2,0"],
+    ["postsmolt", "Postsmolt", "2,0–3,2"], ["grilse", "Grilse", "3,2–5,5"], ["sea", "Meerlachs", "5,5–8,5"], ["spawner", "Laichlachs", "8,5–9"],
+  ];
+  const WORD = { done: "fertig", doing: "in Arbeit", open: "offen", blocked: "blockiert" };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const pill = (state) => el("span", "pill s-" + (WORD[state] ? state : "open"), WORD[state] ?? state ?? "offen");
+  const data = { meta: null, milestones: [], weapons: [], enemies: [], bosses: [], tech: [], log: [] };
+  const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0);
+  const fmtDate = (iso) => { const d = new Date(iso); return isNaN(d) ? iso ?? "" : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }); };
+  const fmtFull = (iso) => { const d = new Date(iso); return isNaN(d) ? iso ?? "" : d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+  const tally = (list) => `${list.filter((x) => x.state === "done").length} / ${list.length}`;
+
+  function renderMeta() {
+    const m = data.meta;
+    if (!m) return;
+    $("headline").textContent = m.headline ?? "";
+    $("version").textContent = m.version ?? "Version –";
+    $("updated").textContent = "Stand " + fmtFull(m.updated);
+    for (const [id, list, cls] of [["now", m.now ?? [], ""], ["next", m.next ?? [], "next"]]) {
+      const ul = $(id); ul.replaceChildren();
+      if (!list.length) ul.append(el("li", "empty", "Nichts eingetragen."));
+      for (const t of list) { const li = el("li"); li.append(el("span", "dot " + cls), el("span", "", t)); ul.append(li); }
+    }
+  }
+  function renderMiles() {
+    const box = $("miles"); box.replaceChildren();
+    if (!data.milestones.length) { box.append(el("p", "empty", "Noch keine Meilensteine eingetragen.")); return; }
+    for (const m of [...data.milestones].sort(byOrder)) {
+      const card = el("article", "mile" + (m.state === "doing" ? " active" : ""));
+      const head = el("div", "head"); head.append(el("span", "code", m.code ?? ""), pill(m.state));
+      const bar = el("div", "bar"); const b = el("b"); b.style.width = Math.round(Math.max(0, Math.min(1, m.progress ?? 0)) * 100) + "%"; bar.append(b);
+      card.append(head, el("h3", "", m.title ?? ""), bar, el("div", "label num", Math.round((m.progress ?? 0) * 100) + " %"), el("p", "sum", m.summary ?? ""));
+      if (m.blocker) card.append(el("p", "blocker", m.blocker));
+      box.append(card);
+    }
+  }
+  function renderLog() {
+    const ul = $("log"); ul.replaceChildren();
+    const list = [...data.log].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    $("log-count").textContent = list.length ? String(list.length) : "";
+    if (!list.length) { ul.append(el("li", "empty", "Noch nichts eingetragen.")); return; }
+    for (const e of list.slice(0, 14)) { const li = el("li"); const t = el("time", "", fmtDate(e.at)); t.dateTime = e.at ?? ""; li.append(t, el("span", "", e.text ?? "")); ul.append(li); }
+  }
+  function renderWeapons() {
+    const track = $("track"); track.replaceChildren();
+    $("wpn-count").textContent = data.weapons.length ? tally(data.weapons) + " feuern" : "";
+    for (const [id, name, len] of STAGES) {
+      const col = el("div", "stage");
+      col.append(el("span", "len", len + " u"), el("h3", "", name));
+      const here = data.weapons.filter((w) => w.stage === id).sort(byOrder);
+      for (const w of here) {
+        const c = el("div", "wpn " + (w.state ?? "open") + (w.secret ? " secret" : ""));
+        c.append(el("span", "where", w.place ?? ""), el("strong", "", w.title ?? ""));
+        if (w.note) c.append(el("span", "note", w.note));
+        col.append(c);
+      }
+      if (!here.length) col.append(el("span", "note empty", "–"));
+      track.append(col);
+    }
+  }
+  function grouped(list, key) {
+    const groups = new Map();
+    for (const x of [...list].sort(byOrder)) { const k = x[key] ?? "–"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+    return groups;
+  }
+  function renderFoes() {
+    const box = $("foes"); box.replaceChildren();
+    $("foe-count").textContent = data.enemies.length ? tally(data.enemies) + " im Spiel" : "";
+    if (!data.enemies.length) { box.append(el("p", "empty", "Noch keine Gegner eingetragen.")); return; }
+    for (const [section, list] of grouped(data.enemies, "section")) {
+      const s = el("div", "section"); s.append(el("h3", "", section));
+      for (const e of list) { const r = el("div", "row"); const t = el("div"); t.append(el("span", "", e.title ?? "")); if (e.weapon) t.append(el("small", "", e.weapon)); r.append(t, pill(e.state)); s.append(r); }
+      box.append(s);
+    }
+  }
+  function renderBosses() {
+    const box = $("bosses"); box.replaceChildren();
+    $("boss-count").textContent = data.bosses.length ? tally(data.bosses) : "";
+    if (!data.bosses.length) { box.append(el("p", "empty", "Noch keine Bosse eingetragen.")); return; }
+    for (const b of [...data.bosses].sort(byOrder)) { const r = el("div", "row"); const t = el("div"); t.append(el("span", "", b.title ?? "")); if (b.where) t.append(el("small", "", b.where)); r.append(t, pill(b.state)); box.append(r); }
+  }
+  function renderTracks() {
+    const box = $("tracks"); box.replaceChildren();
+    if (!data.tech.length) { box.append(el("p", "empty", "Noch nichts eingetragen.")); return; }
+    for (const [area, list] of grouped(data.tech, "area")) {
+      const p = el("section", "panel"); const h = el("h2"); h.append(el("span", "", area), el("span", "count", tally(list))); p.append(h);
+      for (const t of list) { const r = el("div", "row"); const d = el("div"); d.append(el("span", "", t.title ?? "")); if (t.note || t.owner) d.append(el("small", "", [t.owner, t.note].filter(Boolean).join(" · "))); r.append(d, pill(t.state)); p.append(r); }
+      box.append(p);
+    }
+  }
+  const render = { meta: renderMeta, milestones: renderMiles, weapons: renderWeapons, enemies: renderFoes, bosses: renderBosses, tech: renderTracks, log: renderLog };
+  for (const f of Object.values(render)) f();
+
+  // The status comes from roadmap.json beside this page, which is updated with every
+  // delivery; it is fetched again every minute, and drawn again only when it changed.
+  const live = $("live");
+  const setLive = (on, text) => { live.classList.toggle("on", on); live.lastChild.textContent = text; };
+  let last = "";
+  async function load() {
+    try {
+      const r = await fetch("roadmap.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const text = await r.text();
+      setLive(true, "live · " + new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }));
+      if (text === last) return;
+      last = text;
+      const j = JSON.parse(text);
+      data.meta = j.meta ?? null;
+      for (const name of ["milestones", "weapons", "enemies", "bosses", "tech", "log"]) data[name] = j[name] ?? [];
+      for (const f of Object.values(render)) f();
+    } catch {
+      setLive(false, "offline");
+    }
+  }
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>
