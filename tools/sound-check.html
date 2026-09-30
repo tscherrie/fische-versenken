@@ -12,13 +12,17 @@
   that go on for a while (a hunter lying in wait for a minute, strength low for half a
   minute, a kingfisher's attack as the game lists it) and half a minute of everything at
   once (the stress: voices, nodes, peaks). A scene can watch the sound's own stats frame by
-  frame (`watch`) and count the nodes its events made (eventNodes). Run by
-  tools/sound-check.mjs; open it by hand and call runAll() to look at it.
+  frame (`watch`) and count the nodes its events made (eventNodes). Extreme's combat sounds
+  (src/fv/sfx.js) play over it, handed to the events third; their scenes are in
+  tools/sound-check-enemies.mjs. Run by tools/sound-check.mjs; open it by hand and call
+  runAll() to look at it.
   (The scenes also run against an older src/sound.js, for a before and after: what it did
   not have yet is called with ?. and it is told `above` as well as `submerged`.)
 -->
 <script type="module">
   import { createSound } from "../src/sound.js";
+  import { createSfx } from "../src/fv/sfx.js";
+  import { ENEMY_SCENES } from "./sound-check-enemies.mjs";
 
   const SR = 48000;
   let seconds = 8;
@@ -396,6 +400,9 @@
     solo("solo_dive_L1", (s) => s.dive?.(1)),
     solo("solo_dive_L5", (s) => s.dive?.(5)),
     ...["kingfisher", "heron", "merganser", "seal", "bear"].map((kind) => solo(`solo_call_${kind}`, (s) => s.call(kind))),
+    // Extreme's combat sounds (src/fv/sfx.js): the enemies' weapons and the salmon's own
+    // they are measured against.
+    ...ENEMY_SCENES,
   ];
 
   async function render(scene) {
@@ -404,6 +411,8 @@
       localStorage.removeItem("habitat-sound");
     } catch {}
     const sound = createSound();
+    // (And the combat sounds over it, as Extreme plays them: the events get them third.)
+    const sfx = createSfx(sound);
     // As in the game: the sound object exists a while (the loading) before the first click,
     // time for it to make its samples (up to 3 s here; the game loads for longer) -- or,
     // `early`, a click at once.
@@ -437,7 +446,7 @@
         const made = ctx.count;
         while (events.length && events[0][0] <= t + 1e-6) {
           const before = ctx.count;
-          events.shift()[1](sound, t);
+          events.shift()[1](sound, t, sfx);
           shotNodes += ctx.count - before;
         }
         if (ctx.count > made) eventNodes.push([t, ctx.count - made]);
@@ -445,10 +454,11 @@
         const p = params(t);
         const u0 = performance.now();
         sound.update(dt, p);
+        sfx.update();
         updateMs += performance.now() - u0;
         bubbleNodes += ctx.count - before;
         maxLive = Math.max(maxLive, sound.stats?.live ?? 0);
-        if (scene.watch) watched.push([t, scene.watch(sound)]);
+        if (scene.watch) watched.push([t, scene.watch(sound, sfx)]);
         ctx.resume();
       });
     }

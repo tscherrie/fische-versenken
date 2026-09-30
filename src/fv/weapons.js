@@ -1952,7 +1952,8 @@ export function createFiring(ctx) {
       game.falls?.splash?.(at.x, top, at.z, 2 + 6 * L);
       game.ripples?.add?.(at.x, at.z, 3 + 4 * L);
     }
-    if (isLocal(owner)) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
+    // (A charge of the enemies' is heard as its own: combat.js plays it, `quiet` here.)
+    if (isLocal(owner) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
   }
 
   // blade: a cut begins. The blade crosses the arc over `swing` seconds; what it passes is

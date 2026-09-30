@@ -160,9 +160,10 @@ export function createHostile({ capacity = 160 } = {}) {
   }
 
   // Move every round one step; `onPlayer(shot, player)` when one hits a player's body,
-  // `onGround(shot)` when a flying one strikes the bed, both once every round has moved. The
-  // round goes back to the pool right after its callback: keep nothing of it.
-  function update(dt, players, { onPlayer, onGround }) {
+  // `onGround(shot)` when a flying one strikes the bed, both once every round has moved;
+  // `onWater(shot)` as one fired from above comes into the water (at once). The round goes
+  // back to the pool right after its callback: keep nothing of it.
+  function update(dt, players, { onPlayer, onGround, onWater }) {
     // (How much of a spent round's speed goes over to sinking in this step: the same for all.)
     const settle = 1 - Math.exp(-dt * 2);
     // (Backwards, so a round moved into a freed place has had its step already.)
@@ -182,7 +183,10 @@ export function createHostile({ capacity = 160 } = {}) {
       p.last.copy(p.position);
       if (p.air) {
         locate(p.position.x, p.position.z, p.river.s, p.river);
-        if (p.position.y < level(p.river.s)) p.air = false;
+        if (p.position.y < level(p.river.s)) {
+          p.air = false;
+          onWater?.(p);
+        }
       }
       if (p.spent) p.spentAge += dt;
       else if (!p.air) {

@@ -11,6 +11,11 @@
 // A voice counts against the cap only while it sounds (from its start to its end, however
 // far ahead it was scheduled), and the last RESERVE voices are kept for what must not go
 // silent: blasts and kills.
+//
+// The enemies' weapons are heard where the enemies are, with these same makings, in
+// sfx-enemies.js (enemyShot, enemyAim, enemyStrike, enemyEntry, enemyBlast).
+
+import { createEnemySfx } from "./sfx-enemies.js";
 
 const CAP = 26;
 const RESERVE = 10;
@@ -159,6 +164,9 @@ export function createSfx(sound) {
     return g;
   };
 
+  // The enemies' weapons, made with the same makings and counted against the same cap.
+  const enemies = createEnemySfx({ sound, CAP, RESERVE, sounding, voice, noise, tone, click, filter, saturate, whiteBuffer, hold: (n) => (looping += n) });
+
   // ---- Loops (held weapons): one per kind, started and kept while held, then released.
   const loops = new Map();
   let lastTouch = 0;
@@ -175,6 +183,7 @@ export function createSfx(sound) {
   }
 
   return {
+    ...enemies,
     // ---- Kompaktlaser: a capacitor tick, the tight electric "tsiu" (a square chirp
     // falling 2200 -> 600 Hz) over a short crackle, and a whine that climbs with heat.
     piu(size = 0.3, heat = 0) {
@@ -427,6 +436,7 @@ export function createSfx(sound) {
     // Each frame: a loop left running with nothing to keep it (the game stopped stepping,
     // the tab hidden) is let go.
     update() {
+      enemies.update();
       if (loops.size && performance.now() - lastTouch > 200) for (const kind of [...loops.keys()]) stopLoop(kind, 0.2);
     },
 

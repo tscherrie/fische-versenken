@@ -212,6 +212,8 @@ export function createCombat(game) {
     const damage = (swallows ? 0.35 : shot ? shot.hitDamage ?? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1)) * level.taken;
     player.safeUntil = clock + (shot ? 0.12 : 0.8);
     f.energy = Math.max(0, f.energy - damage);
+    // (The blade's own part of the blow; the game plays the body's knock: outcome.bitten.)
+    if (melee && !shot) sfx.enemyStrike?.(melee.id, e.position.distanceTo(camera.position), true);
     // A heavy round (the pike's) throws the fish along its line as well, less the slower it
     // has got in the water.
     if (shot?.shove && !f.airborne && !f.captive) {
@@ -266,6 +268,16 @@ export function createCombat(game) {
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, flash);
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
   }
+  // The enemies' weapons heard beyond their shots (sfx-enemies.js), each from where it is: the
+  // wind-up of an aim (and of a bomber tipping into its dive), `seconds` before it fires, and a
+  // blade swung as a strike begins.
+  function enemyAims(e, gun, seconds) {
+    sfx.enemyAim?.(gun.id, (e.muzzle ?? e.position).distanceTo(camera.position), seconds);
+  }
+  function enemySwings(e) {
+    const blade = e.spec.weapon;
+    if (blade?.kind === "melee") sfx.enemyStrike?.(blade.id, e.position.distanceTo(camera.position), false);
+  }
   // The salmon as the splatter sees it when an enemy's round strikes it (gore.hit takes an
   // enemy), and the round's direction handed in beside it. Each hit of a step gets a record
   // of its own, as when one was made for every hit: gore.hit adds a step's hits up by the
@@ -292,6 +304,10 @@ export function createCombat(game) {
     },
     onGround(shot) {
       fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
+    },
+    // (A round fired from over the water -- the heron's harpoon -- going in: heard.)
+    onWater(shot) {
+      sfx.enemyEntry?.(shot.weapon, shot.position.distanceTo(camera.position));
     },
   };
 
@@ -352,7 +368,9 @@ export function createCombat(game) {
   // doing `harm` hit points at its heart.)
   const charged = {};
   const chargeSize = (gun) => gun.blast / 1.6;
-  const chargeOf = (gun) => (charged[gun.id] ??= { blast: () => gun.blast, damage: gun.harm / damageScale(chargeSize(gun)), edge: gun.edge, shove: WEAPONS.minen.shove, stun: WEAPONS.minen.stun, flash: WEAPONS.minen.flash });
+  // (`quiet`: blast() does not play the salmon's explosion for it, whoever set it off; its own
+  // sound is played here.)
+  const chargeOf = (gun) => (charged[gun.id] ??= { blast: () => gun.blast, damage: gun.harm / damageScale(chargeSize(gun)), edge: gun.edge, shove: WEAPONS.minen.shove, stun: WEAPONS.minen.stun, flash: WEAPONS.minen.flash, quiet: true });
   function explode(c) {
     const gun = c.gun,
       e = c.source;
@@ -377,8 +395,8 @@ export function createCombat(game) {
       gore.hit?.(struckBody(f), bodyNear, blastDir.normalize(), gun.id);
     }
     firing.blast(c.by, blastAt, chargeOf(gun), gun.id, chargeSize(gun));
-    // (blast() is heard only for the local player's own; the enemies' are heard here.)
-    if (c.by !== local.id) sfx.explosion(chargeSize(gun), camera.position.distanceTo(blastAt) / Math.max(0.3, fish.length));
+    // The charge's own sound -- a sea mine, bombs -- also when the salmon set it off.
+    sfx.enemyBlast?.(gun.id, camera.position.distanceTo(blastAt), chargeSize(gun));
   }
   // The charges whose fuse is up go off (and those they set off with no fuse left, at once).
   function detonations(dt) {
@@ -402,9 +420,10 @@ export function createCombat(game) {
     blast(at, gun, source) {
       charges.push({ source, gun, at: at.clone(), fuse: 0, body: false, by: -1 });
     },
-    water(x, y, z, size) {
+    water(x, y, z, size, gun) {
       game.falls?.splash?.(x, y, z, size);
       game.ripples?.add?.(x, z, size);
+      sfx.enemyEntry?.(gun?.id ?? "bombs", Math.hypot(x - camera.position.x, y - camera.position.y, z - camera.position.z));
     },
   };
 
@@ -496,7 +515,7 @@ export function createCombat(game) {
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12, game.now.time);
     neutrals.update(fish);
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, ground: crawling ? ground : null, ...chargeHooks });
+    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, aim: enemyAims, swing: enemySwings, ground: crawling ? ground : null, ...chargeHooks });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
     // (The splatter's records for the salmon are free again: gore.update let go of them.)

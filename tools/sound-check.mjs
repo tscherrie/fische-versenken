@@ -8,8 +8,9 @@
 // phone, placing, the parts of the river told apart, silence when muted or hushed, no
 // clipping, voices and nodes bounded; and what goes on for a while: a hunter's pulses
 // thinning out, the heart when strength stays low, a miss heard only when there was one,
-// loops that never come round the same, the sea's heave a few decibels). No dependencies:
-// Node's own http, and Chrome.
+// loops that never come round the same, the sea's heave a few decibels; and Extreme's
+// combat sounds, the enemies' weapons against the salmon's own: tools/sound-check-enemies.mjs).
+// No dependencies: Node's own http, and Chrome.
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -17,6 +18,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enemyChecks, enemyTable } from "./sound-check-enemies.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -130,7 +132,8 @@ if (byKind("stress").length) {
   console.log(`\nstress                   LUFS  loudest  peak  most voices  nodes made  base  sample MB  update µs`);
   for (const r of byKind("stress")) console.log(`${r.name.padEnd(23)} ${pad(r.full, 5)} ${pad(r.loudest, 8)} ${pad(r.peak, 5)} ${pad(r.maxLive, 12)} ${pad(r.nodes, 11)} ${pad(r.baseNodes, 5)} ${pad(((r.bytes ?? 0) / 1e6).toFixed(1), 10)} ${pad(r.updateUs, 10)}`);
 }
-const extras = results.filter((r) => r.extra);
+enemyTable(results, pad);
+const extras = results.filter((r) => r.extra && r.kind !== "weapon");
 if (extras.length) {
   console.log(`\nmeasured for their checks`);
   for (const r of extras) console.log(`${r.name.padEnd(23)} ${Object.entries(r.extra).map(([k, v]) => `${k} ${Array.isArray(v) ? v.join("/") : v}`).join("  ")}`);
@@ -280,6 +283,8 @@ if (get("storm_swell")?.extra) {
   check(`storm_swell: +2.5..+7 dB (Δ400ms ${e.d400}; on a phone +${e.phone}, ≥ 2)`, e.d400 >= 2.5 && e.d400 <= 7 && e.phone >= 2);
 }
 if (get("storm_alone")?.extra) check(`storm_alone: brightening as it swells (its 400-900 Hz up ${get("storm_alone").extra.brighter} dB against its 100-400 Hz, ≥ 3)`, get("storm_alone").extra.brighter >= 3);
+// Extreme's combat sounds: the enemies' weapons against the salmon's own (sound-check-enemies.mjs).
+enemyChecks(get, check);
 // Nothing clips: the limiter holds every scene's peaks under full scale.
 const peaky = results.filter((r) => r.peak > -1);
 check(`every scene's peak ≤ -1 dBFS: ${peaky.length ? peaky.map((r) => `${r.name} ${r.peak}`).join(", ") : `loudest ${Math.max(...results.map((r) => r.peak))}`}`, !peaky.length);
