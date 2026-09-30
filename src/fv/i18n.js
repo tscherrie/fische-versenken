@@ -101,6 +101,9 @@ const WORDS = [
   ["Neue Waffe", "New weapon", "新武器", "新しい武器", "Ново оръжие"],
   ["Kampfmesser", "Combat knife", "战斗刀", "コンバットナイフ", "Боен нож"],
   ["Maschinenpistole", "Submachine gun", "冲锋枪", "サブマシンガン", "Автомат"],
+  // The otter (its name, "Otter", the base game's tables have already).
+  ["Machete", "Machete", "砍刀", "マチェーテ", "Мачете"],
+  ["Von einem Otter mit der Machete zerhackt", "Hacked to pieces by an otter with a machete", "被一只水獭用砍刀砍碎", "カワウソにマチェーテで切り刻まれた", "Насечена с мачете от видра"],
 ];
 
 for (const [de, en, zh, ja, bg] of WORDS) {

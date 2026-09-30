@@ -427,8 +427,9 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
           if (Math.abs(enemyX[j] - fromX) > reach + stepX + size || Math.abs(enemyZ[j] - fromZ) > reach + stepZ + size) continue;
           const e = enemyOf[j];
           if (p.pierce && p.passed.has(e)) continue;
+          // (Along its body as it is drawn: one reared for a blow lies pitched, enemies.js.)
           const at = e.position,
-            heading = e.heading;
+            heading = e.along ?? e.heading;
           const back = -0.5 * size,
             ahead = 0.44 * size;
           tail.x = at.x + heading.x * back;

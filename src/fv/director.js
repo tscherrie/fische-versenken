@@ -21,6 +21,8 @@ export function createDirector({ random }) {
   let clock = 0,
     nextSpawn = 4,
     travel = 1;
+  // How dark it is (0 by day, 1 at night), for the kinds that hunt by night.
+  let night = 0;
   const at = {};
   const weights = {};
   const range = (a, b) => a + (b - a) * random();
@@ -49,6 +51,9 @@ export function createDirector({ random }) {
     if (stage >= 4 && suits("pike", s) > 0.3 && !enemies.list.some((e) => e.kind === "pike" && !e.dead)) options.push(["pike", 0.5]);
     if (stage >= 6 && above < LOW && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
+    // (The otter comes one at a time, more often the further down the river, and far more
+    // often at night: see below.)
+    if (stage >= 4 && suits("otter", s) > 0.2 && !enemies.list.some((e) => e.kind === "otter" && !e.dead)) options.push(["otter", 1.6 * suits("otter", s)]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
     if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
     if (stage >= 6 && suits("mackerel", s) > 0.3) options.push(["mackerel", 0.8]);
@@ -57,6 +62,9 @@ export function createDirector({ random }) {
     if (stage >= 1 && stage <= 4 && suits("kingfisher", s) > 0.2 && !enemies.list.some((e) => e.kind === "kingfisher" && !e.dead)) options.push(["kingfisher", 1]);
     if (stage >= 2 && suits("merganser", s) > 0.2 && !enemies.list.some((e) => e.kind === "merganser" && !e.dead)) options.push(["merganser", 0.8]);
     if (stage >= 2 && stage <= 6 && suits("heron", s) > 0.3 && !enemies.list.some((e) => e.kind === "heron")) options.push(["heron", 0.6]);
+    // The kinds that hunt by night (`nocturnal`) come in the dark as often as their weight
+    // says, and by day a fifth as often.
+    for (const option of options) if (KINDS[option[0]].nocturnal) option[1] *= 0.2 + 0.8 * night;
     if (!options.length) return null;
     let total = 0;
     for (const [, w] of options) total += w;
@@ -106,9 +114,11 @@ export function createDirector({ random }) {
     hold(seconds) {
       nextSpawn = Math.max(nextSpawn, clock + seconds);
     },
-    // players: in the room (for the numbers); the local player's fish is the anchor.
-    update(dt, { fish, stage, enemies, players = 1, count = 1 }) {
+    // players: in the room (for the numbers); the local player's fish is the anchor; dark:
+    // how dark it is (0 by day, 1 at night).
+    update(dt, { fish, stage, enemies, players = 1, count = 1, dark = 0 }) {
       clock += dt;
+      night = dark;
       // Which way the fish is going along the river, held a while.
       frame(fish.river.s, at);
       const along = fish.velocity.x * at.tx + fish.velocity.z * at.tz;

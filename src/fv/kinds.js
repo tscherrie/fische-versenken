@@ -12,6 +12,7 @@ const BULLHEAD = PREDATORS.bullhead;
 const PERCH = PREDATORS.perch;
 const COD = PREDATORS.cod;
 const PIKE = PREDATORS.pike;
+const OTTER = PREDATORS.otter;
 
 // Every kind carries one fixed weapon, strapped on like the salmon's: a melee weapon makes
 // its strike a stab or a slash, a ranged one lets it shoot from a distance (hostile.js):
@@ -294,6 +295,46 @@ export const KINDS = {
     regions: { lower: 1, estuary: 0.8, middle: 0.3 },
     // (It stuns a moment: the salmon is slowed; combat's hurt() reads `stun`.)
     weapon: { id: "shocker", title: "Elektroschocker", kind: "melee", damage: 0.12, stun: 0.8 },
+  },
+  // The otter: no fish but a mammal the length of a big salmon, drawn with the base game's
+  // otter body (it swims in the fish's frame). It hunts by night above all, fast and
+  // turning well, and hacks with a machete: before each blow it backs off a little and rears
+  // its head for the swing (`rear` in the weapon, radians; the tell, the moment to dodge),
+  // brings the blade down hard, and takes its time before the next. It holds its breath
+  // `air` seconds and must then go up for a few breaths at the surface -- the salmon's
+  // window. (Shorter than the base game's 25 s: in a fight it should come up now and then.)
+  otter: {
+    title: "Otter",
+    name: "Von einem Otter mit der Machete zerhackt",
+    body: "otter",
+    coat: "otter",
+    size: OTTER.size,
+    hp: 170,
+    capacity: 2,
+    behaviour: "stalker",
+    nocturnal: true,
+    // (Its eyes sit further forward on its flat head than a fish's, for their shine at night:
+    // lengths ahead of its middle, up, and to either side; combat.js.)
+    eyes: [0.39, 0.03, 0.035],
+    // (A heavy beast: a hit hardly checks it or pushes it back, enemies.js.)
+    steady: 0.85,
+    blood: "mammal",
+    swallows: false,
+    bite: 0.16,
+    air: 16,
+    sight: 12,
+    cruise: 3,
+    chase: 9,
+    strike: 12,
+    range: 2.2,
+    turn: OTTER.turn,
+    coil: 0.6,
+    // (Seconds it takes after a blow before it goes again: a heavy blade is slow to bring
+    // round.)
+    rest: 2.4,
+    from: 2600,
+    regions: { upper: 0.3, middle: 0.7, lower: 1, estuary: 1 },
+    weapon: { id: "machete", title: "Machete", kind: "melee", damage: 0.16, rear: 0.45, cause: "Von einem Otter mit der Machete zerhackt" },
   },
   stickleback: {
     title: "Stichling",
