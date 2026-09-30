@@ -1668,6 +1668,7 @@ export const LOOK_SCENES = [
 // end to go on to the following scene.
 export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
+  if (ctx.scene.gear) return (await import("../look/dev/gear-scenes.js")).runGearScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1707,4 +1708,20 @@ LOOK_SCENES.push(
   // What 24 of each cost, in the redd where the larvae come, seen by the game's own camera: the
   // frame timed with and without them, and draw() on the processor.
   { name: "modelle-kosten", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+);
+
+// ---- The enemies' weapons (look/foe-gear.js, model-foes.js): each armed kind close up in its
+// own water -- swimming, aiming, at the kick of a shot, striking -- and a group of them as the
+// game's camera meets them. Run in src/fv/look/dev/gear-scenes.js.
+LOOK_SCENES.push(
+  // The brook: bullhead, young trout, brown trout, minnows, kingfisher; a minnow shoal.
+  { name: "waffen-bach", look: true, gear: ["bullhead", "troutParr", "trout", "minnow", "kingfisher"], crowd: ["minnow", 10], dead: ["trout"], stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The middle river: perch, pike, grayling, eel, otter, goosander.
+  { name: "waffen-fluss", look: true, gear: ["perch", "pike", "grayling", "eel", "otter", "merganser"], crowd: ["perch", 4], dead: ["pike"], stage: "parr", at: 12500, season: "summer", hour: 14 },
+  // The estuary and the sea: sticklebacks, herring, mackerel, cod, the gannet.
+  { name: "waffen-meer", look: true, gear: ["stickleback", "herring", "mackerel", "cod", "gannet"], crowd: ["herring", 12], dead: ["cod"], stage: "postsmolt", at: 16000, season: "summer", hour: 12 },
+  // The heron's harpoon gun, the old king's minigun, the larvae's blade and nail gun.
+  { name: "waffen-reiher", look: true, gear: ["heron"], stage: "parr", at: 1800, season: "summer", hour: 14 },
+  { name: "waffen-koenig", look: true, gear: ["king"], stage: "yearling", at: 690, season: "summer", hour: 13 },
+  { name: "waffen-larven", look: true, gear: ["dragonflyLarva", "beetleLarva"], stage: "alevin", at: 24, season: "spring", hour: 11 },
 );

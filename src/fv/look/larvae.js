@@ -353,7 +353,7 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.material = larvaMaterial(mesh, kind, { light });
     mesh.name = `Combat ${kind}`;
-    kinds[kind] = { kind, mesh, def, n: 0, state: mesh.userData.state.array, look: mesh.userData.look.array };
+    kinds[kind] = { kind, mesh, def, n: 0, state: mesh.userData.state.array, look: mesh.userData.look.array, records: new Array(capacity).fill(null) };
     entries.push(kinds[kind]);
     triangles += geometry.index.count / 3;
   }
@@ -586,6 +586,14 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
   return {
     // For the numbers: triangles of one of each.
     triangles,
+    // The matrix larva `e` was drawn with at the last draw, into `out` (null: it was not drawn),
+    // for what is strapped to it (models.js).
+    matrixOf(e, out) {
+      const entry = kinds[e.kind];
+      if (!entry) return null;
+      for (let i = 0; i < entry.n; i++) if (entry.records[i] === e) return out.fromArray(entry.mesh.instanceMatrix.array, i * 16);
+      return null;
+    },
     meshes: [kinds.beetleLarva.mesh, kinds.dragonflyLarva.mesh, shadows],
     // Every frame, with the whole enemy list (or any list of such records), and the seconds
     // since the last frame if the caller has them (a pause or slow motion then holds the easing
@@ -603,6 +611,7 @@ export function createLarvae(scene, { capacity = 24, light = false } = {}) {
         if (e.spec?.render !== "larva") continue;
         const entry = kinds[e.kind];
         if (!entry || entry.n >= capacity) continue;
+        entry.records[entry.n] = e;
         pose(entry.n++, e, entry);
       }
       for (let k = 0; k < entries.length; k++) {
