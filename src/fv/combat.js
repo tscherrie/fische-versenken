@@ -224,6 +224,8 @@ export function createCombat(game) {
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
   const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, air: false, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
+  // (The muzzle's flash, one description for every shot too: fx.spark only reads it.)
+  const flash = { size: 0, life: 0.08, r: 5, g: 2.6, b: 0.6 };
   function enemyShoots(e, dir, gun) {
     if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
     round.source = e;
@@ -243,7 +245,8 @@ export function createCombat(game) {
       pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
       hostile.fire(round);
     }
-    fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, { size: 0.12 + 0.05 * e.size, life: 0.08, r: 5, g: 2.6, b: 0.6 });
+    flash.size = 0.12 + 0.05 * e.size;
+    fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, flash);
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
   }
   // The salmon as the splatter sees it when an enemy's round strikes it (gore.hit takes an

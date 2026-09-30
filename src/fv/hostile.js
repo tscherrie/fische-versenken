@@ -54,7 +54,8 @@ export function createHostile({ capacity = 160 } = {}) {
   const free = [];
   for (let i = 0; i < capacity; i++) free.push(blank({ position: new THREE.Vector3(), velocity: new THREE.Vector3(), last: new THREE.Vector3(), river: { s: null, u: 0 }, born: 0 }));
   let born = 0;
-  // The rounds that struck a player this step, and whom, handed on once the step is done.
+  // The rounds that struck a player (and whom) or the bed this step, handed on once the step
+  // is done; a strike on the bed has no player.
   const struck = [];
   const struckPlayer = [];
   let struckCount = 0;
@@ -154,8 +155,8 @@ export function createHostile({ capacity = 160 } = {}) {
   }
 
   // Move every round one step; `onPlayer(shot, player)` when one hits a player's body,
-  // `onGround(shot)` when a flying one strikes the bed. The round goes back to the pool right
-  // after its callback: keep nothing of it.
+  // `onGround(shot)` when a flying one strikes the bed, both once every round has moved. The
+  // round goes back to the pool right after its callback: keep nothing of it.
   function update(dt, players, { onPlayer, onGround }) {
     // (How much of a spent round's speed goes over to sinking in this step: the same for all.)
     const settle = 1 - Math.exp(-dt * 2);
@@ -232,16 +233,17 @@ export function createHostile({ capacity = 160 } = {}) {
       locate(p.position.x, p.position.z, p.river.s, p.river);
       // A flying round strikes the bed and is gone.
       if (p.position.y < bed(p.river.s, p.river.u)) {
-        onGround?.(p);
-        free.push(take(i));
+        struck[struckCount] = take(i);
+        struckPlayer[struckCount++] = null;
         continue;
       }
       if (!p.air && p.position.y > level(p.river.s) + 0.05) free.push(take(i));
     }
-    // The hits, told once every round has moved and newest round first, as they came when the
-    // list still kept the order the rounds were fired in: of several rounds striking a player
-    // in one step only the first told harms it (the rest fall in combat's moment of grace), so
-    // swapping rounds about in the list must not change which one that is.
+    // The strikes, told once every round has moved and newest round first, as they came when
+    // the list still kept the order the rounds were fired in: of several rounds striking a
+    // player in one step only the first told harms it (the rest fall in combat's moment of
+    // grace), and the bubbles of a strike on the bed draw from the looks' random stream, so
+    // swapping rounds about in the list must change neither.
     while (struckCount > 0) {
       let k = 0;
       for (let j = 1; j < struckCount; j++) if (struck[j].born > struck[k].born) k = j;
@@ -251,7 +253,8 @@ export function createHostile({ capacity = 160 } = {}) {
       struck[k] = struck[struckCount];
       struckPlayer[k] = struckPlayer[struckCount];
       struck[struckCount] = struckPlayer[struckCount] = null;
-      onPlayer?.(p, player);
+      if (player) onPlayer?.(p, player);
+      else onGround?.(p);
       free.push(p);
     }
   }
