@@ -128,7 +128,9 @@ export const ENEMY_SCENES = [
     ]),
     { measure: (m) => ({ whistle: m.band(1.4, 1.8, 500, 1600) - m.band(0.4, 0.9, 500, 1600), blast: m.loudest(2.2, 3, 0.4) }) },
   ),
-  scene("en_bombs_far", [[1, (s, t, fx) => fx.enemyAim("bombs", 30, 0.8)], [1.8, (s, t, fx) => fx.enemyEntry("bombs", 28)], [2.3, (s, t, fx) => fx.enemyBlast("bombs", 26, 2)]], { measure: (m) => ({ blast: m.loudest(2.2, 3, 0.4) }) }),
+  // (Going off as far off as the other far scenes: at 26 units the nearness alone gave only
+  // a little more than the 8 dB the check asks, and a boom's own give and take decided it.)
+  scene("en_bombs_far", [[1, (s, t, fx) => fx.enemyAim("bombs", FARTHER + 4, 0.8)], [1.8, (s, t, fx) => fx.enemyEntry("bombs", FARTHER + 2)], [2.3, (s, t, fx) => fx.enemyBlast("bombs", FARTHER, 2)]], { measure: (m) => ({ blast: m.loudest(2.2, 3, 0.4) }) }),
 
   // ---- The sea mines: one near, one far off, and a field going up one after another.
   scene("en_seamine", [1, 4.5].map((t) => [t, (s, t2, fx) => fx.enemyBlast("seamine", 6, 1.75)])),

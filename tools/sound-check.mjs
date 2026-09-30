@@ -364,6 +364,13 @@ for (const name of ["fight", "fight_near"]) {
     blast = W("ref_explosion")?.full ?? -18;
   check(`${name}: every blast heard (${e.blasts}), the enemies' shots and blows as often as without the player's minigun and beam (${e.enemies} against ${enemiesAlone.enemies}), the laser's pulses as often as without the shoal (${Math.round(e.pulses * 100)} % against ${Math.round(playerAlone.pulses * 100)} %), at its loudest ${e.loudest} LUFS (a blast alone ${blast}: 4 more at most), none left at the end (${r.voicesEnd})`, e.blasts === "3/3" && e.enemy >= enemiesAlone.enemy - 0.1 && e.pulses >= playerAlone.pulses - 0.05 && e.loudest <= blast + 4 && r.voicesEnd === 0);
 }
+// Paused mid-fight (and hidden): the held weapons and the king's minigun heard, then silent
+// with the rest, and nothing of them left once the game goes on with nothing held (the
+// river's bubbles still rise now and then with its beds stopped: -45 at most).
+for (const name of ["paused_held", "hidden_held"]) {
+  const r = W(name);
+  if (r?.extra) check(`${name}: heard while held (${r.extra.held} LUFS ≥ -30), silent in the pause (${r.extra.hushed} ≤ -70), nothing left after it (${r.extra.after} ≤ -45, ${r.voicesEnd} voices)`, r.extra.held >= -30 && r.extra.hushed <= -70 && r.extra.after <= -45 && r.voicesEnd === 0);
+}
 // Extreme's combat sounds: the enemies' weapons against the salmon's own (sound-check-enemies.mjs).
 enemyChecks(get, check);
 // Nothing clips: the limiter holds every scene's peaks under full scale.

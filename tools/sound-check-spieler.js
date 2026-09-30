@@ -202,7 +202,34 @@ export function weaponScenes() {
     fight("fight_near", 2),
     fight("fight_enemies", 4, { armed: false }),
     fight("fight_player", 4, { shoal: false }),
+
+    // ---- Paused mid-fight, and the page hidden: what was held must fall silent with the
+    // rest of the sound and must not come back when the game goes on.
+    paused("paused_held", "pause"),
+    paused("hidden_held", "hidden"),
   ];
+}
+
+// Held weapons when the game stops: the minigun, the chainsaw and the beam held from the
+// first second and the old king's minigun firing; at 3 s the sound is hushed for `reason`
+// as the game hushes it, and nothing is stepped any more (the weapons are told nothing, the
+// enemies fire nothing), while the frames go on and update the combat sound; at 6 s the
+// sound comes back with nothing held. A loop that only a step lets go (the combat sound's
+// own, the chainsaw's engine carried) must be let go all the same.
+function paused(name, reason) {
+  return weapon(
+    name,
+    [
+      ...spun("minigun", { trigger: (t) => t >= 1, until: 3 }),
+      ...spun("saege", { trigger: (t) => t >= 1.2, up: 0.4, L: 9, until: 3 }),
+      ...frames(0.3, 3, (s, t) => s.hold("beam", t >= 1, 0, 1.2)),
+      ...at([1], (s) => s.enemyAim("minigun", 5, 0.8)),
+      ...at(series(1.8, 24, 0.05), (s) => s.enemyShot("minigun", 5)),
+      [3, (sound) => sound.hush(true, reason)],
+      [6, (sound) => sound.hush(false, reason)],
+    ],
+    { seconds: 9, active: [1, 3], measure: (m) => ({ held: m.loud(1.5, 2.9), hushed: m.loud(3.8, 5.9), after: m.loud(7, 8.8) }) },
+  );
 }
 
 // A fight: the player's minigun (the belly) and laser (the back: its pulses, then the beam)

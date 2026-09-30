@@ -28,7 +28,8 @@ const MINIGUN = 0.62;
 const SPUN = 150;
 
 // How near a sound is: 1 within 4 units of the ear, then falling off gently, as the water
-// carries sound far -- half at 10 units, a third at 18, a fifth at 32 -- and nothing beyond FAR.
+// carries sound far -- half at 10 units, a third at 18, a fifth at 32 -- and nothing beyond
+// FAR.
 export const nearness = (d) => (d > FAR ? 0 : Math.min(1, 7 / (3 + Math.max(0, d))));
 // The top of what still comes through from that far (Hz): open near by, a dull thud far off
 // (the water takes the highs first).
@@ -60,9 +61,10 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
   // A sound of `kind` from `distance`, if it is to be heard now: its way in, or null. Not
   // within `interval` of the last of its kind (one that comes in the same moment raises that
   // one instead, if it is nearer), and only while there is room for its `cost` in voices:
-  // in the enemies' share, or -- `vital` -- anywhere under the cap.
-  function begin(kind, interval, cost, distance, { group = "water", level = 1, vital = false } = {}) {
-    const k = nearness(distance);
+  // in the enemies' share, or -- `vital` -- anywhere under the cap. (`carry` under 1: heard
+  // as if that much nearer.)
+  function begin(kind, interval, cost, distance, { group = "water", level = 1, vital = false, carry = 1 } = {}) {
+    const k = nearness(distance * carry);
     const buses = k > 0 ? sound.buses?.() : null;
     if (!buses) return null;
     const c = buses.context;
@@ -123,7 +125,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     pistol: {
       interval: 0.08,
       cost: 5,
-      level: 1.2,
+      level: 1.35,
       play(c, o, p) {
         tone(c, o.out, { from: 150 * p, to: 75 * p, peak: 0.55, attack: 0.002, decay: 0.1, sweep: 0.06, drive: 2 });
         noise(c, o.out, { type: "lowpass", frequency: 700 * p, peak: 0.5, attack: 0.002, decay: 0.1 });
@@ -166,7 +168,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     rifle: {
       interval: 0.07,
       cost: 5,
-      level: 1.15,
+      level: 1.3,
       play(c, o, p) {
         tone(c, o.out, { from: 115 * p, to: 55 * p, peak: 0.6, attack: 0.002, decay: 0.12, sweep: 0.07, drive: 2.5 });
         noise(c, o.out, { type: "lowpass", frequency: 520 * p, peak: 0.55, attack: 0.002, decay: 0.13 });
@@ -206,7 +208,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     stars: {
       interval: 0.06,
       cost: 3,
-      level: 2,
+      level: 2.5,
       play(c, o, p) {
         noise(c, o.out, { type: "bandpass", frequency: 700 * p, to: 1600, Q: 1.4, peak: 0.6, attack: 0.015, decay: 0.07 });
         whirr(c, o.crack, { frequency: 1900 * p, rate: any(26, 34), peak: 0.4, attack: 0.02, decay: 0.25 });
@@ -217,7 +219,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     knives: {
       interval: 0.06,
       cost: 3,
-      level: 2,
+      level: 2.5,
       play(c, o, p) {
         noise(c, o.out, { type: "bandpass", frequency: 600 * p, to: 1800, Q: 1.6, peak: 0.65, attack: 0.02, decay: 0.08 });
         whirr(c, o.out, { frequency: 950 * p, rate: any(10, 13), peak: 0.45, attack: 0.03, decay: 0.3, Q: 2.5 });
@@ -246,6 +248,9 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
       cost: 10,
       level: 0.66,
       vary: 0.04,
+      // (Heard from farther off than the rest, as if a quarter nearer: its boom is the
+      // lowest of them all, and the water takes the lows last. The pike fires from far.)
+      carry: 0.75,
       play(c, o, p) {
         tone(c, o.out, { from: 52 * p, to: 28 * p, peak: 1.2, attack: 0.003, decay: 1, sweep: 0.6, drive: 4 });
         noise(c, o.out, { type: "lowpass", frequency: 260 * p, peak: 1.1, attack: 0.002, decay: 0.7 });
@@ -332,12 +337,16 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
       motor.start(t);
       // (Three voices that sound; the saw is one of them, as the thump.)
       hold(3);
-      spin = { c, out, top, crack, fire, hum, motor, rate, rounds, sources: [rounds, rate, motor], gone: t + 3 };
+      spin = { c, out, top, crack, fire, hum, motor, rate, rounds, sources: [rounds, rate, motor], gone: t + 3, k };
     }
     const g = spin;
-    g.out.gain.setTargetAtTime(MINIGUN * k, t, 0.03);
-    g.top.frequency.setTargetAtTime(cutoff(k), t, 0.03);
-    g.crack.gain.setTargetAtTime(0.3 * Math.sqrt(k), t, 0.03);
+    // (Where it is heard from set again only when that has moved: a round comes every frame.)
+    if (Math.abs(k - g.k) > 0.01) {
+      g.k = k;
+      g.out.gain.setTargetAtTime(MINIGUN * k, t, 0.03);
+      g.top.frequency.setTargetAtTime(cutoff(k), t, 0.03);
+      g.crack.gain.setTargetAtTime(0.3 * Math.sqrt(k), t, 0.03);
+    }
     // (Only what was yet to come is taken back: a glide under way goes on from where it is.)
     for (const param of [g.fire.gain, g.hum.gain, g.motor.frequency]) param.cancelScheduledValues(t);
     if (seconds > 0) {
@@ -501,7 +510,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     // pulse, and the water and spray coming down.
     bombs: {
       cost: 6,
-      level: 1.6,
+      level: 1.75,
       play(c, o, p, full) {
         tone(c, o.out, { from: 58 * p, to: 34 * p, peak: 1.15, attack: 0.004, decay: 0.9, sweep: 0.5, drive: 4 });
         noise(c, o.out, { type: "lowpass", frequency: 450 * p, peak: 0.95, attack: 0.004, decay: 0.75 });
@@ -528,7 +537,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
     enemyAim(id, distance = 8, seconds = 1) {
       if (id === "minigun") return minigun(distance, Math.max(0.2, seconds));
       if (id === "elephantgun") {
-        const o = begin("aim:elephantgun", 1, 4, distance, { level: 3.4 });
+        const o = begin("aim:elephantgun", 1, 4, distance, { level: 4.3 });
         if (!o) return;
         click(o.c, o.out, { frequency: 1400, peak: 0.3, ring: 380 });
         click(o.c, o.out, { frequency: 2000, peak: 0.26, ring: 900, at: any(0.06, 0.08) });
@@ -537,7 +546,7 @@ export function createEnemySfx({ sound, room, voice, noise, tone, click, filter,
         // off the first so that it still sounds of metal; loud in the air, so that the
         // salmon under the water hears it through the surface -- the game's own calls from
         // over the water are raised as much for it.)
-        const o = begin("aim:speargun", 1, 3, distance, { group: "air", level: 10 });
+        const o = begin("aim:speargun", 1, 3, distance, { group: "air", level: 13 });
         if (!o) return;
         click(o.c, o.out, { frequency: 1000, peak: 0.3, ring: 520 });
         tone(o.c, o.out, { from: 1370, peak: 0.05, attack: 0.002, decay: 0.08 });

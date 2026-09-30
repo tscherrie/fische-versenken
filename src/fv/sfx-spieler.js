@@ -294,9 +294,9 @@ export function createPlayerSounds(kit) {
     src.playbackRate.value = rate;
     return src;
   }
-  // A slow random wander (swinging about a unit either way, about `hz` at its fastest), for what should
-  // never hold still or come round the same: the long noise played slowly (`rate`) under a
-  // lowpass.
+  // A slow random wander (swinging about a unit either way, about `hz` at its fastest), for
+  // what should never hold still or come round the same: the long noise played slowly
+  // (`rate`) under a lowpass.
   function wander(c, hz, rate) {
     const src = hiss(c, rate);
     const f = filter(c, "lowpass", hz, 0.7);
@@ -344,8 +344,17 @@ export function createPlayerSounds(kit) {
       } catch {}
   }
   // Brought to `value` smoothly: two thirds of the way in `tc` seconds, nearly all of it in
-  // four times that.
-  const glide = (param, value, t, tc = 0.03) => param.setTargetAtTime(value, t, tc);
+  // four times that. Told again only when it has moved by more than a hundredth, as the
+  // river's beds are steered (src/sound.js): a weapon held is told every step -- the
+  // chainsaw for as long as it is carried -- and each setting is one more event its
+  // parameter keeps and works through, while one that stays put needs none.
+  const told = new WeakMap();
+  const glide = (param, value, t, tc = 0.03) => {
+    const was = told.get(param);
+    if (was !== undefined && Math.abs(value - was) <= Math.max(1e-4, Math.abs(was) * 0.01)) return;
+    told.set(param, value);
+    param.setTargetAtTime(value, t, tc);
+  };
 
   // ---- The beam: a low electric hum, deeper on a bigger fish, with the water boiling
   // round it; heat raises the hum a little and makes the boil harsher.
@@ -508,7 +517,10 @@ export function createPlayerSounds(kit) {
   function feed(r, c) {
     const now = c.currentTime;
     if (r.next < now) r.next = now + 0.004;
-    r.sources = r.sources.filter((s) => s.ends > now);
+    // (Those that have played are dropped in place: this runs every frame.)
+    let kept = 0;
+    for (const s of r.sources) if (s.ends > now) r.sources[kept++] = s;
+    r.sources.length = kept;
     while (r.next < now + 0.12) {
       const [body, crack] = pick(bank(c, "rounds"));
       const rate = vary(0.03);
@@ -632,7 +644,8 @@ export function createPlayerSounds(kit) {
   function tick() {
     const buses = sound.buses?.();
     if (!buses) {
-      for (const kind of [...held.keys()]) release(kind, 0.1);
+      // (A Map may lose the entry it is at while it is gone through.)
+      for (const kind of held.keys()) release(kind, 0.1);
       return;
     }
     const now = buses.context.currentTime;
@@ -640,9 +653,10 @@ export function createPlayerSounds(kit) {
       if (now - l.touched > 0.3) release(kind, 0.2);
       else if (kind.startsWith("rounds-")) feed(l, buses.context);
     }
-    // One take a frame made ahead.
+    // One take a frame made ahead, while any are wanted.
+    if (!toMake.size) return;
     const name = toMake.values().next().value;
-    if (name && more(buses.context, name)) toMake.delete(name);
+    if (more(buses.context, name)) toMake.delete(name);
   }
 
   return {
@@ -688,8 +702,12 @@ export function createPlayerSounds(kit) {
       const big = n / 6;
       const jumps = Math.min(5, Math.max(0, n - 1));
       const snaps = bank(c, "snaps")[jumps * 5 + Math.floor(Math.random() * 5)][0];
-      play(c, snaps, [buses.water, dry(buses, 0.22 + 0.12 * big)], { rate: vary(0.05), peak: 0.4 + 0.2 * big });
-      play(c, pick(bank(c, "crackle"))[0], buses.water, { at: 0.004, rate: vary(0.06), peak: (0.25 + 0.15 * big) * vary(0.1), cut: 0.1 + 0.05 * n });
+      // (An arc that finds nothing only spits into the water; one that finds a fish cracks
+      // harder. Told apart by a sixth of the way to six alone, a miss and a hit would sound
+      // the same, and which comes out louder would be down to chance.)
+      const hit = n ? 1.2 : 0.8;
+      play(c, snaps, [buses.water, dry(buses, 0.22 + 0.12 * big)], { rate: vary(0.05), peak: (0.4 + 0.2 * big) * hit });
+      play(c, pick(bank(c, "crackle"))[0], buses.water, { at: 0.004, rate: vary(0.06), peak: (0.25 + 0.15 * big) * hit * vary(0.1), cut: 0.1 + 0.05 * n });
       const f = (110 - 25 * big) * vary(0.08);
       tone(c, buses.water, { from: f, to: f * 0.5, peak: 0.18 + 0.2 * big, attack: 0.002, decay: 0.06 + 0.03 * n, sweep: 0.05, drive: 2 });
     },
