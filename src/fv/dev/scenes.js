@@ -136,6 +136,17 @@ export const SCENES = [
   // being near), and a stress case (some 150). (The shots' own update is timed as well.)
   { name: "perf-schuesse-vier", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 0.9, spawn: PACK },
   { name: "perf-schuesse", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 15, spawn: PACK },
+  // The same with more guns and the fish held low over the bed (`low`: that far above it, in
+  // u, as the bench's soak holds it): the rounds that miss strike the bed or come down onto it
+  // and lie there, so that the list holds many rounds at rest.
+  { name: "perf-beschuss-tief", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "piu", fire: false, endure: true, low: 1.2, seconds: 12, perf: [6, 11.5], pictures: [5], spawn: [["trout", 8, -1.5], ["trout", 9, -0.5], ["trout", 8, 0.5], ["trout", 9, 1.5], ["trout", 10, 0], ["trout", 7, 0], ["bullhead", 4, 0.8], ["bullhead", 4, -0.8], ["bullhead", 5, 0]] },
+  // The rules of the enemies' rounds (hostile.js), on lists of their own beside the fish: a
+  // spent round has no drag left and only sinks; it comes to rest on the bed, or where it is
+  // when its life is up, and goes REST seconds later; a full list makes way for its oldest
+  // round at rest first, then its oldest spent one, then its oldest flying one; and the
+  // strikes of a step are told newest round first, however the list was shuffled. A rule
+  // broken is an error in the report.
+  { name: "kugeln", stage: "parr", at: 2500, season: "summer", hour: 15, rounds: true },
   // The effects' own looks, held still in front of the eye: smoke of each kind, and a blast.
   { name: "fx-probe", stage: "parr", at: 2500, season: "summer", hour: 15, probe: true },
   // The numbers: one target that cannot sink, held still at a distance (in fish lengths),
@@ -261,6 +272,7 @@ async function runScene(salmon, extreme, query) {
   if (scene.closeup) return closeup(salmon, extreme, set, scene, list, index, extra, errors, query);
   if (scene.splatter) return splatter(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.probe) return probe(salmon, extreme, set, scene, list, index, extra, errors);
+  if (scene.rounds) return roundsCheck(salmon, set, scene, list, index, extra, errors);
   aimAt();
   await salmon.run(0.4, aimAt);
   const record = [];
@@ -384,6 +396,120 @@ async function closeup(salmon, extreme, set, scene, list, index, extra, errors, 
   extreme.frame(1 / 60);
   await salmon.capture(`${set}/${scene.name}`, 1280, 720);
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "closeup", back: a.back, belly: a.belly, stage: fish.stage, length: L }], errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
+// The rounds' rules, on small lists of their own (the game's is left alone), at the fish's
+// place: rounds are fired straight up, down or along x from set heights over the bed there,
+// with a drag strong enough to spend them in their first step where they are to sink.
+async function roundsCheck(salmon, set, scene, list, index, extra, errors) {
+  const { fish, THREE, course } = salmon;
+  const { createHostile, REST } = await import("../hostile.js");
+  // (hostile.js's SINK: how fast a spent round goes down, once its speed has gone over to it.)
+  const SINK = 0.45;
+  const dt = 1 / 30;
+  const spot = {};
+  const home = fish.position.clone();
+  course.locate(home.x, home.z, fish.river.s, spot);
+  const s = spot.s,
+    floor = course.bed(spot.s, spot.u),
+    depth = course.level(s) - floor,
+    high = Math.min(8, depth - 1.5);
+  const checks = [];
+  const check = (what, ok, value) => {
+    checks.push({ what, ok, value });
+    if (!ok) errors.push(`kugeln: ${what}: ${JSON.stringify(value)}`);
+  };
+  const position = new THREE.Vector3(),
+    velocity = new THREE.Vector3();
+  // A round `name` from `up` over the bed here (`x` along x), along (vx, vy, 0).
+  const shoot = (lab, name, up, vx, vy, drag, x = 0) => lab.fire({ weapon: name, position: position.set(home.x + x, floor + up, home.z), velocity: velocity.set(vx, vy, 0), damage: 0.1, drag, s });
+  const steps = (lab, seconds, players = [], hooks = {}) => {
+    for (let i = 0, n = Math.round(seconds / dt); i < n; i++) lab.update(dt, players, hooks);
+  };
+  // (Steps until `done`, for at most 20 s: how long that took.)
+  const until = (lab, done) => {
+    let t = 0;
+    while (!done() && t < 20) {
+      lab.update(dt, [], {});
+      t += dt;
+    }
+    return t;
+  };
+  const names = (lab) => lab.live.map((p) => p.weapon).sort().join(",");
+
+  // Spent high in the water: no drag left, it goes over to sinking at SINK; its life runs out
+  // before it gets down, and it rests where it is, then goes REST seconds later.
+  let lab = createHostile({ capacity: 4 });
+  const a = shoot(lab, "a", high, 12, 0, 60);
+  steps(lab, dt);
+  check("spent in its first step", a.spent, a.velocity.length());
+  steps(lab, 3);
+  check("sinks at SINK, no drag left", Math.abs(a.velocity.y + SINK) < 0.002 && Math.hypot(a.velocity.x, a.velocity.z) < 0.01, a.velocity.toArray());
+  until(lab, () => a.rested);
+  check("rests where it is when its life is up", Math.abs(a.age - 12) < 1.5 * dt && a.position.y > floor + 0.5, { age: a.age, above: a.position.y - floor });
+  steps(lab, REST - 0.5);
+  check("still there before REST is up", lab.live.includes(a), lab.live.length);
+  steps(lab, 1);
+  check("gone once REST is up", lab.live.length === 0, lab.live.length);
+
+  // Spent just over the bed: it comes down onto it and rests there, REST seconds.
+  const b = shoot(lab, "b", 0.5, 3, 0, 60);
+  const down = until(lab, () => b.rested);
+  check("rests on the bed", b.position.y === b.floor && Math.abs(b.floor - floor) < 0.3 && down < 3, { down, y: b.position.y, floor: b.floor });
+  steps(lab, REST - 0.5);
+  check("still on the bed before REST is up", lab.live.includes(b), lab.live.length);
+  steps(lab, 1);
+  check("gone from the bed once REST is up", lab.live.length === 0, lab.live.length);
+
+  // A full list: two rounds at rest, one spent and sinking, one flying; each new one takes the
+  // place of the oldest at rest, then of the spent one, then of the oldest flying one. The
+  // records are the list's own four all along.
+  lab = createHostile({ capacity: 4 });
+  const records = new Set();
+  const note = () => lab.live.forEach((p) => records.add(p));
+  shoot(lab, "r1", 0.01, 0, -3, 60);
+  steps(lab, 0.2);
+  shoot(lab, "r2", 0.01, 0, -3, 60);
+  steps(lab, 0.2);
+  shoot(lab, "s1", high, 2, 0, 60);
+  steps(lab, 0.2);
+  shoot(lab, "f1", high, 0.5, 0, 0.01);
+  note();
+  check("two at rest, one spent, one flying", names(lab) === "f1,r1,r2,s1" && lab.live.filter((p) => p.rested).length === 2 && lab.live.filter((p) => p.spent && !p.rested).length === 1, lab.live.map((p) => [p.weapon, p.spent, p.rested]));
+  const evictions = [];
+  for (const name of ["f2", "f3", "f4", "f5"]) {
+    shoot(lab, name, high, 0.5, 0, 0.01);
+    note();
+    evictions.push(names(lab));
+  }
+  check("the oldest at rest first, then the spent one, then the oldest flying", evictions.join(" ") === "f1,f2,r2,s1 f1,f2,f3,s1 f1,f2,f3,f4 f2,f3,f4,f5", evictions);
+  check("no records beyond the list's own", records.size === 4 && lab.live.length === 4, records.size);
+
+  // The strikes of a step, told newest first, although a round that left the water in the
+  // step before put the newest in the place of the oldest: three rounds come down onto a
+  // player's body halfway up the water and one strikes the bed under it, all in the second
+  // step. (The rounds' 0.3 u a step and the body's reach of 0.13 u keep the first step clear.)
+  lab = createHostile({ capacity: 8 });
+  const middle = depth * 0.5;
+  const player = { id: 0, fish: { position: new THREE.Vector3(home.x, floor + middle, home.z), heading: new THREE.Vector3(1, 0, 0), length: 1 }, down: false };
+  shoot(lab, "z", depth - 0.04, 0, 9, 0.1);
+  shoot(lab, "h1", middle + 0.5, 0, -9, 0.1, -0.2);
+  shoot(lab, "g", 0.35, 0, -9, 0.1);
+  shoot(lab, "h2", middle + 0.5, 0, -9, 0.1);
+  shoot(lab, "h3", middle + 0.5, 0, -9, 0.1, 0.2);
+  const told = [];
+  const hooks = { onPlayer: (p, who) => told.push(`${p.weapon}>${who.id}`), onGround: (p) => told.push(`${p.weapon}>bed`) };
+  steps(lab, dt, [player], hooks);
+  const shuffled = lab.live.map((p) => p.weapon).join(",");
+  steps(lab, dt, [player], hooks);
+  check("the list shuffled by a round leaving the water", shuffled === "h3,h1,g,h2", shuffled);
+  check("strikes told newest first", told.join(" ") === "h3>0 h2>0 g>bed h1>0", told);
+  check("each round told once and gone", lab.live.length === 0, lab.live.length);
+
+  const record = [{ label: "rounds", REST, depth: +depth.toFixed(2), checks }];
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
 }
@@ -758,6 +884,17 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   // and cannot sink, as the dummy is (a fight that stays the same while it is timed).
   const pack = scene.hold ? combat.enemies.list.map((e) => ({ e, at: e.position.clone().sub(fish.position), heading: e.heading.clone() })) : [];
   for (const { e } of pack) e.hp = e.maxHp = 1e6;
+  // (`low`: the fish kept that far above the bed under it where it starts, in u.)
+  let lowY = null;
+  if (scene.low != null) {
+    course.locate(fish.position.x, fish.position.z, fish.river.s, spot);
+    lowY = course.bed(spot.s, spot.u) + scene.low;
+  }
+  const keepLow = () => {
+    if (lowY === null) return;
+    fish.position.y = lowY;
+    fish.velocity.y = 0;
+  };
   const hold = () => {
     for (const { e, at, heading } of pack) {
       e.position.copy(fish.position).add(at);
@@ -865,9 +1002,11 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
     };
   }
   hold();
+  keepLow();
   face();
   await salmon.run(0.3, () => {
     hold();
+    keepLow();
     face();
     follow();
   });
@@ -1024,6 +1163,7 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   while (t < scene.seconds - 1e-6) {
     await salmon.run(dt, () => {
       hold();
+      keepLow();
       face();
       follow();
       volley();
