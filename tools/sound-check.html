@@ -12,13 +12,19 @@
   that go on for a while (a hunter lying in wait for a minute, strength low for half a
   minute, a kingfisher's attack as the game lists it) and half a minute of everything at
   once (the stress: voices, nodes, peaks). A scene can watch the sound's own stats frame by
-  frame (`watch`) and count the nodes its events made (eventNodes). Run by
-  tools/sound-check.mjs; open it by hand and call runAll() to look at it.
+  frame (`watch`) and count the nodes its events made (eventNodes). Extreme's combat sounds
+  (src/fv/sfx.js) play over it, handed to the events third and to `watch` second, updated
+  every frame as the game updates them; their scenes are in tools/sound-check-spieler.js
+  (the player's weapons, and fights of both) and tools/sound-check-enemies.mjs (the
+  enemies'). Run by tools/sound-check.mjs; open it by hand and call runAll() to look at it.
   (The scenes also run against an older src/sound.js, for a before and after: what it did
   not have yet is called with ?. and it is told `above` as well as `submerged`.)
 -->
 <script type="module">
   import { createSound } from "../src/sound.js";
+  import { createSfx } from "../src/fv/sfx.js";
+  import { weaponScenes } from "./sound-check-spieler.js";
+  import { ENEMY_SCENES } from "./sound-check-enemies.mjs";
 
   const SR = 48000;
   let seconds = 8;
@@ -396,6 +402,11 @@
     solo("solo_dive_L1", (s) => s.dive?.(1)),
     solo("solo_dive_L5", (s) => s.dive?.(5)),
     ...["kingfisher", "heron", "merganser", "seal", "bear"].map((kind) => solo(`solo_call_${kind}`, (s) => s.call(kind))),
+    // Extreme's combat sounds (src/fv/sfx.js): the player's weapons and fights of both
+    // (tools/sound-check-spieler.js), and the enemies' (tools/sound-check-enemies.mjs), each
+    // with the salmon's older weapons they are measured against.
+    ...weaponScenes(),
+    ...ENEMY_SCENES,
   ];
 
   async function render(scene) {
@@ -404,6 +415,8 @@
       localStorage.removeItem("habitat-sound");
     } catch {}
     const sound = createSound();
+    // (And the combat sounds over it, as Extreme plays them: the events get them third.)
+    const sfx = createSfx(sound);
     // As in the game: the sound object exists a while (the loading) before the first click,
     // time for it to make its samples (up to 3 s here; the game loads for longer) -- or,
     // `early`, a click at once.
@@ -437,7 +450,7 @@
         const made = ctx.count;
         while (events.length && events[0][0] <= t + 1e-6) {
           const before = ctx.count;
-          events.shift()[1](sound, t);
+          events.shift()[1](sound, t, sfx);
           shotNodes += ctx.count - before;
         }
         if (ctx.count > made) eventNodes.push([t, ctx.count - made]);
@@ -447,8 +460,13 @@
         sound.update(dt, p);
         updateMs += performance.now() - u0;
         bubbleNodes += ctx.count - before;
+        // (The combat sounds' update after it: what it keeps going, a stream of rounds, is
+        // counted with what the events made, not with the river's, nor in its time.)
+        const fired = ctx.count;
+        sfx.update();
+        shotNodes += ctx.count - fired;
         maxLive = Math.max(maxLive, sound.stats?.live ?? 0);
-        if (scene.watch) watched.push([t, scene.watch(sound)]);
+        if (scene.watch) watched.push([t, scene.watch(sound, sfx)]);
         ctx.resume();
       });
     }
@@ -705,6 +723,33 @@
         return best;
       },
       spectrum: (from, to) => spectrum(channels, from, to),
+      // How far the loudness (`window` s at a time) falls under its median in [from, to):
+      // a sound held that drops out somewhere (dB, 0 or less).
+      dip(from, to, window = 0.05) {
+        const s = [];
+        for (let t = from; t + window <= to + 1e-9; t += window / 2) s.push(loud(k, t, t + window));
+        const sorted = s.slice().sort((a, b) => a - b);
+        return sorted[0] - sorted[Math.floor(sorted.length / 2)];
+      },
+      // Clicks where a sound starts or stops: the sharpest step (a second difference, 2 ms
+      // at a time) near each of `moments` (from just before to 0.2 s after) against the
+      // sharpest there are in the sound held in [from, to) (their 99th percentile), in dB.
+      edges(moments, from, to) {
+        const x = channels[0].map((v, i) => v + channels[1][i]);
+        const w = Math.round(0.002 * SR);
+        const steps = (a, b) => {
+          const out = [];
+          for (let i = Math.max(2, Math.floor(a * SR)); i + w <= Math.floor(b * SR); i += w) {
+            let top = 0;
+            for (let j = i; j < i + w; j++) top = Math.max(top, Math.abs(x[j] - 2 * x[j - 1] + x[j - 2]));
+            out.push(top);
+          }
+          return out;
+        };
+        const held = steps(from, to).sort((a, b) => a - b);
+        const ref = held[Math.floor(0.99 * (held.length - 1))] + 1e-9;
+        return Math.max(...moments.map((m) => 20 * Math.log10(Math.max(...steps(m - 0.01, m + 0.2)) / ref)));
+      },
     };
     return tb;
   }
@@ -745,6 +790,16 @@
       out.dPhone = r1(loudest(kp, at, until, 0.05) - loudest(kp, 2.5, 4, 0.05));
       out.d400 = r1(loudest(k, at, until, 0.4) - loudest(k, 2.5, 4, 0.4));
       out.centroid = Math.round(spectrum(channels, at, at + 1.5).centroid);
+    } else if (scene.kind === "weapon") {
+      // The loudest 400 ms (momentary loudness) and 3 s (short-term: a burst, a weapon
+      // held), also through a phone; the spectrum over its `active` stretch.
+      const end = seconds - 0.2;
+      out.full = r1(loudest(k, 0.5, end, 0.4));
+      out.phone = r1(loudest(kp, 0.5, end, 0.4));
+      out.short = r1(loudest(k, 0.5, end, Math.min(3, end - 0.5)));
+      Object.assign(out, spectrum(channels, ...(scene.active ?? [1, end])));
+      out.voices = Math.max(0, ...r.watched.map(([, w]) => w.voices));
+      out.voicesEnd = r.watched.length ? r.watched[r.watched.length - 1][1].voices : 0;
     } else if (scene.kind === "stress") {
       out.full = r1(loud(k, 1, seconds));
       out.loudest = r1(loudest(k, 1, seconds - 0.5, 0.4));

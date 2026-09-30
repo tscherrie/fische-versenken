@@ -607,6 +607,7 @@ export function createEnemies(scene, { random }) {
           lead(e, fish, spec.strike, e.strikeDir);
           e.strikeTime = Math.min(1.2, e.strikeDir.length() / spec.strike + 0.3);
           e.strikeDir.normalize();
+          hooks.swing?.(e);
         }
         e.position.addScaledVector(flight.normalize(), speed * dt);
         return;
@@ -702,6 +703,7 @@ export function createEnemies(scene, { random }) {
         if (!untouchable && flat < gun.range[1] && flat > gun.range[0] && e.reload <= 0 && striking(p) < 3) {
           e.mode = "aim";
           e.t = 0;
+          hooks.aim?.(e, gun, gun.tell);
         }
         break;
       case "aim":
@@ -911,6 +913,9 @@ export function createEnemies(scene, { random }) {
           e.mode = "strike";
           e.t = 0;
           e.dropping = 0;
+          // (Heard as its bombs will come: down its dive to where it lets them go, and the
+          // last bit through the air.)
+          hooks.aim?.(e, gun, (e.position.y - top - gun.release) / (spec.strike * Math.max(0.2, -e.strikeDir.y)) + 0.1);
         } else if (e.t > spec.coil * 4) {
           e.mode = "circle";
           e.t = 0;
@@ -1053,7 +1058,7 @@ export function createEnemies(scene, { random }) {
           b.wet = true;
           // (It may be a little way in already: this step took it there.)
           b.fuse = fuseFor(b.velocity.y, b.depth - (top - b.position.y), b.gun);
-          hooks.water?.(b.position.x, top, b.position.z, 1.5);
+          hooks.water?.(b.position.x, top, b.position.z, 1.5, b.gun);
         } else if (b.age > 6) bombs.splice(i, 1);
         continue;
       }
@@ -1076,7 +1081,9 @@ export function createEnemies(scene, { random }) {
   }
 
   // One step of an enemy's plan. `hooks.hurt(player, enemy)` is called when a strike lands,
-  // `hooks.shoot(enemy, direction, weapon)` for each shot of a gun.
+  // `hooks.shoot(enemy, direction, weapon)` for each shot of a gun; `hooks.aim(enemy, weapon,
+  // seconds)` as a gunner starts to aim (a bomber, as it tips into its dive), `seconds` before
+  // it fires, and `hooks.swing(enemy)` as a strike begins -- for what is heard of them.
   function think(e, dt, time, players, hooks) {
     const hurt = hooks.hurt;
     const spec = e.spec;
@@ -1147,6 +1154,7 @@ export function createEnemies(scene, { random }) {
       if (ready && sees && !swallowing && e.reload <= 0 && dist >= gun.range[0] && dist <= gun.range[1] && striking(p) < 3) {
         e.mode = "aim";
         e.t = 0;
+        hooks.aim?.(e, gun, gun.tell);
       }
     }
     switch (e.mode) {
@@ -1297,7 +1305,10 @@ export function createEnemies(scene, { random }) {
           e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
           break;
         }
-        if (e.t > spec.coil) beginStrike(e, fish);
+        if (e.t > spec.coil) {
+          beginStrike(e, fish);
+          hooks.swing?.(e);
+        }
         break;
       }
       case "strike": {

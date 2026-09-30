@@ -1465,6 +1465,9 @@ export function createFiring(ctx) {
       damage(player.id, e, w.damage * damageScale(L) * dt, f.heading, closest, id, gorier(e, 0.08), { mode: "saw", point: closest });
     }
     if (cutting) kick(player, f.heading, -w.pull * dt);
+    // (The engine bogs down and the chain grinds while it is in something, when the sound
+    // has that.)
+    if (cutting && player.local) sfx.bite?.(id);
     models.recoil(player, place);
     stat(id).time = (stat(id).time ?? 0) + dt;
   }
@@ -1952,7 +1955,8 @@ export function createFiring(ctx) {
       game.falls?.splash?.(at.x, top, at.z, 2 + 6 * L);
       game.ripples?.add?.(at.x, at.z, 3 + 4 * L);
     }
-    if (isLocal(owner)) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
+    // (A charge of the enemies' is heard as its own: combat.js plays it, `quiet` here.)
+    if (isLocal(owner) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
   }
 
   // blade: a cut begins. The blade crosses the arc over `swing` seconds; what it passes is
