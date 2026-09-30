@@ -43,6 +43,9 @@ const TRAIL = 0.12;
 // Under water a grenade is slowed by the water and sinks slower than it would fall.
 const WATER_DRAG = 1.4;
 const WATER_SINK = 30;
+// How far above the surface the shots and the beam still go (u): far enough for a bird
+// hovering over the water.
+const SKY = 5;
 
 export const WEAPONS = {
   piu: {
@@ -631,6 +634,7 @@ export function createFiring(ctx) {
     p.core = w.core;
     p.stretch = w.stretch;
     p.shooter = L;
+    p.sky = SKY;
     // The emitter's lens flashes (a red glint, held a few frames).
     fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: w.size(L) * 2.2, life: 0.07, r: 4, g: 0.5, b: 0.3 });
     stat(id).shots++;
@@ -638,9 +642,9 @@ export function createFiring(ctx) {
   }
 
   // beam: the laser held steady, a step of it. It goes straight from the emitter to the
-  // crosshair and on to the first thing in the way -- a body, a stone, the bed, the
-  // surface -- or to its reach, and burns what it touches for as long as it stays on it, at
-  // the pulses' rate.
+  // crosshair and on to the first thing in the way -- a body, a stone, the bed -- or to its
+  // reach (out of the water only a little way: SKY), and burns what it touches for as long
+  // as it stays on it, at the pulses' rate.
   function ray(player, place, w, id, dt) {
     const f = player.fish;
     const L = f.length;
@@ -649,7 +653,7 @@ export function createFiring(ctx) {
     aimFrom(muzzle, L, aimDir);
     const reach = w.reach(L);
     let far = rayWater(muzzle, aimDir, reach, f.river.s);
-    let what = far < reach ? rayEnd : null;
+    let what = far < reach && rayEnd !== "air" ? rayEnd : null;
     if (game?.terrain) {
       game.terrain.collidersNear(muzzle.x + aimDir.x * far * 0.5, muzzle.z + aimDir.z * far * 0.5, far * 0.5 + 3, rocks);
       for (const c of rocks) {
@@ -684,16 +688,17 @@ export function createFiring(ctx) {
     b.on = true;
     b.id = id;
     if (best) damage(player.id, best, (w.damage / w.interval) * damageScale(L) * dt, aimDir, b.to, id, gorier(best, 0.12), BEAM_INFO);
-    // Where it ends on stone, gravel or the surface it boils the water: beads, and off stone
-    // or gravel now and then a spark and a puff of silt.
+    // Where it ends on stone or gravel it boils the water: beads, and now and then a spark
+    // and a puff of silt. (Out of the water it goes on into the air, to its reach or until
+    // it is well above the surface: nothing to show there.)
     const p = b.to;
     if (what && what !== "body") {
       if (look() < dt * 18) fx.fizz(p.x, p.y, p.z, { count: 1, size: 0.006 + 0.006 * L, spread: 0.04 * L, rise: 0.9, random: look });
-      if (what !== "surface" && look() < dt * 10) {
+      if (look() < dt * 10) {
         sphere(tmp, look);
         fx.spark(p.x, p.y, p.z, { vx: tmp.x * 1.5 * L, vy: Math.abs(tmp.y) * 2 * L, vz: tmp.z * 1.5 * L, size: 0.012 + 0.012 * L, life: 0.18, r: 5, g: 1.4, b: 0.35, stretch: 2 });
       }
-      if (what !== "surface" && look() < dt * 3) puff(SILT, p.x, p.y + 0.02 * L, p.z, 0, 0.3 * L, 0, 0.06 * L + 0.015, 2.4, 1 + 0.5 * look(), 0.3, 3, 0.05 * L, f.river.s);
+      if (look() < dt * 3) puff(SILT, p.x, p.y + 0.02 * L, p.z, 0, 0.3 * L, 0, 0.06 * L + 0.015, 2.4, 1 + 0.5 * look(), 0.3, 3, 0.05 * L, f.river.s);
     }
     // And a bead now and then along it, where it heats the water it goes through.
     if (look() < dt * 8) {
@@ -702,14 +707,14 @@ export function createFiring(ctx) {
     }
     stat(id).beam = (stat(id).beam ?? 0) + dt;
   }
-  // How far a ray from `o` along `d` goes before it meets the bed or the surface, if that
-  // is before `far` (marched, then narrowed down); which of the two it met is left in
-  // `rayEnd`.
+  // How far a ray from `o` along `d` goes before it meets the bed or leaves the water by
+  // more than SKY, if that is before `far` (marched, then narrowed down); which of the two
+  // it met is left in `rayEnd`.
   let rayEnd = null;
   function outside(o, d, t) {
     probe.copy(o).addScaledVector(d, t);
     locate(probe.x, probe.z, where.s, where);
-    if (probe.y > level(where.s) + 0.02) return (rayEnd = "surface");
+    if (probe.y > level(where.s) + SKY) return (rayEnd = "air");
     if (probe.y < bed(where.s, where.u)) return (rayEnd = "bed");
     return null;
   }
@@ -800,6 +805,7 @@ export function createFiring(ctx) {
       p.speed0 = flight.length();
       p.shove = (w.shove * L) / w.pellets;
       p.shooter = L;
+      p.sky = SKY;
     }
     flash(muzzle, aimDir, L, w.flash, 1.3, f.river.s);
     kick(player, aimDir, w.recoil);

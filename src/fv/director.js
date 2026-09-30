@@ -29,11 +29,14 @@ export function createDirector({ random }) {
     return w;
   }
 
-  function choose(stage, s) {
+  function choose(stage, s, enemies) {
     const options = [];
     if (suits("troutParr", s) > 0.2) options.push(["troutParr", 3]);
     if (suits("bullhead", s) > 0.2) options.push(["bullhead", 2]);
     if (stage >= 2 && suits("trout", s) > 0.2) options.push(["trout", stage >= 3 ? 1.5 : 0.7]);
+    // (The kingfisher goes for small fish only, as it does in the base game, and one at a
+    // time.)
+    if (stage >= 1 && stage <= 4 && suits("kingfisher", s) > 0.2 && !enemies.list.some((e) => e.kind === "kingfisher" && !e.dead)) options.push(["kingfisher", 1]);
     if (!options.length) return null;
     let total = 0;
     for (const [, w] of options) total += w;
@@ -76,13 +79,14 @@ export function createDirector({ random }) {
       let alive = 0;
       for (const e of enemies.list) if (!e.dead) alive++;
       if (calm || alive >= cap || clock < nextSpawn) return;
-      const kind = choose(stage, fish.river.s);
+      const kind = choose(stage, fish.river.s, enemies);
       if (!kind) {
         nextSpawn = clock + 3;
         return;
       }
       const spec = KINDS[kind];
-      const where = spot(fish, spec.size[1]);
+      // (A bird needs no depth: it comes in over the water.)
+      const where = spot(fish, spec.flies ? 0 : spec.size[1]);
       if (!where) {
         nextSpawn = clock + 1;
         return;

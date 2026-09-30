@@ -20,6 +20,10 @@ export const SCENES = [
   // Nobody fires back: a brown trout with its submachine gun and a bullhead with its
   // shotgun open up on a parr (the tells, the bursts, the hits).
   { name: "beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["trout", 11, 0], ["bullhead", 4, 0.8]] },
+  // The kingfisher: it circles over the brook, hovers over the fry and plunges at it --
+  // once taking it (no shooting back), once against the laser.
+  { name: "eisvogel", stage: "fry", at: 215, season: "summer", hour: 13, fire: false, spawn: [["kingfisher", 3, 0]] },
+  { name: "eisvogel-laser", stage: "fry", at: 215, season: "summer", hour: 13, spawn: [["kingfisher", 3, 0]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?

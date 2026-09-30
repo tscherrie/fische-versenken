@@ -10,7 +10,12 @@
 import * as THREE from "three";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
 import { bed, clamp, current, level, locate, place } from "../course.js";
+import { creatureMaterial, kingfisherGeometry } from "../creatures.js";
 import { KINDS } from "./kinds.js";
+
+// The birds' stand-in bodies: the base game's own models (creatures.js), until the look
+// gives them models of their own. Each is laid along +x, beak first.
+const BIRD_MODELS = { kingfisher: kingfisherGeometry };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
@@ -20,7 +25,27 @@ export const CORPSE_SECONDS = 40;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
+  // The birds: one instanced mesh a kind (what the look will replace), and how long the
+  // model is at scale 1 and how far its beak reaches ahead of its origin.
+  const birds = {};
+  const birdMaterial = creatureMaterial();
   for (const [kind, spec] of Object.entries(KINDS)) {
+    if (spec.render !== "bird") continue;
+    const geometry = BIRD_MODELS[spec.model]();
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const mesh = new THREE.InstancedMesh(geometry, birdMaterial, spec.capacity);
+    mesh.name = `Combat ${kind}`;
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    // (On the ordinary layer, as the base game's kingfisher: over the water it is seen from
+    // below only through the window in the surface, and that draws layer 0 alone.)
+    mesh.visible = false;
+    scene.add(mesh);
+    birds[kind] = { mesh, length: box.max.x - box.min.x, beak: box.max.x, middle: 0.5 * (box.max.x + box.min.x) };
+  }
+  for (const [kind, spec] of Object.entries(KINDS)) {
+    if (spec.render === "bird") continue;
     // With the distance detail (anatomy.js): enemies out of view are not drawn, and far ones
     // are drawn with the light body.
     crowds[kind] = createFishMesh(scene, spec.body, spec.coat, spec.capacity, { name: `Combat ${kind}`, castShadow: false, detail: 0.55, lod: true });
@@ -68,7 +93,8 @@ export function createEnemies(scene, { random }) {
     const floor = bed(s, u);
     const top = level(s);
     if (top - floor < size * 0.5) return null;
-    const height = y ?? (spec.bottom ? floor + size * 0.12 : floor + (top - floor) * range(0.3, 0.7));
+    // (A bird comes in over the water, whatever height it is asked for.)
+    const height = spec.flies ? top + spec.height * range(1, 1.3) : y ?? (spec.bottom ? floor + size * 0.12 : floor + (top - floor) * range(0.3, 0.7));
     const e = {
       id: nextId++,
       kind,
@@ -82,7 +108,7 @@ export function createEnemies(scene, { random }) {
       heading: heading ? heading.clone().normalize() : new THREE.Vector3(Math.cos(random() * TAU), 0, Math.sin(random() * TAU)),
       speed: 0,
       river: { s, u },
-      mode: spec.behaviour === "ambush" ? "lurk" : "approach",
+      mode: spec.behaviour === "ambush" ? "lurk" : spec.behaviour === "diver" ? "circle" : "approach",
       t: 0,
       target: null,
       phase: random() * TAU,
@@ -91,6 +117,8 @@ export function createEnemies(scene, { random }) {
       strikeDir: new THREE.Vector3(),
       orbit: random() < 0.5 ? 1 : -1,
       nextDart: range(1.2, 2.8),
+      // (A diver's pause over the water between two dives.)
+      rest: range(1, 2.5),
       stagger: 0,
       dead: false,
       rolled: 0,
@@ -163,6 +191,122 @@ export function createEnemies(scene, { random }) {
     // Long enough to get there, and a little past.
     e.strikeTime = Math.min(1.1, e.strikeDir.length() / e.spec.strike + 0.2);
     e.strikeDir.normalize();
+  }
+
+  // A diving bird (the kingfisher): it flies over the water, keeping above the salmon a few
+  // lengths up; when it has it below and not too deep, it stops and hovers there, beak down
+  // (the tell), and then plunges beak first along a line to where the salmon will be, the
+  // water braking it once it is in; a hit or not, it climbs out and back up, and after a
+  // moment over the water goes again. It moves itself: no current carries it in the air.
+  const flight = new THREE.Vector3();
+  function dive(e, dt, time, players, hooks) {
+    const spec = e.spec;
+    const p = pick(e, players);
+    e.target = p;
+    e.t += dt;
+    locate(e.position.x, e.position.z, e.river.s, e.river);
+    const top = level(e.river.s);
+    const high = top + spec.height;
+    const fish = p?.fish;
+    const L = fish?.length ?? 1;
+    const reachable = !!fish && !fish.safe && !fish.captive && !fish.airborne && top - fish.position.y < spec.depth + 0.5 * L;
+    let speed = 0;
+    switch (e.mode) {
+      case "circle": {
+        // Over the water: ahead of the salmon and a little to one side, then round it.
+        if (!fish) {
+          flight.set(e.heading.x, 0, e.heading.z);
+          speed = spec.cruise * 0.5;
+          break;
+        }
+        want.copy(fish.position).addScaledVector(fish.velocity, 0.6);
+        want.x += e.orbit * 1.2 * Math.cos(time * 0.7 + e.phase);
+        want.z += e.orbit * 1.2 * Math.sin(time * 0.7 + e.phase);
+        want.y = high;
+        flight.subVectors(want, e.position);
+        const flat = Math.hypot(flight.x, flight.z);
+        speed = flat > 3 ? spec.chase : spec.cruise * Math.min(1, flat / 3 + 0.2);
+        if (reachable && flat < 2 && e.t > e.rest && striking(p) < 3) {
+          e.mode = "coil";
+          e.t = 0;
+        }
+        break;
+      }
+      case "coil": {
+        // Hovering above where the salmon will be, beak down: the tell.
+        if (!reachable) {
+          e.mode = "circle";
+          e.t = 0;
+          break;
+        }
+        want.copy(fish.position).addScaledVector(fish.velocity, 0.4);
+        want.y = top + spec.height * 0.8;
+        flight.subVectors(want, e.position);
+        speed = Math.min(spec.cruise, flight.length() * 3);
+        // (Its beak follows the salmon: the heading is also the line of its body for a hit.)
+        tmp.subVectors(fish.position, e.position).normalize();
+        e.heading.lerp(tmp, Math.min(1, dt * 8)).normalize();
+        if (e.t > spec.coil) {
+          e.mode = "strike";
+          e.t = 0;
+          lead(e, fish, spec.strike, e.strikeDir);
+          e.strikeTime = Math.min(1.2, e.strikeDir.length() / spec.strike + 0.3);
+          e.strikeDir.normalize();
+        }
+        e.position.addScaledVector(flight.normalize(), speed * dt);
+        return;
+      }
+      case "strike": {
+        // The plunge: fast through the air, braked by the water once it is in (over some
+        // tenths of a second, as a kingfisher's dive carries it a body length or two down),
+        // ending at its depth.
+        const wet = e.position.y < top;
+        if (wet && !e.splashed) {
+          e.splashed = true;
+          e.inAt = e.t;
+          hooks.splash?.(e);
+        }
+        speed = spec.strike * (wet ? Math.max(0.3, 1 - (e.t - e.inAt) * 1.6) : 1);
+        e.heading.copy(e.strikeDir);
+        e.position.addScaledVector(e.strikeDir, speed * dt);
+        tmp.copy(e.heading).multiplyScalar(e.beak ?? 0.5 * e.size).add(e.position);
+        const reach = 0.12 + 0.3 * L + 0.05 * e.size;
+        if (reachable && tmp.distanceTo(fish.position) < reach) {
+          hooks.hurt(p, e);
+          e.mode = "recover";
+          e.t = 0;
+        } else if (e.t > e.strikeTime || e.position.y < top - spec.depth) {
+          if (fish) whiffs.push(e.kind);
+          e.mode = "recover";
+          e.t = 0;
+        }
+        return;
+      }
+      case "recover": {
+        // Out of the water and back up, away a little.
+        flight.set(-e.strikeDir.x, 0, -e.strikeDir.z);
+        if (flight.lengthSq() < 1e-6) flight.set(e.orbit, 0, 0);
+        flight.normalize().multiplyScalar(0.5);
+        flight.y = 1;
+        speed = spec.cruise * (e.position.y < top ? 0.6 : 1);
+        if (e.position.y > top + spec.height * 0.8) {
+          e.mode = "circle";
+          e.t = 0;
+          e.rest = range(1.5, 3.5);
+          e.splashed = false;
+        }
+        break;
+      }
+      default:
+        e.mode = "circle";
+    }
+    // In the air: along the way it wants, easing to its height.
+    if (flight.lengthSq() > 1e-8) {
+      flight.normalize();
+      e.heading.lerp(flight, Math.min(1, dt * spec.turn)).normalize();
+    }
+    e.position.addScaledVector(e.heading, speed * dt);
+    if (e.mode === "circle") e.position.y += (high - e.position.y) * (1 - Math.exp(-dt * 2));
   }
 
   // One step of an enemy's plan. `hooks.hurt(player, enemy)` is called when a strike lands,
@@ -362,7 +506,10 @@ export function createEnemies(scene, { random }) {
     locate(e.position.x, e.position.z, e.river.s, e.river);
     const floor = bed(e.river.s, e.river.u) + e.size * 0.08;
     const top = level(e.river.s) - e.size * 0.07;
-    if (e.spec.crawls) {
+    if (e.position.y > top + 0.02) {
+      // Shot out of the air: it falls to the water.
+      e.position.y = Math.max(top, e.position.y - 6 * dt);
+    } else if (e.spec.crawls) {
       // A larva does not float: it sinks back onto the stones and lies there.
       const under = (ground ? ground.height(e.position.x, e.position.z, floor - e.size * 0.08) : floor - e.size * 0.08) + e.size * 0.06;
       e.position.y = Math.max(under, e.position.y - 0.3 * dt);
@@ -387,6 +534,9 @@ export function createEnemies(scene, { random }) {
           list.splice(i, 1);
           continue;
         }
+      } else if (e.spec.flies) {
+        dive(e, dt, time, players, hooks);
+        if (e.stagger > 0) e.stagger -= dt;
       } else {
         let speed = think(e, dt, time, players, hooks);
         // A boss keeps to its place: past its leash it turns for home.
@@ -492,8 +642,21 @@ export function createEnemies(scene, { random }) {
   const drawnElsewhere = new Set();
   function draw() {
     const slots = {};
+    for (const kind in birds) birds[kind].mesh.count = 0;
     for (const e of list) {
       if (drawnElsewhere.has(e.kind)) continue;
+      const bird = birds[e.kind];
+      if (bird) {
+        // (Its model is laid along +x from its own origin: moved so the middle of the body
+        // is where the enemy is, scaled to its size.)
+        pose(e, matrix);
+        const s = MODEL_LENGTH / bird.length;
+        matrix.multiply(basis.makeScale(s, s, s).setPosition(-bird.middle * s, 0, 0));
+        bird.mesh.setMatrixAt(bird.mesh.count++, matrix);
+        // (Where its beak is, ahead of its middle, for its strike.)
+        e.beak = ((bird.beak - bird.middle) * e.size) / bird.length;
+        continue;
+      }
       const crowd = crowds[e.kind];
       const slot = (slots[e.kind] = (slots[e.kind] ?? -1) + 1);
       crowd.body.setMatrixAt(slot, pose(e, matrix));
@@ -505,6 +668,11 @@ export function createEnemies(scene, { random }) {
       crowd.mouth.setX(slot, e.gape);
     }
     for (const crowd of Object.values(crowds)) crowd.finish();
+    for (const kind in birds) {
+      const mesh = birds[kind].mesh;
+      mesh.visible = mesh.count > 0;
+      if (mesh.count > 0) mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // A hit for `damage` from direction `dir` (a unit vector, the way the shot flew). Returns

@@ -20,6 +20,8 @@ const BULLHEAD = PREDATORS.bullhead;
 //   ambush   lies still on the bed until the salmon comes close, then snaps
 //   stalker  follows at a distance, draws itself up (the tell) and strikes
 //   pack     a few together circle the salmon and dart in one after another
+//   diver    a bird over the water (flies): it hovers over the salmon (the tell) and plunges
+//            beak first at it, `height` above the surface, down to `depth` below it
 // swallows: a strike from a fish at least 2.2 times the salmon's length swallows it whole
 // (the base game's rule), otherwise it bites: `bite` of the strength bar, less when the
 // enemy is smaller than the salmon.
@@ -115,6 +117,35 @@ export const KINDS = {
     coil: 0.45,
     regions: {},
     weapon: { id: "minigun", title: "Minigun", kind: "ranged", range: [3, 14], tell: 0.8, burst: 26, interval: 0.05, pellets: 1, spread: 0.08, speed: 18, drag: 1.2, damage: 0.018, reload: 2.2, cause: "Vom alten König durchsiebt" },
+  },
+  // The kingfisher over the brook, with a push dagger strapped to its beak (plan, part 4a).
+  // It is drawn with its own model (`render: "bird"`; for now the base game's), and is hit
+  // like any enemy: shots and the beam carry on a little above the surface for it.
+  kingfisher: {
+    title: "Eisvogel",
+    name: "Von einem Eisvogel erdolcht",
+    render: "bird",
+    model: "kingfisher",
+    size: [1.5, 1.8],
+    hp: 14,
+    capacity: 2,
+    behaviour: "diver",
+    flies: true,
+    blood: "bird",
+    swallows: false,
+    bite: 0.12,
+    sight: 14,
+    cruise: 4,
+    chase: 7,
+    strike: 15,
+    range: 0.5,
+    turn: 5,
+    coil: 1.1,
+    height: 2.6,
+    depth: 3.2,
+    from: 20,
+    regions: { brook: 1, upper: 0.5 },
+    weapon: { id: "pushdagger", title: "Stoßdolch", kind: "melee", damage: 0.12 },
   },
   // The gravel defence (gravel.js): water-insect larvae crawling through the redd at the
   // alevins. They are drawn by their own models (look/larvae.js), not with a fish body
