@@ -644,10 +644,13 @@
 #hint kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
 #hint .glow { color: #ffd98a; font-weight: 800; text-shadow: 0 0 8px rgba(255, 190, 90, 0.7); }
 
-/* The title card: what the game is, how to play it, and the button that starts the swim.
-   On a phone it only says the game wants a computer. At the start as in the pause, the river
-   stays in sight behind it, neither blurred nor darkened, and the buttons in the corner can
-   be used; only the card itself takes clicks. */
+/* The title card, which is also the pause (intro.js): the title; the start, with the saved
+   stage and "new game" in one quiet line under it; the settings, each row a label and its
+   control; the keys, small; GitHub and the version at the foot. At the start as in the
+   pause the river stays in sight behind it, neither blurred nor darkened, and the buttons in
+   the corner can be used; only the card itself takes clicks. On a phone (?phone) it only
+   says the game wants a computer. All of it is laid out here, in the page, so the card goes
+   up as it is meant to look from its first frame. */
 #intro {
   position: fixed;
   inset: 0;
@@ -663,24 +666,25 @@
 #intro[hidden] { display: none; }
 #intro.leaving { opacity: 0; pointer-events: none; }
 #intro .card {
-  width: min(560px, 100%);
+  box-sizing: border-box;
+  width: min(34em, 100%);
   max-height: calc(100dvh - 32px);
   overflow: auto;
-  padding: 30px 32px 26px;
+  padding: 28px 24px 20px;
   border-radius: 26px;
   background: linear-gradient(160deg, rgb(14, 52, 60), rgb(5, 24, 30));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 20px 60px rgba(0, 0, 0, 0.45);
   text-align: center;
   pointer-events: auto;
 }
-#intro .kicker { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8fe3c0; }
-#intro h1 { margin: 6px 0 10px; font-size: clamp(34px, 7vw, 52px); font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; text-shadow: 0 2px 20px rgba(120, 230, 200, 0.25); }
-#intro .lead { margin: 0 auto 18px; max-width: 30em; font-size: 16px; font-weight: 600; line-height: 1.5; opacity: 0.9; }
-#intro .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; margin: 0 0 22px; padding: 0; list-style: none; font-size: 14px; font-weight: 700; }
-#intro .keys li { display: flex; align-items: center; gap: 6px; }
+/* The kicker only in the pause, and then the title in one smaller line; the line about the
+   game only on the card the game opens with. */
+#intro .kicker { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8fe3c0; }
+#intro h1 { margin: 0; font-size: clamp(32px, 6vw, 44px); font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; text-shadow: 0 2px 20px rgba(120, 230, 200, 0.25); }
+#intro.paused h1 { font-size: clamp(24px, 4.5vw, 30px); }
+#intro .lead { max-width: 28em; margin: 12px auto 0; font-size: 15px; font-weight: 600; line-height: 1.45; opacity: 0.85; text-wrap: balance; }
+#intro.paused .lead { display: none; }
 #intro kbd { font: inherit; font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 7px; background: rgba(255, 255, 255, 0.14); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3); }
-#intro .mouse { width: 12px; height: 18px; border: 2px solid currentColor; border-radius: 7px; position: relative; opacity: 0.9; }
-#intro .mouse::after { content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: currentColor; }
 #intro button {
   min-width: 220px;
   padding: 14px 28px;
@@ -696,29 +700,129 @@
 #intro button:hover:not(:disabled) { transform: translateY(-1px) scale(1.03); }
 #intro button:focus-visible { outline: 3px solid #ffd98a; outline-offset: 3px; }
 #intro button:disabled { cursor: progress; filter: grayscale(0.7) brightness(0.8); }
-#intro button.quiet { display: block; min-width: 0; margin: 10px auto 0; padding: 4px 10px; font: 600 12.5px/1.3 var(--hud-font); border: 0; background: none; box-shadow: none; color: inherit; font-size: 12.5px; font-weight: 600; opacity: 0.6; text-decoration: underline; text-underline-offset: 3px; }
-#intro button.quiet:hover { opacity: 0.95; transform: none; }
+
+/* The start, as wide as the card; under it the saved stage and the way to start afresh, one
+   quiet line (two only while "new game" asks to be sure). */
+#intro .primary { margin-top: 24px; }
+#intro #intro-start { width: 100%; min-width: 0; height: 52px; padding: 0 24px; }
+#intro #intro-start:hover:not(:disabled) { transform: translateY(-1px); }
+#intro-start kbd { margin-left: 4px; vertical-align: 2px; background: rgba(6, 35, 42, 0.14); box-shadow: inset 0 -2px 0 rgba(6, 35, 42, 0.2); }
+#intro .sub { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 16px; margin: 0; font-size: 12.5px; font-weight: 600; }
+#intro .sub > * { margin: 8px 0 0; }
+#intro .status { opacity: 0.65; }
+#intro .status:empty { display: none; }
+#intro button.quiet { min-width: 0; padding: 0; font: inherit; color: inherit; background: none; box-shadow: none; opacity: 0.65; text-decoration: underline; text-underline-offset: 3px; }
+#intro button.quiet:hover { opacity: 1; transform: none; }
 #intro button.quiet[hidden] { display: none; }
-#intro .status { min-height: 1.2em; margin: 12px 0 0; font-size: 13px; font-weight: 700; color: #ffd98a; }
-#intro .note { margin: 10px auto 0; max-width: 28em; font-size: 13px; line-height: 1.5; opacity: 0.7; }
-/* Vegan mode: a switch on the card, above the start button. */
-#intro .vegan { display: flex; align-items: center; gap: 12px; max-width: 30em; margin: 0 auto 18px; padding: 10px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.06); text-align: left; cursor: pointer; font-size: 13px; line-height: 1.4; }
-#intro .vegan:hover { background: rgba(255, 255, 255, 0.1); }
-#intro .vegan input { position: absolute; opacity: 0; pointer-events: none; }
+/* An extension's panel under the start (index.html); with none, the place takes no room. */
+#intro .extension { margin-top: 16px; }
+#intro .extension:empty { display: none; }
+
+/* The settings: a label on the left, its control on the right, every row as high as a row
+   of buttons. The rows themselves take no box (each is only its label and its control), so
+   the labels line up in one column however many rows there are. */
+#intro .settings { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 16px; margin-top: 24px; text-align: left; }
+#intro .settings .row { display: contents; }
+#intro .settings .label { margin: 0; font-size: 12px; font-weight: 700; opacity: 0.6; }
+#intro .settings label.label { cursor: pointer; }
+/* The rows of buttons: the graphics steps (intro.js builds them, the same control as in the
+   panel at G, only named here), the languages, and any row an extension adds (.seg). */
+#intro .settings :is(.seg, .quality-picker .options) { display: flex; gap: 2px; margin: 0; padding: 3px; border-radius: 11px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+#intro .settings :is(.seg, .quality-picker .options) button { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 0; min-width: max-content; height: 30px; margin: 0; padding: 0 8px; border: 0; border-radius: 8px; font: 700 12.5px/1 var(--hud-font); color: inherit; background: none; box-shadow: none; opacity: 0.7; transform: none; filter: none; white-space: nowrap; cursor: pointer; }
+#intro .settings :is(.seg, .quality-picker .options) button b { font: inherit; }
+#intro .settings :is(.seg, .quality-picker .options) button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); opacity: 1; transform: none; }
+#intro .settings :is(.seg, .quality-picker .options) button:focus-visible { outline: 2px solid #ffd98a; outline-offset: 1px; }
+#intro .settings :is(.seg, .quality-picker .options) button[aria-pressed="true"] { background: rgba(160, 235, 200, 0.2); box-shadow: inset 0 0 0 1px rgba(160, 235, 200, 0.55); opacity: 1; cursor: default; }
+/* The graphics steps by name only: what each does, and that a switch reloads, is in its
+   tooltip. The step recommended for this kind of device has a small star in its corner
+   (the word stays for a screen reader). */
+#intro .quality-picker .head,
+#intro .quality-picker .about,
+#intro .quality-picker .option small { display: none; }
+#intro .quality-picker .tag { position: absolute; top: 3px; right: 4px; left: auto; padding: 0; font-size: 0; line-height: 1; background: none; box-shadow: none; transform: none; }
+#intro .quality-picker .tag::after { content: "★"; font-size: 8px; color: #ffd98a; }
+/* Picked, a step loads the game afresh: it lights up, the others wait. */
+#intro .settings .quality-picker.busy .option:not(.picked) { opacity: 0.35; cursor: progress; }
+#intro .settings .quality-picker.busy .option.picked { opacity: 1; color: #06232a; background: linear-gradient(180deg, #b6f7a0, #3fd0a0); box-shadow: none; animation: intro-busy 700ms ease-in-out infinite alternate; }
+@keyframes intro-busy { to { filter: brightness(1.15); } }
+/* Vegan mode: its switch, as high as the other rows; what it means is the switch's tooltip.
+   The checkbox itself lies over the switch, unseen, so that pointing at the switch shows it. */
+#intro .vegan { position: relative; display: flex; align-items: center; justify-self: start; height: 36px; cursor: pointer; }
+#intro .vegan input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 #intro .vegan .switch { flex: none; position: relative; width: 40px; height: 22px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); transition: background 200ms ease; }
 #intro .vegan .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #f3fbf7; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: transform 200ms ease; }
+#intro .vegan:hover .switch { background: rgba(255, 255, 255, 0.28); }
 #intro .vegan input:checked + .switch { background: #5fcf8c; }
 #intro .vegan input:checked + .switch::after { transform: translateX(18px); }
 #intro .vegan input:focus-visible + .switch { outline: 2px solid #ffd98a; outline-offset: 2px; }
-#intro .vegan .text span { opacity: 0.75; }
-.touch #intro .vegan { margin-bottom: 12px; padding: 8px 12px; font-size: 12px; }
-#intro .version { margin: 12px 0 0; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; opacity: 0.45; }
+
+/* The keys: small and quiet, at the bottom; the touch controls instead on a phone or a
+   tablet. */
+#intro .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 24px 0 0; padding: 0; list-style: none; font-size: 12px; font-weight: 600; opacity: 0.6; }
+#intro .keys li { display: flex; align-items: center; gap: 5px; }
+#intro .keys kbd:not(.touch-key) { padding: 1px 5px; border-radius: 5px; font-size: 10.5px; }
+#intro .mouse { position: relative; width: 9px; height: 13px; border: 1.5px solid currentColor; border-radius: 5px; }
+#intro .mouse::after { content: ""; position: absolute; left: 50%; top: 2px; width: 2px; height: 3px; margin-left: -1px; border-radius: 1px; background: currentColor; }
+#habitat #intro .keys kbd.touch-key { width: 18px; height: 18px; vertical-align: 0; background-size: 12px 12px; }
+#habitat #intro .keys kbd.touch-key.bite { background-size: 14px 14px; }
+#intro .touch-keys { display: none; }
+.touch #intro .keys:not(.touch-keys) { display: none; }
+.touch #intro .touch-keys { display: flex; }
+
+/* GitHub and the version, one line at the foot. */
+#intro .foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 8px; margin: 16px 0 0; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.5; }
+#intro .links a { display: inline-flex; align-items: center; gap: 5px; color: inherit; text-decoration: none; }
+#intro .links a:hover { text-decoration: underline; }
+#intro .links svg { width: 12px; height: 12px; fill: currentColor; }
+#intro .version::before { content: "·"; margin-right: 8px; }
+#intro .version:empty { display: none; }
+
+/* On a phone (?phone): the note and a way to copy the link, the languages, the foot. */
 #intro .for-phone { display: none; }
-#intro.phone .for-desktop { display: none; }
-#intro.phone .for-phone { display: block; }
-#intro .phone-note { margin: 4px auto 20px; font-size: 16px; font-weight: 700; line-height: 1.5; }
-/* (Paused mid-swim, a click beside the card swims on; before the swim it does nothing.) */
-#intro-start kbd { margin-left: 4px; vertical-align: 2px; background: rgba(6, 35, 42, 0.14); box-shadow: inset 0 -2px 0 rgba(6, 35, 42, 0.2); }
+#habitat #intro.phone .for-desktop { display: none; }
+#intro.phone .for-phone { display: block; margin-top: 20px; }
+#intro .phone-note { margin: 0 auto 20px; font-size: 16px; font-weight: 700; line-height: 1.5; }
+
+/* Narrow: each label over its row, and the buttons in a row as wide as their words need
+   (five languages side by side leave no room for equal widths). */
+@media (max-width: 520px) {
+  #intro .card { padding: 20px 16px 16px; }
+  #intro .settings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  #intro .settings .row:not(:first-child) > .label { margin-top: 8px; }
+  #intro .settings :is(.seg, .quality-picker .options) button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }
+}
+/* Touch: sideways on a phone the card is short, so everything sits a little closer, and the
+   title keeps to one line. */
+.touch #intro .card { max-height: calc(100dvh - 24px); padding: 18px 20px 14px; }
+.touch #intro h1 { font-size: clamp(24px, 4vw, 32px); }
+.touch #intro.paused h1 { font-size: 24px; }
+.touch #intro .lead { margin-top: 8px; font-size: 14px; }
+.touch #intro .primary,
+.touch #intro .settings,
+.touch #intro .keys { margin-top: 16px; }
+.touch #intro #intro-start { height: 46px; }
+/* Sideways on a phone the corner buttons' labels reach in from the right: the card keeps
+   clear of them as far as the screen allows, its buttons as wide as their words. And it is
+   only as high as the screen: tighter still, so that the whole card fits without scrolling
+   (the rows a little lower, all of them alike). */
+@media (max-height: 500px) {
+  .touch #intro .card { width: clamp(400px, 100vw - 392px, 34em); padding: 14px 18px 12px; }
+  .touch #intro .kicker { margin-bottom: 4px; }
+  .touch #intro h1 { font-size: 28px; }
+  .touch #intro .lead { margin-top: 6px; font-size: 13.5px; line-height: 1.4; }
+  .touch #intro .homescreen { margin-top: 10px; padding: 7px 12px; }
+  .touch #intro .primary,
+  .touch #intro .settings,
+  .touch #intro .keys { margin-top: 12px; }
+  .touch #intro #intro-start { height: 44px; }
+  .touch #intro .sub > * { margin-top: 6px; }
+  .touch #intro .settings { row-gap: 6px; }
+  .touch #intro .settings :is(.seg, .quality-picker .options) { padding: 2px; }
+  .touch #intro .settings :is(.seg, .quality-picker .options) button { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 6px; }
+  .touch #intro .vegan { height: 32px; }
+  .touch #intro .keys { row-gap: 4px; }
+  .touch #intro .foot { margin-top: 10px; }
+}
 
 /* Fades: a death, a new generation. */
 #veil {
@@ -747,16 +851,6 @@
   pointer-events: none;
 }
 
-/* The language picker on the start card. */
-#intro .langs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 14px 0 0; }
-#intro .langs button { min-width: 0; padding: 5px 12px; border-radius: 999px; font: 700 12px/1 var(--hud-font); color: inherit; background: rgba(255, 255, 255, 0.08); box-shadow: none; opacity: 0.7; }
-#intro .langs button[aria-pressed="true"] { background: rgba(160, 235, 200, 0.22); opacity: 1; box-shadow: inset 0 0 0 1px rgba(160, 235, 200, 0.55); }
-#intro .langs button:hover { opacity: 1; transform: none; }
-/* Where to contribute and give feedback. */
-#intro .links { margin: 12px 0 0; font-size: 12.5px; }
-#intro .links a { display: inline-flex; align-items: center; gap: 6px; color: inherit; opacity: 0.75; text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.25); padding-bottom: 1px; }
-#intro .links a:hover { opacity: 1; border-bottom-color: rgba(255, 255, 255, 0.7); }
-#intro .links svg { width: 14px; height: 14px; fill: currentColor; }
 
 /* The spotlight on something found for the first time: a pulsing ring round it and its
    name, following it across the screen (main.js). */
@@ -841,16 +935,6 @@
 /* ---------------------------------------------------------------------------------------
    Phones and tablets, held sideways (#habitat.touch): the swim and dash buttons, the map
    coming in from the right, the HUD as three rings, the tips up top out of the way. */
-#intro .touch-keys,
-#intro .touch-note { display: none; }
-.touch #intro .keys:not(.touch-keys),
-.touch #intro .note:not(.touch-note) { display: none; }
-.touch #intro .touch-keys { display: flex; }
-.touch #intro .touch-note { display: block; }
-.touch #intro .card { max-height: calc(100dvh - 24px); overflow-y: auto; padding-top: 18px; padding-bottom: 18px; }
-.touch #intro h1 { font-size: clamp(26px, 6vw, 40px); margin-bottom: 6px; }
-.touch #intro .lead { margin-bottom: 10px; font-size: 14px; }
-.touch #intro .keys { margin-bottom: 12px; font-size: 12.5px; }
 
 /* The touch keys, drawn as the controls they stand for (in the tips and on the card). */
 #habitat kbd.touch-key {
@@ -986,7 +1070,7 @@
 
 /* On an iPhone or iPad, until it is opened from the home screen: how to get it there. */
 #intro .homescreen {
-  margin: 0 auto 12px;
+  margin: 16px auto 0;
   max-width: 34em;
   padding: 9px 14px;
   border-radius: 14px;
@@ -1152,15 +1236,14 @@
 
 /* The graphics quality (intro.js): the four steps side by side, each with a word on what it
    is for; the one in use lit like the language in use, the one for this kind of device
-   tagged "empfohlen"; under them what the step under the pointer or the focus does. The
-   same control on the card and in the panel at the graphics button. */
+   tagged "empfohlen"; under them what the step under the pointer or the focus does. So in
+   the panel at the graphics button; the card shows the same control by name only (above). */
 .quality-picker { text-align: left; font-family: var(--hud-font); }
 .quality-picker .head { margin: 0 0 4px; font-size: 12.5px; line-height: 1.4; }
 .quality-picker .head b { font-weight: 800; }
 .quality-picker .hint { opacity: 0.72; }
 .quality-picker .options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding-top: 8px; }
-.quality-picker .option,
-#intro .quality-picker .option {
+.quality-picker .option {
   position: relative;
   display: grid;
   justify-items: center;
@@ -1183,39 +1266,15 @@
 }
 .quality-picker .option b { font-size: 13.5px; font-weight: 800; }
 .quality-picker .option small { max-width: 100%; font-size: 10.5px; font-weight: 600; line-height: 1.15; text-align: center; overflow-wrap: anywhere; opacity: 0.72; }
-.quality-picker .option:hover:not(:disabled),
-#intro .quality-picker .option:hover:not(:disabled) { background: rgba(255, 255, 255, 0.15); transform: none; }
+.quality-picker .option:hover:not(:disabled) { background: rgba(255, 255, 255, 0.15); transform: none; }
 .quality-picker .option:focus-visible { outline: 3px solid #ffd98a; outline-offset: 2px; }
-.quality-picker .option[aria-pressed="true"],
-#intro .quality-picker .option[aria-pressed="true"] { background: rgba(160, 235, 200, 0.22); box-shadow: inset 0 0 0 1.5px rgba(160, 235, 200, 0.7); cursor: default; }
+.quality-picker .option[aria-pressed="true"] { background: rgba(160, 235, 200, 0.22); box-shadow: inset 0 0 0 1.5px rgba(160, 235, 200, 0.7); cursor: default; }
 .quality-picker .option[aria-pressed="true"] small { opacity: 0.95; }
 .quality-picker .tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); padding: 1px 6px; border-radius: 999px; font: 800 8.5px/1.45 var(--hud-font); font-style: normal; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: #ffd98a; background: rgb(11, 42, 50); box-shadow: inset 0 0 0 1px rgba(255, 217, 138, 0.5); }
 .quality-picker .about { min-height: 2.8em; margin: 7px 0 0; font-size: 12px; line-height: 1.4; opacity: 0.88; }
-.quality-picker.busy .option,
-#intro .quality-picker.busy .option { cursor: progress; filter: none; opacity: 0.5; }
-.quality-picker.busy .option.picked,
-#intro .quality-picker.busy .option.picked { opacity: 1; color: #06232a; background: linear-gradient(180deg, #b6f7a0, #3fd0a0); box-shadow: none; }
+.quality-picker.busy .option { cursor: progress; filter: none; opacity: 0.5; }
+.quality-picker.busy .option.picked { opacity: 1; color: #06232a; background: linear-gradient(180deg, #b6f7a0, #3fd0a0); box-shadow: none; }
 .quality-picker.busy .option.picked small { opacity: 0.9; }
-/* On the card: a row near the languages, boxed like the vegan switch. */
-#intro .quality-slot { max-width: 30em; margin: 16px auto 0; padding: 10px 14px 8px; border-radius: 14px; background: rgba(255, 255, 255, 0.06); }
-#intro .quality-slot:empty { display: none; }
-.touch #intro .quality-slot { margin-top: 12px; padding: 8px 12px 6px; }
-/* On a short screen with a mouse (a laptop) the card keeps to the height it had: a little
-   tighter, and the graphics in one row, the steps without their words (the line under them
-   says what the one pointed at does; the panel at G says the rest). */
-@media (max-height: 860px) {
-  #habitat:not(.touch) #intro .card { padding-top: 22px; padding-bottom: 18px; }
-  #habitat:not(.touch) #intro .lead { margin-bottom: 12px; }
-  #habitat:not(.touch) #intro .keys { margin-bottom: 14px; }
-  #habitat:not(.touch) #intro .vegan { margin-bottom: 14px; }
-  #habitat:not(.touch) #intro .quality-slot { margin-top: 12px; padding: 6px 12px 6px; }
-  #habitat:not(.touch) #intro .quality-picker { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: end; }
-  #habitat:not(.touch) #intro .quality-picker .head { margin: 0 0 8px; }
-  #habitat:not(.touch) #intro .quality-picker .hint,
-  #habitat:not(.touch) #intro .quality-picker .option small { display: none; }
-  #habitat:not(.touch) #intro .quality-picker .option { padding: 7px 4px; }
-  #habitat:not(.touch) #intro .quality-picker .about { grid-column: 1 / -1; min-height: 1.4em; margin-top: 5px; font-size: 11.5px; }
-}
 /* The panel, beside the graphics button (placed by main.js). */
 #quality-panel {
   position: fixed;

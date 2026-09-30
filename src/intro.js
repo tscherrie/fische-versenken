@@ -1,10 +1,16 @@
-// The first thing on screen: the title, a line about what the game is, the controls, and
-// the button that starts the swim (which is also the click the browser needs before it
-// plays sound or captures the mouse). With a keyboard and a mouse the card lists the keys;
-// on a phone or a tablet, the touch controls (src/touch.js). Paused mid-swim, the same card
-// comes back as the pause, with everything on it (the language, vegan mode, the graphics,
-// a new game): its button swims on. Either way the river stays in sight behind it, neither
-// blurred nor darkened, and the buttons in the corner can be used (#habitat.menu).
+// The first thing on screen: the title, a line about what the game is, the button that
+// starts the swim (which is also the click the browser needs before it plays sound or
+// captures the mouse), the settings -- the graphics, the language, vegan mode -- and the
+// controls, small, at the bottom: the keys with a keyboard and a mouse, the touch controls
+// on a phone or a tablet (src/touch.js). Paused mid-swim, the same card comes back as the
+// pause, with everything on it and a way to start a new game; its button swims on. Either
+// way the river stays in sight behind it, neither blurred nor darkened, and the buttons in
+// the corner can be used (#habitat.menu). The card is laid out in the page (index.html);
+// what is filled in here is filled in before it first shows.
+//
+// An extension (src/mods.js) adds to it as its module loads, before the card goes up: a
+// panel of its own in the place under the start (#intro-extension), a row of its own in
+// the settings (settingsRow below).
 
 export function isDesktop() {
   const ua = navigator.userAgent;
@@ -18,7 +24,7 @@ export function isDesktop() {
 
 import { VERSION } from "./version.js";
 import { clearSave } from "./save.js";
-import { LANGS, lang, setLang } from "./i18n.js";
+import { LANGS, lang, setLang, t } from "./i18n.js";
 import { track } from "./track.js";
 import { mode, setVegan } from "./vegan.js";
 
@@ -52,7 +58,9 @@ export function createQualityChoice({ current, recommended, touch = false, onPic
     return true;
   }
   // The control, into `slot`. `heading`: its own "Grafik" line (the panel has a title).
-  function mount(slot, { heading = true } = {}) {
+  // `tips`: what each step does, and that a switch reloads, in its tooltip instead (the
+  // card, which shows the steps by name only).
+  function mount(slot, { heading = true, tips = false } = {}) {
     if (!slot) return null;
     const n = ++pickers;
     const root = document.createElement("div");
@@ -102,6 +110,11 @@ export function createQualityChoice({ current, recommended, touch = false, onPic
       note.textContent = text(q, "about");
       notes.append(note);
       button.setAttribute("aria-describedby", note.id);
+      // (Not the word under each name as well: its line says the same in full.)
+      if (tips) {
+        const lines = [text(q, "about"), q.id === recommended ? "Empfohlen für dieses Gerät." : "", "Ein Wechsel lädt das Spiel neu – dein Lachs bleibt gespeichert."];
+        button.title = lines.filter(Boolean).map(t).join("\n");
+      }
       button.addEventListener("click", () => pick(q.id));
       button.addEventListener("pointerenter", () => describe(q));
       button.addEventListener("focus", () => describe(q));
@@ -193,10 +206,29 @@ function homeScreen(intro) {
   const hint = intro.querySelector(".homescreen");
   if (hint) hint.hidden = !(apple() && !asApp());
 }
+// (At the foot, after "GitHub ·": the version as it stands, with no word before it.)
 const showVersion = (intro) => {
   const tag = intro.querySelector(".version");
-  if (tag) tag.textContent = VERSION === "dev" ? "Entwicklungsversion" : `Version ${VERSION}`;
+  if (tag) tag.textContent = VERSION === "dev" ? "Entwicklungsversion" : VERSION;
 };
+
+// A row of the card's settings for an extension (src/mods.js): `label` in German, like the
+// rest of the page (it is translated with it), and `control` beside it, as high as the
+// other rows -- a .seg of buttons takes their look. Called as the extension's module loads,
+// so the card goes up with the row in it; `first` puts it above the graphics.
+export function settingsRow(label, control, { first = false } = {}) {
+  const settings = box()?.querySelector(".settings");
+  if (!settings || !control) return null;
+  const row = document.createElement("div");
+  row.className = "row for-desktop";
+  const name = document.createElement("p");
+  name.className = "label";
+  name.textContent = label;
+  row.append(name, control);
+  if (first) settings.prepend(row);
+  else settings.append(row);
+  return row;
+}
 
 export function showPhoneNotice() {
   const intro = box();
@@ -247,8 +279,8 @@ export function showIntro({ resume = null, title = true, quality = null, onResum
   showVersion(intro);
   languages(intro, () => paused && beforeReload());
   homeScreen(intro);
-  // The graphics, a row near the languages (the same control as the panel at G).
-  quality?.mount(intro.querySelector(".quality-slot"));
+  // The graphics, a row of the settings (the same control as the panel at G, by name only).
+  quality?.mount(intro.querySelector(".quality-slot"), { heading: false, tips: true });
   if (title) {
     show();
     if (asApp()) track("app");
@@ -256,7 +288,8 @@ export function showIntro({ resume = null, title = true, quality = null, onResum
   button.disabled = true;
   button.textContent = "Der Fluss entsteht …";
   if (resume) status.textContent = `Gespeichert: ${resume}`;
-  // Vegan mode (vegan.js): nobody is eaten; kept for next time.
+  // Vegan mode (vegan.js): nobody is eaten; kept for next time. (What it means is the
+  // switch's tooltip, index.html.)
   const vegan = intro.querySelector("#intro-vegan");
   if (vegan) {
     vegan.checked = mode.vegan;
