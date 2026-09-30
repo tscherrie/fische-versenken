@@ -191,6 +191,8 @@ export function createCombat(game) {
     firing.fire(player, dt, (place) => held(player, place), canFire() || trigger.test || trigger.auto);
   }
 
+  // (The way a heavy round throws the fish it strikes.)
+  const thrown = new THREE.Vector3();
   // An enemy's strike landed on a player: a fish big enough swallows it (the base game's
   // rule), a knife stabs, a plain bite bites. After a strike a player is untouchable a
   // moment, after a bullet only a blink (a burst should count, not just its first round).
@@ -209,6 +211,12 @@ export function createCombat(game) {
     const damage = (swallows ? 0.35 : shot ? shot.hitDamage ?? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1)) * level.taken;
     player.safeUntil = clock + (shot ? 0.12 : 0.8);
     f.energy = Math.max(0, f.energy - damage);
+    // A heavy round (the pike's) throws the fish along its line as well, less the slower it
+    // has got in the water.
+    if (shot?.shove && !f.airborne && !f.captive) {
+      const cruise = player.salmon?.speeds?.().cruise ?? 3.4 * Math.pow(f.length, 0.645);
+      f.relative?.addScaledVector(thrown.copy(shot.velocity).normalize(), shot.shove * cruise * ((shot.hitDamage ?? shot.damage) / Math.max(1e-6, shot.damage)));
+    }
     // (A shock -- the eel's -- stops the salmon short for a moment.)
     if (melee?.stun) f.relative?.multiplyScalar(0.1);
     if (clock - (player.feltAt ?? -1) > 0.35) {
@@ -230,7 +238,7 @@ export function createCombat(game) {
   // one array for all the rounds, only ever read.)
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
-  const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, air: false, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
+  const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, shove: 0, air: false, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
   // (The muzzle's flash, one description for every shot too: fx.spark only reads it.)
   const flash = { size: 0, life: 0.08, r: 5, g: 2.6, b: 0.6 };
   function enemyShoots(e, dir, gun) {
@@ -240,6 +248,7 @@ export function createCombat(game) {
     round.cause = gun.cause;
     round.damage = gun.damage;
     round.drag = gun.drag;
+    round.shove = gun.shove ?? 0;
     round.air = !!gun.air;
     round.radius = 0.03 + 0.01 * e.size;
     round.size = 0.05 + 0.02 * e.size;

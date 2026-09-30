@@ -24,6 +24,8 @@ const FORWARD = new THREE.Vector3(1, 0, 0);
 const TAU = Math.PI * 2;
 // How long a dead enemy stays before it goes (the look fades it out on the same beat).
 export const CORPSE_SECONDS = 40;
+// How far the salmon may get from an ambusher before it gives up its place (units).
+const LEFT_BEHIND = 120;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
@@ -496,8 +498,10 @@ export function createEnemies(scene, { random }) {
     let speed = 0,
       rate = spec.turn;
     if (!p) {
-      // Nobody to go for: drift and hold.
+      // Nobody to go for: drift and hold (one that had come up off the bed, the cod, sinks
+      // back onto it rather than hanging where it last rose to).
       e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
+      e.rising = false;
       speed = spec.cruise * 0.3;
       return speed;
     }
@@ -505,6 +509,13 @@ export function createEnemies(scene, { random }) {
     const L = fish.length;
     to.subVectors(fish.position, e.position);
     const dist = to.length();
+    // An ambusher waits where it lies: once the salmon has gone far away it gives up its
+    // place and goes, as the heron does, instead of holding a place in the director's count
+    // for good (and keeping the next pike away).
+    if (spec.behaviour === "ambush" && !spec.boss && dist > LEFT_BEHIND) {
+      e.leave = true;
+      return 0;
+    }
     const untouchable = fish.safe || fish.captive || fish.airborne;
     const sight = spec.sight * (1 + 0.06 * L) * (1 + 0.04 * e.size);
     const sees = !untouchable && dist < sight * 2.2;
@@ -577,7 +588,9 @@ export function createEnemies(scene, { random }) {
           hooks.shoot?.(e, lead(e, fish, gun.speed, want).normalize(), gun);
         }
         if (e.shots <= 0 && e.t >= gun.interval) {
-          e.reload = gun.reload;
+          // (The few of a pack are not in step: each reloads a little quicker or slower, so
+          // that their rounds come one after another rather than as one volley.)
+          e.reload = gun.reload * (spec.behaviour === "pack" && !spec.school ? range(0.7, 1.3) : 1);
           e.mode = spec.behaviour === "ambush" ? "lurk" : "hover";
           e.t = 0;
         }
@@ -618,6 +631,20 @@ export function createEnemies(scene, { random }) {
       case "lurk": {
         // On the bed, still; turning slowly toward whatever comes near, creeping a little.
         if (sees && dist < sight * 2) steer(e, to, spec.turn * 0.4, dt);
+        // One that rises -- the cod, on a sea bed far below the salmon -- comes up off the bed
+        // at a salmon it sees above it that is out of its reach, no faster than it chases (a
+        // salmon swimming on leaves it behind); once it has it in reach it lies in wait again,
+        // sinking back onto the bed (update). Its gun's reach will do for one it cannot
+        // swallow; one it can, it comes on at until it can strike (firing on the way).
+        if (spec.rises) {
+          const swallows = spec.swallows && e.size >= 2.2 * L;
+          e.rising = sees && to.y > 0 && dist < sight * 1.6 && dist > strikeAt * 1.35 && (!gun || swallows || dist > gun.range[1] * 0.9);
+          if (e.rising) {
+            steer(e, to, spec.turn, dt, 1.2);
+            speed = spec.chase;
+            break;
+          }
+        }
         if (sees && dist < strikeAt * 1.35 && striking(p) < 2) {
           e.mode = "coil";
           e.t = 0;
@@ -643,7 +670,8 @@ export function createEnemies(scene, { random }) {
           e.t = 0;
           break;
         }
-        if (spec.behaviour === "stalker" && dist < strikeAt && striking(p) < 2) {
+        // (An ambusher woken by a shot strikes too, once it is there.)
+        if (spec.behaviour !== "pack" && dist < strikeAt && striking(p) < 2) {
           e.mode = "coil";
           e.t = 0;
         }
@@ -667,8 +695,9 @@ export function createEnemies(scene, { random }) {
         break;
       }
       case "coil": {
-        // The tell: it stops and draws itself up. Then it goes.
-        steer(e, to, rate * 1.5, dt);
+        // The tell: it stops and draws itself up. Then it goes. (One that rises off the bed
+        // strikes up at the salmon over it as steeply as it must.)
+        steer(e, to, rate * 1.5, dt, spec.rises ? 1.4 : undefined);
         speed = spec.cruise * 0.15;
         if (untouchable) {
           e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
@@ -679,7 +708,7 @@ export function createEnemies(scene, { random }) {
       }
       case "strike": {
         // Committed: it can correct its line only a little.
-        steer(e, e.strikeDir, rate * 0.3, dt);
+        steer(e, e.strikeDir, rate * 0.3, dt, spec.rises ? 1.4 : undefined);
         speed = spec.strike;
         snout(e, mouth);
         const reach = 0.12 + 0.3 * L + 0.06 * e.size;
@@ -768,6 +797,10 @@ export function createEnemies(scene, { random }) {
         }
       } else {
         let speed = think(e, dt, time, players, hooks);
+        if (e.leave) {
+          list.splice(i, 1);
+          continue;
+        }
         // A boss keeps to its place: past its leash it turns for home.
         if (e.home && e.spec.leash && e.position.distanceTo(e.home) > e.spec.leash) {
           steer(e, tmp.subVectors(e.home, e.position), e.spec.turn * 1.5, dt);
@@ -804,7 +837,11 @@ export function createEnemies(scene, { random }) {
           const fp = e.target.fish.position;
           climbing = Math.hypot(fp.x - e.position.x, fp.z - e.position.z) < 2.5 + 3 * e.size && fp.y > low;
         }
-        e.position.y = (e.spec.crawls && !climbing) || (e.spec.bottom && e.mode === "lurk") ? low : clamp(e.position.y, low, high);
+        // (One that rises -- the cod -- is free of the bed while it comes up, and once it lies
+        // in wait again goes back down onto it at its cruising pace, not all at once.)
+        const lying = (e.spec.crawls && !climbing) || (e.spec.bottom && e.mode === "lurk" && !e.spec.rises);
+        const sinking = e.spec.rises && e.mode === "lurk" && !e.rising;
+        e.position.y = lying ? low : clamp(sinking ? e.position.y - e.spec.cruise * dt : e.position.y, low, high);
         // For the look: whether a crawler walks or swims up, and how the ground under its head
         // tilts it (radians, head up positive), so head and jaws follow a slope.
         if (e.spec.crawls) {

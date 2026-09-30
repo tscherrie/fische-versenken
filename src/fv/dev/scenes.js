@@ -36,6 +36,21 @@ export const SCENES = [
   // The heron in the shallows with its harpoon gun: once taking it, once against the laser.
   { name: "reiher", stage: "fingerling", at: 1500, season: "summer", hour: 14, fire: false, spawn: [["heron", 6, 1]] },
   { name: "reiher-laser", stage: "parr", at: 1800, season: "summer", hour: 14, spawn: [["heron", 6, 1]] },
+  // A pack of four perch with pistols round a parr in the middle river: once taking it,
+  // once against the laser.
+  { name: "barsche", stage: "parr", at: 12500, season: "summer", hour: 14, fire: false, foes: true, spawn: [["perch", 5, -1.2], ["perch", 5.5, 0], ["perch", 5, 1.2], ["perch", 6.5, 0.5]] },
+  { name: "barsche-laser", stage: "parr", at: 12500, season: "summer", hour: 14, foes: true, spawn: [["perch", 5, -1.2], ["perch", 5.5, 0], ["perch", 5, 1.2], ["perch", 6.5, 0.5]] },
+  // A cod on the bed in the seagrass at the river's mouth (`u`: across the water, where the
+  // fish starts; the fourth field: on the bed, not at the fish's height): it comes up at the
+  // postsmolt over it, blasts it with its pump-action shotgun and lunges to swallow it --
+  // once taking it, once against the laser.
+  { name: "dorsch", stage: "postsmolt", at: 16000, u: 350, season: "summer", hour: 12, fire: false, foes: true, spawn: [["cod", 3.5, 0.3, true]] },
+  { name: "dorsch-laser", stage: "postsmolt", at: 16000, u: 350, season: "summer", hour: 12, foes: true, spawn: [["cod", 3.5, 0.3, true]] },
+  // The pike off to the side in the middle river: a long aim with its red laser line, one
+  // heavy round from the elephant gun that throws the parr aside -- once taking it, once
+  // against the laser.
+  { name: "hecht", stage: "parr", at: 11790, season: "summer", hour: 14, fire: false, foes: true, spawn: [["pike", 8, 1.5]] },
+  { name: "hecht-laser", stage: "parr", at: 11790, season: "summer", hour: 14, foes: true, spawn: [["pike", 8, 1.5]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
@@ -61,6 +76,11 @@ export const SCENES = [
   // shooting at whatever comes: kills, bites, deaths.
   { name: "lauf", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60 },
   { name: "lauf-parr", stage: "parr", at: 1800, season: "summer", hour: 14, pilot: 60 },
+  // The same in the middle river, where the perch packs and the pike come, and at sea, where
+  // the cod lies on the bed. (There the pilot keeps `low` units over the bed: the cod is sent
+  // only to a salmon swimming that low, and mid-water over the deep sea bed is too high.)
+  { name: "lauf-barsch-hecht", stage: "parr", at: 10500, season: "summer", hour: 14, pilot: 60 },
+  { name: "lauf-dorsch", stage: "postsmolt", at: 16200, season: "summer", hour: 12, pilot: 60, low: 5 },
   // The same with each weapon (`arm`), the trigger only within `fireRange` fish lengths.
   { name: "lauf-flinte", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60, arm: "flinte", fireRange: 6 },
   { name: "lauf-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, pilot: 60, arm: "granate", fireRange: 12 },
@@ -176,6 +196,7 @@ export function sceneURL(set, scene, extra = "") {
   // (--xwebgl: the scenes on the WebGL 2 fallback.)
   if (new URLSearchParams(location.search).has("xwebgl")) extra += "&webgl";
   const q = new URLSearchParams({ capture: "1", seed: "7", day: "still", rain: "0", quality: "detail", fvtest: set, scene: scene.name, stage: scene.stage, at: String(scene.at), season: scene.season, hour: String(scene.hour) });
+  if (scene.u != null) q.set("u", String(scene.u));
   q.set("new", "");
   // (No ?at: a new life starts where it would in the game, in the gravel of the redd; ?at
   // starts mid-water.)
@@ -245,20 +266,22 @@ async function runScene(salmon, extreme, query) {
   await salmon.run(1);
   await salmon.settle(20);
   extreme.testing = true;
-  // The enemies, placed [kind, ahead, across] from the fish, facing it.
+  // The enemies, placed [kind, ahead, across] from the fish, facing it, at its height (or,
+  // with a fourth field, where their kind lies: a bottom kind on the bed).
   const heading = fish.heading.clone().setY(0).normalize();
   const left = new THREE.Vector3(0, 1, 0).cross(heading).normalize();
   const spot = {};
-  for (const [kind, ahead, across] of scene.spawn ?? []) {
+  for (const [kind, ahead, across, own] of scene.spawn ?? []) {
     // (In units of a tenth of a metre, scaled up for a big fish.)
     const scale = Math.max(1, fish.length);
     const p = fish.position.clone().addScaledVector(heading, ahead * scale).addScaledVector(left, across * scale);
     course.locate(p.x, p.z, fish.river.s, spot);
-    combat.enemies.spawn(kind, spot.s, spot.u, fish.position.y, { heading: heading.clone().multiplyScalar(-1) });
+    combat.enemies.spawn(kind, spot.s, spot.u, own ? null : fish.position.y, { heading: heading.clone().multiplyScalar(-1) });
   }
-  // Face them, and keep facing them.
+  // Face them, and keep facing them (with `foes`, only them: not the peaceful shoal fish
+  // about, which may come nearer than an enemy thrown back by the laser: neutrals.js).
   const aimAt = () => {
-    const live = combat.enemies.list.filter((e) => !e.dead);
+    const live = combat.enemies.list.filter((e) => !e.dead && !(scene.foes && e.neutral));
     if (!live.length) return;
     const near = live.reduce((a, e) => (e.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? e : a));
     const d = near.position.clone().sub(fish.position);
@@ -284,6 +307,8 @@ async function runScene(salmon, extreme, query) {
     record.push({
       label,
       energy: +fish.energy.toFixed(3),
+      // (Dead, and by what: a swallowing strike takes the fish whatever its strength.)
+      down: combat.players[0].down ? combat.deaths.at(-1)?.by ?? "other" : false,
       stage: fish.stage,
       progress: +fish.progress.toFixed(3),
       kills: combat.players[0].kills,
@@ -292,7 +317,7 @@ async function runScene(salmon, extreme, query) {
       incoming: combat.hostile.live.length,
       bars: (extreme.frame(1 / 60), document.querySelectorAll("#foes i.shown").length),
       threats: salmon.life.hunters.threats(fish, []).map((t) => `${t.kind}:${t.level}`),
-      enemies: combat.enemies.list.map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, d: +e.position.distanceTo(fish.position).toFixed(2) })),
+      enemies: combat.enemies.list.map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, d: +e.position.distanceTo(fish.position).toFixed(2), dy: +(e.position.y - fish.position.y).toFixed(2) })),
     });
   note("start");
   combat.fire(scene.fire !== false);
@@ -343,7 +368,9 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
     } else {
       const target = course.place(fish.river.s + 6, fish.river.u * 0.8, {});
       look.yaw = Math.atan2(target.z - fish.position.z, target.x - fish.position.x);
-      look.pitch = 0;
+      // (With `low` it keeps about that many units over the bed, as a salmon hunting down
+      // there would, instead of holding the height it has.)
+      look.pitch = scene.low ? Math.max(-0.7, Math.min(0.7, Math.atan2(course.bed(fish.river.s, fish.river.u) + scene.low - fish.position.y, 4 * fish.length))) : 0;
     }
     combat.fire(!!near && !scene.nofire && (!scene.fireRange || near.position.distanceTo(fish.position) - near.size * 0.45 < scene.fireRange * fish.length));
     const dead = extreme.game.now.dead > 0;
@@ -363,7 +390,10 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   for (let t = 0; t < scene.pilot; t += 10) {
     t0 = t;
     await salmon.run(10, steer);
-    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, alive: combat.enemies.list.filter((e) => !e.dead).length, deaths, killedBy: combat.deaths.map((d) => `${d.by}@${d.t}`) , near: combat.enemies.list.filter((e) => !e.dead).slice(0, 4).map((e) => `${e.kind}:${e.mode}:${e.position.distanceTo(fish.position).toFixed(2)}:dy${(e.position.y - fish.position.y).toFixed(2)}`)  });
+    // (How many of each kind are about and after the fish, the peaceful shoal fish left out.)
+    const foes = {};
+    for (const e of combat.enemies.list) if (!e.dead && !e.neutral && !e.passive) foes[e.kind] = (foes[e.kind] ?? 0) + 1;
+    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, alive: combat.enemies.list.filter((e) => !e.dead).length, foes, deaths, killedBy: combat.deaths.map((d) => `${d.by}@${d.t}`) , near: combat.enemies.list.filter((e) => !e.dead).slice(0, 4).map((e) => `${e.kind}:${e.mode}:${e.position.distanceTo(fish.position).toFixed(2)}:dy${(e.position.y - fish.position.y).toFixed(2)}`)  });
     if (t === 20) {
       extreme.frame(1 / 60);
       await salmon.capture(`${set}/${scene.name}-1`, 1280, 720);

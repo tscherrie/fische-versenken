@@ -9,13 +9,17 @@ import { PREDATORS } from "../predators.js";
 
 const TROUT = PREDATORS.trout;
 const BULLHEAD = PREDATORS.bullhead;
+const PERCH = PREDATORS.perch;
+const COD = PREDATORS.cod;
+const PIKE = PREDATORS.pike;
 
 // Every kind carries one fixed weapon, strapped on like the salmon's: a melee weapon makes
 // its strike a stab or a slash, a ranged one lets it shoot from a distance (hostile.js):
 //   range [near, far] in units, tell: how long it aims before it fires (the moment to
 //   dodge), burst: shots in a row, interval between them, pellets per shot, spread (rad),
 //   speed, drag (how fast the water stops a round, per second), damage per hit (of the
-//   strength bar), reload after a burst.
+//   strength bar), reload after a burst; a heavy round may `shove` the fish it strikes (how
+//   hard, x the fish's cruising speed).
 // behaviour:
 //   ambush   lies still on the bed until the salmon comes close, then snaps
 //   stalker  follows at a distance, draws itself up (the tell) and strikes
@@ -25,6 +29,9 @@ const BULLHEAD = PREDATORS.bullhead;
 //            beak first at it, `height` above the surface, down to `depth` below it
 //   wader    a bird standing in the shallows (wades), its head `head` over the water: it
 //            turns to the salmon and shoots down into the river; its legs are its body
+// (A pack of `pack` [least, most] comes together, three when it does not say; `bank`: it
+// lies off to the side of the salmon's way, toward the bank, where the weed is; `rises`:
+// an ambusher on the bed that comes up off it at a salmon it sees above, out of its reach.)
 // swallows: a strike from a fish at least 2.2 times the salmon's length swallows it whole
 // (the base game's rule), otherwise it bites: `bite` of the strength bar, less when the
 // enemy is smaller than the salmon.
@@ -174,6 +181,94 @@ export const KINDS = {
     from: 1500,
     regions: { upper: 0.5, middle: 1, lower: 0.5 },
     weapon: { id: "crossbow", title: "Armbrust", kind: "ranged", range: [3, 12], tell: 0.8, burst: 1, interval: 0.1, pellets: 1, spread: 0.008, speed: 22, drag: 0.9, damage: 0.1, reload: 2.4, cause: "Von einer Äsche mit der Armbrust erschossen" },
+  },
+  // The perch hunt as a pack in the middle and lower river, three or four together, each
+  // with a pistol: they spread round the salmon and put two rounds into it at a time, one
+  // after another. One alone is soon sunk; the pack is the danger. (A big one can still
+  // swallow a small parr, as in the base game.)
+  perch: {
+    title: "Flussbarsch",
+    name: PERCH.name,
+    body: "perch",
+    coat: "perch",
+    size: PERCH.size,
+    hp: 26,
+    capacity: 8,
+    behaviour: "pack",
+    pack: [3, 4],
+    swallows: true,
+    bite: 0.1,
+    sight: PERCH.sight,
+    cruise: PERCH.cruise,
+    chase: PERCH.chase,
+    strike: PERCH.strike,
+    range: PERCH.range,
+    turn: PERCH.turn,
+    coil: 0.25,
+    regions: { middle: 1, lower: 1, estuary: 0.4, upper: 0.2 },
+    weapon: { id: "pistol", title: "Pistole", kind: "ranged", range: [2, 8], tell: 0.45, burst: 2, interval: 0.18, pellets: 1, spread: 0.04, speed: 15, drag: 1.5, damage: 0.035, reload: 1.6, cause: "Von Flussbarschen erschossen" },
+  },
+  // The cod lies on the sea bed in ambush as the bullhead does in the brook, only far
+  // bigger, with a pump-action shotgun: a close blast of buckshot. The sea is deep, so it
+  // does not wait for the salmon to come down to it: one swimming over it, seen but out of
+  // its reach, it comes up at. Big enough to swallow a postsmolt whole.
+  cod: {
+    title: "Dorsch",
+    name: COD.name,
+    body: "cod",
+    coat: "cod",
+    size: COD.size,
+    hp: 240,
+    capacity: 4,
+    behaviour: "ambush",
+    bottom: true,
+    rises: true,
+    swallows: true,
+    bite: 0.22,
+    sight: COD.sight,
+    cruise: COD.cruise,
+    // (The base game's cod never chases; this one comes up off the bed at this pace, and
+    // goes after the salmon when a shot wakes it.)
+    chase: 3.5,
+    strike: COD.strike,
+    // (A shorter strike than the base game's, so that its gun has a distance of its own
+    // before the lunge: a blast of buckshot first, then the jaws.)
+    range: 1.2,
+    turn: COD.turn,
+    coil: 0.25,
+    regions: { sea: 1, estuary: 0.3 },
+    weapon: { id: "pumpgun", title: "Pumpgun", kind: "ranged", range: [1.5, 6.5], tell: 0.5, burst: 1, interval: 0.1, pellets: 8, spread: 0.13, speed: 14, drag: 1.7, damage: 0.04, reload: 1.3, cause: "Von einem Dorsch mit der Pumpgun erlegt" },
+  },
+  // The pike: the sniper of the middle river. It lies still in the weed off to the side of
+  // the salmon's way, toward the bank, and aims a long while -- the aim is the tell, and its
+  // red laser line shows through the water (combat.js) -- then fires one heavy round from
+  // an elephant gun that throws the salmon aside, and takes long to reload. Come too close
+  // and it strikes instead, and it can swallow nearly any salmon whole. A big fish, hard to
+  // sink.
+  pike: {
+    title: "Hecht",
+    name: PIKE.name,
+    body: "pike",
+    coat: "pike",
+    size: PIKE.size,
+    hp: 180,
+    capacity: 2,
+    behaviour: "ambush",
+    bank: true,
+    swallows: true,
+    bite: 0.3,
+    sight: PIKE.sight,
+    cruise: PIKE.cruise,
+    // (The base game's pike never chases; woken by a shot it does, a little.)
+    chase: 4.5,
+    strike: PIKE.strike,
+    // (Its strike from closer than the base game's, so that it shoots first and strikes only
+    // at a salmon that comes near.)
+    range: 2.5,
+    turn: PIKE.turn,
+    coil: 0.4,
+    regions: { middle: 1, lower: 1, upper: 0.3, estuary: 0.3 },
+    weapon: { id: "elephantgun", title: "Elefantenbüchse", kind: "ranged", range: [4, 18], tell: 1.3, burst: 1, interval: 0.1, pellets: 1, spread: 0.002, speed: 26, drag: 0.7, damage: 0.3, shove: 2, reload: 5, cause: "Von einem Hecht aus dem Hinterhalt erschossen" },
   },
   eel: {
     title: "Aal",
