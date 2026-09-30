@@ -1,9 +1,10 @@
 // The base game's own hunters give way to Extreme's enemies (enemies.js): the ones in the
 // water no longer take up their places, the kingfisher and the heron stay away, and the
-// vegan mode is gone (difficulty levels will take its place). Rival young salmon still hold
-// their spots but no longer nip: salmon are never enemies here. The heartbeat is left out:
-// with enemies about nearly all the time it would never stop (the user found it grating).
-// Nothing in the base files changes; their tables and objects are adjusted from here.
+// vegan mode is gone (the difficulty levels have taken its place). Rival young salmon still
+// hold their spots but no longer nip: salmon are never enemies here. The heartbeat is left
+// out: with enemies about nearly all the time it would never stop (the user found it
+// grating). Nothing in the base files changes; their tables and objects are adjusted from
+// here.
 
 import { PREDATORS } from "../predators.js";
 import { mode } from "../vegan.js";
@@ -16,10 +17,8 @@ export function tameTheWild({ life, sound }) {
     spec.regions = {};
   }
   PREDATORS.king.boss = false;
+  // (Its switch is taken off the title card as the page loads: card.js.)
   mode.vegan = false;
-  const style = document.createElement("style");
-  style.textContent = "#intro .vegan { display: none !important; }";
-  document.head.appendChild(style);
 
   const rivals = life.rivals;
   const rivalsUpdate = rivals.update;

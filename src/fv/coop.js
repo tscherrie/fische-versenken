@@ -9,8 +9,9 @@
 // start button. When everyone in the room is ready the room counts down, and at its moment
 // every page starts its game -- all hatch together in the gravel of the spring. Coming back
 // into a room that is already under way starts at once. Once hatched, the pause shows only
-// the code and the players: the rest has done its work. (Where the panel sits on the card,
-// and the look it shares with the rest of it, is card.js's.)
+// the code and the players: the rest has done its work. (The panel sits in the base card's
+// place for an extension, under the start; what else a room changes on the card is
+// card.js's.)
 //
 // The day's hour is the host's: it sends it every few seconds and the others follow it.
 
@@ -26,14 +27,17 @@ const NAME = "extreme-name";
 const HOUR_EVERY = 4;
 const HOUR_SLACK = 0.05;
 
-// The panel's own look; its place on the card and the card's rhythm are card.js's. (The
-// card's rule for all its buttons -- the big start pill -- is undone for these.)
+// The panel's own look; its place on the card and the card's rhythm are the base card's and
+// card.js's. (The card's rule for all its buttons -- the big start pill -- is undone for
+// these.)
 const CSS = `
 #intro .fv-coop { display: grid; gap: 8px; text-align: left; }
 #intro .fv-coop button { min-width: 0; font: 700 13px/1 var(--hud-font); box-shadow: none; }
 #intro .fv-coop button:hover:not(:disabled) { transform: none; }
 #intro .fv-coop .fv-open { width: 100%; height: 36px; padding: 0 16px; border-radius: 999px; color: inherit; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); opacity: 0.9; }
 #intro .fv-coop .fv-open:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+/* (Sideways on a phone, where the card's rows are lower too, so that the card fits: card.js.) */
+@media (max-height: 500px) { .touch #intro .fv-coop .fv-open { height: 30px; } }
 #intro .fv-coop .room { display: grid; gap: 12px; padding: 12px 16px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 #intro .fv-coop .head { display: flex; align-items: center; gap: 4px; min-height: 28px; }
 #intro .fv-coop .head .title { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; opacity: 0.6; }
@@ -58,7 +62,6 @@ const CSS = `
 #intro .fv-coop .me button.on { color: inherit; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
 #intro .fv-coop .fv-note { margin: 0; font-size: 12px; line-height: 1.4; opacity: 0.7; }
 #intro .fv-coop .warn { color: #ffb08a; opacity: 1; }
-#intro.fv-in-room:not(.paused) #intro-start, #intro.fv-in-room #intro-new, #intro.fv-in-room #intro-status { display: none; }
 #intro .fv-coop.hatched .me, #intro .fv-coop.hatched #fv-status, #intro .fv-coop.hatched li .state.lobby { display: none; }
 #fv-countdown { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; pointer-events: none; font: 800 clamp(64px, 14vw, 160px)/1 var(--hud-font, var(--font-body)); color: #fff4ea; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
 #fv-countdown[hidden] { display: none; }
@@ -89,9 +92,9 @@ const keepName = (name) => {
 // The panel on the title card: without a room the offer to open one (a quiet button under
 // the start; what it is for goes in its tooltip, so the card carries one line less), in a
 // room the room -- its code, the players, a name and the ready button. It is built once,
-// when card.js lays the card out as the page loads, so that it is on the card from its first
-// frame, and in a room the lead and the start button never are; createCoop brings it to
-// life at init. It is null where there is no room service to offer.
+// when card.js adds it to the card as the page loads, so that it is on the card from its
+// first frame, and in a room the lead and the start button never are; createCoop brings it
+// to life at init. It is null where there is no room service to offer.
 let built;
 export function coopPanel() {
   if (built !== undefined) return built;
@@ -127,9 +130,7 @@ export function createCoop(game) {
   const panel = coopPanel();
   // (No room service yet: nothing of co-op shows.)
   if (!panel) return { active: false, step() {}, frame() {} };
-  // (Where card.js has not placed it, the panel stands above the start button.)
   const start = habitat.querySelector("#intro-start");
-  if (!panel.isConnected) start?.parentNode.insertBefore(panel, start);
 
   // ---- No room: the offer, which asks the room service for a code and comes back with it.
   if (!code) {
