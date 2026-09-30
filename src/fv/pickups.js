@@ -12,6 +12,15 @@ import * as THREE from "three";
 import { randomGenerator } from "../../shared/random.js";
 import { S, bed, level, place, section } from "../course.js";
 import { STAGES } from "../salmon.js";
+import { PLACES } from "../places.js";
+
+// The secret weapons: each lies in a place of its own, for the stages that may find it there
+// (plan, part 3: the ship's cannon in the wreck for a sea salmon, in the grotto behind the
+// salmon fall for a spawner), `lift` above the bed.
+const SECRETS = [
+  { id: "kanone", place: "wreck", stages: [8], lift: 2.5 },
+  { id: "kanone", place: "grotto-lachsfall", stages: [9], lift: 1.5 },
+];
 
 // Which stage each weapon comes with, and where it sits.
 export const ARSENAL = {
@@ -52,6 +61,8 @@ export function createPickups({ weapons, random = Math.random }) {
   // Capsules in the water now: from slots (per player), dropped weapons, deliveries.
   const items = [];
   const where = {};
+  // Which players have found which secret (player id, place), so it is not laid again.
+  const secretsTaken = new Set();
   const tmp = new THREE.Vector3();
 
   const usable = (id) => !!weapons[id];
@@ -131,6 +142,20 @@ export function createPickups({ weapons, random = Math.random }) {
           add({ x: slot.x, y, z: slot.z, weapon: id, place: ARSENAL[id].place, owner: player.id, slot: slot.id, band, life: 1e9, stage: ARSENAL[id].stage, size: 0.4 + 0.25 * f.length, hidden: slot.hidden });
         }
       }
+      // The secrets, for a fish of the right stage near their place (once each).
+      for (const player of players) {
+        const f = player.fish;
+        if (!f || player.down) continue;
+        for (const secret of SECRETS) {
+          if (!secret.stages.includes(f.stage) || player.arsenal?.back === secret.id || player.arsenal?.belly === secret.id) continue;
+          const at = PLACES.find((q) => q.id === secret.place);
+          if (!at || Math.abs(at.s - f.river.s) > 80) continue;
+          const band = `${player.id}:secret:${secret.place}`;
+          if (secretsTaken.has(band) || items.some((i) => i.band === band)) continue;
+          place(at.s, at.u ?? 0, where);
+          add({ x: where.x, y: bed(at.s, at.u ?? 0) + secret.lift, z: where.z, weapon: secret.id, place: ARSENAL[secret.id].place, owner: player.id, band, secret: true, life: 1e9, stage: ARSENAL[secret.id].stage, size: 0.4 + 0.25 * f.length, hidden: true });
+        }
+      }
       for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i];
         item.age += dt;
@@ -163,6 +188,7 @@ export function createPickups({ weapons, random = Math.random }) {
           else a.heat[item.weapon] ??= 0;
           item.state = "taken";
           if (item.slot !== undefined) slots[item.slot].taken.add(item.band);
+          if (item.secret) secretsTaken.add(item.band);
           // What it carried waits in a capsule of its own (locked for it a moment, unless it
           // swims back in within the few seconds of the undo).
           if (old && old !== item.weapon) add({ x: f.position.x, y: f.position.y, z: f.position.z, weapon: old, place: ARSENAL[old]?.place ?? "back", owner: null, life: DROP_LIFE, lock: TAKE_LOCK, lockFor: player.id, undo: UNDO, stage: ARSENAL[old]?.stage, size: item.size });
@@ -173,6 +199,7 @@ export function createPickups({ weapons, random = Math.random }) {
     },
     reset() {
       items.length = 0;
+      secretsTaken.clear();
       for (const slot of slots) slot.taken.clear();
     },
   };

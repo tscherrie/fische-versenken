@@ -35,6 +35,9 @@
 //            round and round (the nodachi's rotor)
 //   saw      held: the chainsaw under the chin revs up and cuts whatever is in front of it,
 //            on and on (heat, as a motor gets hot)
+//   fuse     held: the fuse burns down, and when it has, the gun goes off by itself -- an iron
+//            ball that ploughs through everything in its way and rolls on over the gravel;
+//            let go too soon, and the fuse goes out (the ship's cannon)
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -409,6 +412,33 @@ export const WEAPONS = {
     unlock: 0.35,
     // (It pulls the fish on into what it cuts, x cruise a second.)
     pull: 0.8,
+  },
+  kanone: {
+    title: "Schiffskanone",
+    mode: "fuse",
+    place: "back",
+    mount: "right",
+    muzzle: { x: 0.45, side: 1 },
+    // The fuse burns `fuse` seconds before it goes off; one ball, then the reload.
+    fuse: 1.2,
+    shells: 1,
+    interval: 0.5,
+    reload: 3.5,
+    idleReload: 3.5,
+    damage: 120,
+    // Through everything (keeping this much of its force at each); heavy: it sinks, and on
+    // the bed it bounces low and rolls on.
+    keep: 0.9,
+    speed: (L) => 22 + 4 * L,
+    reach: (L) => 24 + 6 * L,
+    sink: 14,
+    drag: 0.35,
+    bounce: 0.3,
+    recoil: 1.6,
+    size: (L) => 0.05 + 0.04 * L,
+    radius: (L) => 0.06 + 0.05 * L,
+    tint: [0.5, 0.5, 0.52],
+    flash: [10, 7, 3],
   },
   harpune: {
     title: "Granatharpune",
@@ -1429,6 +1459,67 @@ export function createFiring(ctx) {
     stat(id).time = (stat(id).time ?? 0) + dt;
   }
 
+  // fuse: the cannon, a step of it. Held (and loaded), the fuse burns down (state.charge, for
+  // the model's glowing fuse); burnt down, the gun fires; let go before, it goes out.
+  function fuseStep(player, place, w, id, dt, on) {
+    const a = player.arsenal;
+    const st = a.state[id];
+    const ready = a.ammo[id] > 0 && !(a.reloading[id] > 0) && a.cooldown[place] <= 0;
+    if (!on || !ready) {
+      st.charge = 0;
+      return;
+    }
+    a.fired[id] = 0;
+    st.charge = Math.min(1, (st.charge ?? 0) + dt / w.fuse);
+    // (The fuse hisses and throws sparks as it burns.)
+    if (look() < dt * 20) {
+      muzzleOf(player, place, muzzle);
+      fx.spark(muzzle.x, muzzle.y + 0.05 * player.fish.length, muzzle.z, { vx: (look() - 0.5) * 0.4, vy: 0.6 * look(), vz: (look() - 0.5) * 0.4, size: 0.02 + 0.02 * player.fish.length, life: 0.2, r: 6, g: 3, b: 0.8, stretch: 1.5 });
+    }
+    if (st.charge < 1) return;
+    ball(player, place, w, id);
+    a.ammo[id]--;
+    a.cooldown[place] = w.interval;
+    st.charge = 0;
+  }
+  function ball(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    flight.copy(aimDir).multiplyScalar(w.speed(L));
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = w.damage * damageScale(L);
+    p.radius = w.radius(L);
+    p.life = w.reach(L) / w.speed(L) + 3;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = 1;
+    p.solid = "ball";
+    p.scale = L;
+    p.shooter = L;
+    p.gravity = w.sink;
+    p.drag = w.drag;
+    p.bounce = w.bounce;
+    p.maxBounces = 12;
+    p.pierce = 99;
+    p.pierceKeep = w.keep;
+    // The great flash and a cloud of powder smoke that hangs where the gun was.
+    flash(muzzle, aimDir, L, w.flash, 2.4, f.river.s);
+    for (let i = 0; i < 6; i++) {
+      cone(aimDir, 0.6, tmp, look);
+      const v = (1 + 2 * look()) * L;
+      puff(POWDER, muzzle.x, muzzle.y, muzzle.z, tmp.x * v, tmp.y * v, tmp.z * v, 0.3 * L, 3.5, 3 + 1.5 * look(), 0.6, 2.2, 0.2 * L, f.river.s);
+    }
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.cannon) sfx.cannon(L);
+      else sfx.explosion(L, 1);
+    }
+  }
+
   // harpoon: off the belly gun on its line, straight along the aim. Its flight (harpoons()):
   // each fish it meets on the way is struck and skewered -- carried on along the shaft --
   // up to `skewer`; one too big to go through stops it. Stopped (or at its reach), a moment
@@ -2221,6 +2312,10 @@ export function createFiring(ctx) {
       }
       if (w.mode === "saw") {
         sawStep(player, place, w, id, dt, on);
+        continue;
+      }
+      if (w.mode === "fuse") {
+        fuseStep(player, place, w, id, dt, on);
         continue;
       }
       if (w.mode === "charge") {

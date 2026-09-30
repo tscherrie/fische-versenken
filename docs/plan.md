@@ -235,6 +235,8 @@ Gemessen wird auf WebGPU, WebGL2 und Eco.
 
 ## 7. Meilensteine
 
+Stand 30.09.2026: M0 fertig. M1 fertig bis auf die letzten Tempo-Arbeiten (die Schüsse der Spieler). Aus M2 feuern alle 16 Waffen mit ihren Modi (der Laser mit Puls und Strahl, die Kanone als Geheimwaffe im Wrack und in der Grotte), und die Vögel (Eisvogel, Gänsesäger, Graureiher) und die Elritzenschwärme sind im Gegner-System. Offen in M2: die übrigen Gegner der Tabelle 4a, die fünf weiteren Bosse, der Regisseur mit Arenen, der schießende Schwarm. M3 wartet auf das Cloudflare-Konto.
+
 | | Inhalt | Aufwand | Du testest |
 |---|---|---|---|
 | **M0** Setup | Repo, Vercel, Branding (erledigt); Importmap-Gerüst, Paritätstest | 1–2 Tage | Das Spiel sieht exakt aus wie Next |

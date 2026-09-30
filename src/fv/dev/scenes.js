@@ -105,6 +105,8 @@ export const SCENES = [
   // nodachi on the back, not held) rammed into a shoal.
   { name: "w-nodachi", stage: "spawner", at: 11790, season: "autumn", hour: 12, weapon: "nodachi", seconds: 5, pictures: [0.3, 1.2, 3.5], spawn: [["trout", 0.9, -0.8], ["trout", 0.9, 0.8], ["trout", -0.5, 1], ["trout", 1.2, 0], ["troutParr", 0.7, 0.5], ["troutParr", 0.7, -0.5]] },
   { name: "w-saege", stage: "spawner", at: 11790, season: "autumn", hour: 12, weapon: "saege", seconds: 5, pictures: [0.5, 1.5, 3.5], spawn: [["trout", 1.1, 0], ["trout", 1.3, 0.05], ["minnow", 1.1, -0.05], ["minnow", 1.2, 0.05], ["minnow", 1.4, 0]] },
+  // The ship's cannon: the fuse held down, the ball through a line of trout and on.
+  { name: "w-kanone", stage: "sea", at: 11790, season: "spring", hour: 12, weapon: "kanone", seconds: 6, pictures: [1, 1.4, 3], spawn: [["trout", 1.5, 0], ["trout", 2, 0.05], ["trout", 2.5, -0.05], ["trout", 3, 0]] },
   { name: "w-flammen-seite", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3, side: [1.0, 0.5, 1.0, 1.8], pictures: [0.4, 1.2, 2.6], spawn: [["troutParr", 2.2, -0.3], ["troutParr", 2.5, 0.2], ["troutParr", 2.8, 0]] },
   // The phone's auto-fire (on a computer): the gun fires only while the aim has an enemy in
   // reach, the katana only with one in front within its reach.
