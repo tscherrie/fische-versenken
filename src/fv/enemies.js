@@ -9,13 +9,15 @@
 
 import * as THREE from "three";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
-import { bed, clamp, current, level, locate, place } from "../course.js";
-import { creatureMaterial, kingfisherGeometry, merganserGeometry } from "../creatures.js";
+import { bed, clamp, current, level, locate, place, section } from "../course.js";
+import { creatureMaterial, heronHeadGeometry, heronLegsGeometry, kingfisherGeometry, merganserGeometry } from "../creatures.js";
 import { KINDS } from "./kinds.js";
 
 // The birds' stand-in bodies: the base game's own models (creatures.js), until the look
 // gives them models of their own. Each is laid along +x, beak first.
-const BIRD_MODELS = { kingfisher: kingfisherGeometry, merganser: merganserGeometry };
+// (The heron's are its legs with the body high above them, standing on the bed, and its
+// neck and head apart, which move.)
+const BIRD_MODELS = { kingfisher: kingfisherGeometry, merganser: merganserGeometry, heron: heronLegsGeometry };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
@@ -43,6 +45,15 @@ export function createEnemies(scene, { random }) {
     mesh.visible = false;
     scene.add(mesh);
     birds[kind] = { mesh, length: box.max.x - box.min.x, beak: box.max.x, middle: 0.5 * (box.max.x + box.min.x) };
+    if (spec.wades) {
+      const head = new THREE.InstancedMesh(heronHeadGeometry(), birdMaterial, spec.capacity);
+      head.name = `Combat ${kind} head`;
+      head.count = 0;
+      head.frustumCulled = false;
+      head.visible = false;
+      scene.add(head);
+      birds[kind].head = head;
+    }
   }
   for (const [kind, spec] of Object.entries(KINDS)) {
     if (spec.render === "bird") continue;
@@ -85,9 +96,28 @@ export function createEnemies(scene, { random }) {
 
   // A new enemy at river place (s, u), height y (null: mid-water, or on the bed for kinds
   // that keep to it). Returns it, or null when the kind's crowd is full.
+  // Where a wading bird can stand at river place s: in the shallows toward one bank (the
+  // side of u first), 1.5 to 4.5 units deep, as the base game's heron does; null if nowhere.
+  function shallows(s, u) {
+    const c = section(s);
+    const first = u >= c.thalweg ? 1 : -1;
+    for (const side of [first, -first])
+      for (let a = 0.6; a < 1.05; a += 0.05) {
+        const v = c.thalweg + side * a * c.half;
+        const depth = level(s) - bed(s, v);
+        if (depth > 1.5 && depth < 4.5) return v;
+      }
+    return null;
+  }
+
   function spawn(kind, s, u, y = null, { owner = 0, heading = null } = {}) {
     const spec = KINDS[kind];
     if (!spec || count(kind) >= spec.capacity) return null;
+    if (spec.wades) {
+      const v = shallows(s, u);
+      if (v === null) return null;
+      u = v;
+    }
     place(s, u, spot);
     const size = range(spec.size[0], spec.size[1]);
     const floor = bed(s, u);
@@ -125,6 +155,17 @@ export function createEnemies(scene, { random }) {
       corpse: 0,
       lastHitBy: -1,
     };
+    if (spec.wades) {
+      // Where it stands, which way it faces, where its head is (and its gun), and its legs in
+      // the water as its body for a hit: upright from the bed.
+      e.stand = new THREE.Vector3(spot.x, floor, spot.z);
+      e.facing = new THREE.Vector3(e.heading.x, 0, e.heading.z).normalize();
+      e.muzzle = new THREE.Vector3(spot.x, top + spec.head, spot.z);
+      e.aimDir = new THREE.Vector3(0, -1, 0);
+      e.heading.set(0, 1, 0);
+      e.position.set(spot.x, floor + 0.5 * size, spot.z);
+      e.mode = "stand";
+    }
     list.push(e);
     return e;
   }
@@ -173,6 +214,8 @@ export function createEnemies(scene, { random }) {
   }
 
   function snout(e, out) {
+    // (A bird standing in the water shoots from its head, high over the surface.)
+    if (e.muzzle) return out.copy(e.muzzle);
     return out.copy(e.heading).multiplyScalar((0.35 / MODEL_LENGTH) * e.size).add(e.position);
   }
 
@@ -307,6 +350,77 @@ export function createEnemies(scene, { random }) {
     }
     e.position.addScaledVector(e.heading, speed * dt);
     if (e.mode === "circle") e.position.y += (high - e.position.y) * (1 - Math.exp(-dt * 2));
+  }
+
+  // A wading bird (the heron): it stands in the shallows and does not move, turning slowly
+  // to face the salmon; its head is high over the water, and from there it aims its harpoon
+  // gun down into the river (the tell), fires once and reloads. It gives up and goes when
+  // the salmon is far away along the river.
+  function wade(e, dt, time, players, hooks) {
+    const spec = e.spec;
+    const gun = spec.weapon;
+    const p = pick(e, players);
+    e.target = p;
+    e.t += dt;
+    e.reload = Math.max(0, (e.reload ?? 0) - dt);
+    const top = level(e.river.s);
+    // (Its legs stay where they stand, whatever a shot or a blast did to them.)
+    e.position.set(e.stand.x, e.stand.y + 0.5 * e.size, e.stand.z);
+    if (!p || Math.abs(p.fish.river.s - e.river.s) > 150) {
+      e.leave = true;
+      return;
+    }
+    const fish = p.fish;
+    tmp.set(fish.position.x - e.stand.x, 0, fish.position.z - e.stand.z);
+    const flat = tmp.length();
+    if (flat > 1e-4) {
+      tmp.divideScalar(flat);
+      e.facing.lerp(tmp, Math.min(1, dt * spec.turn)).normalize();
+    }
+    e.muzzle.set(e.stand.x + e.facing.x * 2, top + spec.head, e.stand.z + e.facing.z * 2);
+    const untouchable = fish.safe || fish.captive || fish.airborne;
+    // Where to aim: ahead of the salmon by the harpoon's time to it.
+    const aim = () => {
+      const d = fish.position.distanceTo(e.muzzle);
+      return want.copy(fish.position).addScaledVector(fish.velocity, Math.min(1.5, d / gun.speed)).sub(e.muzzle).normalize();
+    };
+    switch (e.mode) {
+      case "stand":
+        e.aimDir.lerp(tmp.set(e.facing.x * 0.3, -1, e.facing.z * 0.3).normalize(), Math.min(1, dt * 3)).normalize();
+        if (!untouchable && flat < gun.range[1] && flat > gun.range[0] && e.reload <= 0 && striking(p) < 3) {
+          e.mode = "aim";
+          e.t = 0;
+        }
+        break;
+      case "aim":
+        e.aimDir.lerp(aim(), Math.min(1, dt * 6)).normalize();
+        if (untouchable || flat > gun.range[1] * 1.3) {
+          e.mode = "stand";
+          e.reload = 1;
+        } else if (e.t > gun.tell) {
+          e.mode = "fire";
+          e.t = gun.interval;
+          e.shots = gun.burst;
+        }
+        break;
+      case "fire":
+        e.aimDir.copy(aim());
+        if (e.t >= gun.interval && e.shots > 0) {
+          e.t = 0;
+          e.shots--;
+          e.firedAt = time;
+          hooks.shoot?.(e, e.aimDir, gun);
+        }
+        if (e.shots <= 0 && e.t >= gun.interval) {
+          e.reload = gun.reload;
+          e.mode = "stand";
+          e.t = 0;
+        }
+        break;
+      default:
+        // (Stunned, or anything else: back to standing.)
+        e.mode = "stand";
+    }
   }
 
   // One step of an enemy's plan. `hooks.hurt(player, enemy)` is called when a strike lands,
@@ -561,6 +675,13 @@ export function createEnemies(scene, { random }) {
       } else if (e.spec.flies) {
         dive(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;
+      } else if (e.spec.wades) {
+        wade(e, dt, time, players, hooks);
+        if (e.stagger > 0) e.stagger -= dt;
+        if (e.leave) {
+          list.splice(i, 1);
+          continue;
+        }
       } else {
         let speed = think(e, dt, time, players, hooks);
         // A boss keeps to its place: past its leash it turns for home.
@@ -666,10 +787,17 @@ export function createEnemies(scene, { random }) {
   const drawnElsewhere = new Set();
   function draw() {
     const slots = {};
-    for (const kind in birds) birds[kind].mesh.count = 0;
+    for (const kind in birds) {
+      birds[kind].mesh.count = 0;
+      if (birds[kind].head) birds[kind].head.count = 0;
+    }
     for (const e of list) {
       if (drawnElsewhere.has(e.kind)) continue;
       const bird = birds[e.kind];
+      if (bird && e.spec.wades) {
+        heronPose(e, bird);
+        continue;
+      }
       if (bird) {
         // (Its model is laid along +x from its own origin: moved so the middle of the body
         // is where the enemy is, scaled to its size.)
@@ -692,11 +820,38 @@ export function createEnemies(scene, { random }) {
       crowd.mouth.setX(slot, e.gape);
     }
     for (const crowd of Object.values(crowds)) crowd.finish();
-    for (const kind in birds) {
-      const mesh = birds[kind].mesh;
-      mesh.visible = mesh.count > 0;
-      if (mesh.count > 0) mesh.instanceMatrix.needsUpdate = true;
+    for (const kind in birds)
+      for (const mesh of [birds[kind].mesh, birds[kind].head]) {
+        if (!mesh) continue;
+        mesh.visible = mesh.count > 0;
+        if (mesh.count > 0) mesh.instanceMatrix.needsUpdate = true;
+      }
+  }
+
+  // The heron as the base game draws its own: the legs standing on the bed with the body
+  // high over the water, the neck and head where its gun is, the bill along its aim. Shot,
+  // it falls over into the water and floats there on its side, legs out, and goes with the
+  // current.
+  const DOWN = new THREE.Vector3(0, -1, 0);
+  const tip = new THREE.Matrix4();
+  function heronPose(e, bird) {
+    const yaw = Math.atan2(-e.facing.z, e.facing.x);
+    const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
+    if (fade <= 0) return;
+    if (!e.dead) {
+      quaternion.setFromAxisAngle(UP, yaw);
+      matrix.compose(e.stand, quaternion, scale.set(1, 1, 1));
+      bird.mesh.setMatrixAt(bird.mesh.count++, matrix);
+      quaternion.setFromUnitVectors(DOWN, e.aimDir);
+      matrix.compose(e.muzzle, quaternion, scale.set(1, 1, 1));
+      bird.head.setMatrixAt(bird.head.count++, matrix);
+      return;
     }
+    // (The body -- 34 units up the legs -- lies at the surface, the legs pointing away.)
+    quaternion.setFromAxisAngle(UP, yaw);
+    matrix.compose(e.position, quaternion, scale.set(fade, fade, fade));
+    matrix.multiply(tip.makeRotationZ(-Math.PI / 2)).multiply(basis.makeTranslation(0, -34, 0));
+    bird.mesh.setMatrixAt(bird.mesh.count++, matrix);
   }
 
   // A hit for `damage` from direction `dir` (a unit vector, the way the shot flew). Returns

@@ -24,7 +24,7 @@ export function createSignals({ life }, enemies) {
       let level = 0;
       if (e.mode === "coil" || e.mode === "strike" || e.mode === "aim" || e.mode === "fire") level = 1;
       else if (e.mode === "orbit" || e.mode === "hover" || ((e.mode === "approach" || e.mode === "circle") && d < 20)) level = 0.8;
-      else if (e.mode === "lurk" && d < 8) level = 0.6;
+      else if ((e.mode === "lurk" && d < 8) || (e.mode === "stand" && d < 20)) level = 0.6;
       else if (e.mode === "approach") level = 0.4;
       if (!level) continue;
       ours.push({ position: e.position, level, coiled: e.mode === "coil" || e.mode === "aim", coil: e.mode === "coil" ? Math.max(0, e.spec.coil - e.t) : e.mode === "aim" ? Math.max(0, e.spec.weapon.tell - e.t) : 0, kind: e.kind, title: e.spec.title, key: keyOf(e.kind), d, above: e.position.y > surface(e.river.s) });

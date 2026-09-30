@@ -223,7 +223,7 @@ export function createCombat(game) {
   // one array for all the rounds, only ever read.)
   const enemyMuzzle = new THREE.Vector3();
   const pellet = new THREE.Vector3();
-  const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
+  const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, air: false, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
   function enemyShoots(e, dir, gun) {
     if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
     round.source = e;
@@ -231,6 +231,7 @@ export function createCombat(game) {
     round.cause = gun.cause;
     round.damage = gun.damage;
     round.drag = gun.drag;
+    round.air = !!gun.air;
     round.radius = 0.03 + 0.01 * e.size;
     round.size = 0.05 + 0.02 * e.size;
     round.s = e.river.s;

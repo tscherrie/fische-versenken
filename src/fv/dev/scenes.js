@@ -27,6 +27,9 @@ export const SCENES = [
   // The goosander under water with its revolver: once taking it, once against the laser.
   { name: "saeger", stage: "fingerling", at: 400, season: "summer", hour: 13, fire: false, spawn: [["merganser", 8, 0]] },
   { name: "saeger-laser", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["merganser", 8, 0]] },
+  // The heron in the shallows with its harpoon gun: once taking it, once against the laser.
+  { name: "reiher", stage: "fingerling", at: 1500, season: "summer", hour: 14, fire: false, spawn: [["heron", 6, 1]] },
+  { name: "reiher-laser", stage: "parr", at: 1800, season: "summer", hour: 14, spawn: [["heron", 6, 1]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?

@@ -38,6 +38,7 @@ export function createDirector({ random }) {
     // time.)
     if (stage >= 1 && stage <= 4 && suits("kingfisher", s) > 0.2 && !enemies.list.some((e) => e.kind === "kingfisher" && !e.dead)) options.push(["kingfisher", 1]);
     if (stage >= 2 && suits("merganser", s) > 0.2 && !enemies.list.some((e) => e.kind === "merganser" && !e.dead)) options.push(["merganser", 0.8]);
+    if (stage >= 2 && stage <= 6 && suits("heron", s) > 0.3 && !enemies.list.some((e) => e.kind === "heron")) options.push(["heron", 0.6]);
     if (!options.length) return null;
     let total = 0;
     for (const [, w] of options) total += w;

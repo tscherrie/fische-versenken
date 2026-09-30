@@ -42,6 +42,9 @@ function blank(p) {
   p.floor = 0;
   // What it does to the player it strikes (set as it strikes).
   p.hitDamage = 0;
+  // Fired from above the water (the heron's harpoon): until it is in, the water neither
+  // brakes it nor ends it at the surface.
+  p.air = false;
   return p;
 }
 
@@ -142,6 +145,7 @@ export function createHostile({ capacity = 160 } = {}) {
     p.last.copy(o.position);
     p.velocity.copy(o.velocity);
     p.speed0 = p.velocity.length();
+    p.air = !!o.air;
     p.river.s = o.s ?? null;
     p.river.u = 0;
     p.born = ++born;
@@ -170,8 +174,12 @@ export function createHostile({ capacity = 160 } = {}) {
         continue;
       }
       p.last.copy(p.position);
+      if (p.air) {
+        locate(p.position.x, p.position.z, p.river.s, p.river);
+        if (p.position.y < level(p.river.s)) p.air = false;
+      }
       if (p.spent) p.spentAge += dt;
-      else {
+      else if (!p.air) {
         p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
         if (p.velocity.length() < SPENT * p.speed0) {
           p.spent = true;
@@ -228,7 +236,7 @@ export function createHostile({ capacity = 160 } = {}) {
         free.push(take(i));
         continue;
       }
-      if (p.position.y > level(p.river.s) + 0.05) free.push(take(i));
+      if (!p.air && p.position.y > level(p.river.s) + 0.05) free.push(take(i));
     }
     // The hits, told once every round has moved and newest round first, as they came when the
     // list still kept the order the rounds were fired in: of several rounds striking a player

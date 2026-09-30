@@ -22,6 +22,8 @@ const BULLHEAD = PREDATORS.bullhead;
 //   pack     a few together circle the salmon and dart in one after another
 //   diver    a bird over the water (flies): it hovers over the salmon (the tell) and plunges
 //            beak first at it, `height` above the surface, down to `depth` below it
+//   wader    a bird standing in the shallows (wades), its head `head` over the water: it
+//            turns to the salmon and shoots down into the river; its legs are its body
 // swallows: a strike from a fish at least 2.2 times the salmon's length swallows it whole
 // (the base game's rule), otherwise it bites: `bite` of the strength bar, less when the
 // enemy is smaller than the salmon.
@@ -172,6 +174,34 @@ export const KINDS = {
     from: 400,
     regions: { brook: 0.4, upper: 1, middle: 1 },
     weapon: { id: "revolver", title: "Revolver", kind: "ranged", range: [2.5, 9], tell: 0.6, burst: 6, interval: 0.28, pellets: 1, spread: 0.03, speed: 15, drag: 1.5, damage: 0.035, reload: 3, cause: "Von einem Gänsesäger erschossen" },
+  },
+  // The grey heron: it stands on its stilts in the shallows, head high over the water, and
+  // shoots a harpoon gun down into the river -- one heavy shot, then a long reload. What of
+  // it is in the water, its legs, is what can be hit.
+  heron: {
+    title: "Graureiher",
+    name: "Von einem Graureiher harpuniert",
+    render: "bird",
+    model: "heron",
+    size: [3, 3],
+    hp: 90,
+    capacity: 1,
+    behaviour: "wader",
+    wades: true,
+    blood: "bird",
+    swallows: false,
+    bite: 0.2,
+    head: 16,
+    sight: 20,
+    cruise: 0,
+    chase: 0,
+    strike: 0,
+    range: 0,
+    turn: 1.2,
+    coil: 1.1,
+    from: 700,
+    regions: { upper: 1, middle: 1, lower: 0.6 },
+    weapon: { id: "speargun", title: "Harpunengewehr", kind: "ranged", air: true, range: [3, 24], tell: 1.1, burst: 1, interval: 0.1, pellets: 1, spread: 0.003, speed: 24, drag: 0.9, damage: 0.22, reload: 4.5, cause: "Von einem Graureiher harpuniert" },
   },
   // The gravel defence (gravel.js): water-insect larvae crawling through the redd at the
   // alevins. They are drawn by their own models (look/larvae.js), not with a fish body
