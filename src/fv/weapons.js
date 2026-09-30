@@ -1461,6 +1461,9 @@ export function createFiring(ctx) {
       damage(player.id, e, w.damage * damageScale(L) * dt, f.heading, closest, id, gorier(e, 0.08), { mode: "saw", point: closest });
     }
     if (cutting) kick(player, f.heading, -w.pull * dt);
+    // (The engine bogs down and the chain grinds while it is in something, when the sound
+    // has that.)
+    if (cutting && player.local) sfx.bite?.(id);
     models.recoil(player, place);
     stat(id).time = (stat(id).time ?? 0) + dt;
   }

@@ -126,6 +126,10 @@ if (byKind("solo").length) {
   console.log(`\non their own              LUFS(400ms) centroid  %<150 150-500 .5-1.5k 1.5-4k >4k`);
   for (const r of byKind("solo")) console.log(`${r.name.padEnd(23)} ${pad(r.full, 8)} ${pad(r.centroid, 9)}   ${r.bands.map((b) => pad(b.toFixed(1), 5)).join(" ")}`);
 }
+if (byKind("weapon").length) {
+  console.log(`\nthe player's weapons     peak  LUFS400  phone  LUFS3s  centr   %<150 150-500 .5-1.5k 1.5-4k >4k  nodes  voices end`);
+  for (const r of byKind("weapon")) console.log(`${r.name.padEnd(23)} ${pad(r.peak, 5)} ${pad(r.full, 8)} ${pad(r.phone, 6)} ${pad(r.short, 7)} ${pad(r.centroid, 6)}   ${r.bands.map((b) => pad(b.toFixed(1), 5)).join(" ")}  ${pad(r.shotNodes, 5)}  ${pad(r.voices, 6)} ${pad(r.voicesEnd, 3)}`);
+}
 if (byKind("stress").length) {
   console.log(`\nstress                   LUFS  loudest  peak  most voices  nodes made  base  sample MB  update µs`);
   for (const r of byKind("stress")) console.log(`${r.name.padEnd(23)} ${pad(r.full, 5)} ${pad(r.loudest, 8)} ${pad(r.peak, 5)} ${pad(r.maxLive, 12)} ${pad(r.nodes, 11)} ${pad(r.baseNodes, 5)} ${pad(((r.bytes ?? 0) / 1e6).toFixed(1), 10)} ${pad(r.updateUs, 10)}`);
@@ -280,6 +284,64 @@ if (get("storm_swell")?.extra) {
   check(`storm_swell: +2.5..+7 dB (Δ400ms ${e.d400}; on a phone +${e.phone}, ≥ 2)`, e.d400 >= 2.5 && e.d400 <= 7 && e.phone >= 2);
 }
 if (get("storm_alone")?.extra) check(`storm_alone: brightening as it swells (its 400-900 Hz up ${get("storm_alone").extra.brighter} dB against its 100-400 Hz, ≥ 3)`, get("storm_alone").extra.brighter >= 3);
+// The player's weapons (tools/sound-check-spieler.js), measured against the older ones:
+// every shot in the band from well under the grenade launcher to a blast, each where it
+// belongs in it; held weapons steady, without clicks or drop-outs, and gone when let go;
+// never more voices than the cap, and nothing piling up over twenty seconds of fire.
+const W = (name) => results.find((r) => r.name === name && r.kind === "weapon");
+if (W("ref_granate") && W("ref_explosion") && W("ref_flinte")) {
+  const [granate, blast, flinte] = [W("ref_granate"), W("ref_explosion"), W("ref_flinte")];
+  const low = granate.full - 8,
+    high = blast.full + 1;
+  const shots = ["laser_fry", "laser_parr", "laser_spawner", "laser_hot", "arc_one", "arc_six", "whirl", "cannon", "torpedo", "rocket", "mine", "harpoon", "rifle", "pickup"].map(W).filter(Boolean);
+  const out = shots.filter((r) => r.full < low || r.full > high);
+  check(`weapons: every shot between ${low.toFixed(1)} and ${high.toFixed(1)} LUFS (400 ms; the grenade launcher's less 8, a blast's plus 1): ${out.length ? out.map((r) => `${r.name} ${r.full}`).join(", ") : `${shots.length} in`}`, !out.length);
+  if (W("cannon")) check(`cannon about as big as a blast (${W("cannon").full} against ${blast.full}, within 2) and far heavier than the grenade launcher (${granate.full}, 6 more at least)`, Math.abs(W("cannon").full - blast.full) <= 2 && W("cannon").full >= granate.full + 6);
+  if (W("rifle")) check(`rifle a heavier crack than the shotgun (${W("rifle").full} against ${flinte.full}: 0-3 more)`, W("rifle").full >= flinte.full && W("rifle").full <= flinte.full + 3);
+}
+const lasers = ["laser_fry", "laser_parr", "laser_spawner"].map(W);
+if (lasers.every(Boolean)) check(`laser heavier on a bigger fish (${lasers.map((r) => r.full).join(" < ")}), and deeper (centroids ${lasers.map((r) => r.centroid).join(" > ")})`, lasers[0].full < lasers[1].full && lasers[1].full < lasers[2].full && lasers[0].centroid > lasers[1].centroid && lasers[1].centroid > lasers[2].centroid);
+if (W("laser_hot")?.extra && W("laser_parr")?.extra) {
+  const d = W("laser_hot").extra.hiss - W("laser_parr").extra.hiss;
+  check(`laser_hot hisses harsher (+${d.toFixed(1)} dB at 4-10 kHz after its shots, 3 at least)`, d >= 3);
+}
+for (const [under, above] of [["laser_parr", "laser_above"], ["cannon", "cannon_above"], ["minigun", "minigun_above"]])
+  if (W(under) && W(above)) check(`${above}: dull from above (${W(above).full} against ${W(under).full} under: 4-12 less), still heard`, W(under).full - W(above).full >= 4 && W(under).full - W(above).full <= 12);
+const arcs = ["arc_none", "arc_one", "arc_six"].map(W);
+if (arcs.every(Boolean)) check(`arc bigger the more it strikes: ${arcs.map((r) => r.full).join(" < ")}`, arcs[0].full < arcs[1].full && arcs[1].full < arcs[2].full);
+if (W("whirl") && W("ref_katana_swing")) check(`nodachi a bigger whoosh than the katana (${W("whirl").full} against ${W("ref_katana_swing").full}: 6 more at least)`, W("whirl").full >= W("ref_katana_swing").full + 6);
+for (const name of ["beam_parr", "beam_spawner"])
+  if (W(name)?.extra) {
+    const e = W(name).extra;
+    check(`${name}: held at ${e.held} LUFS (-34..-26), steady (dips ${e.dip} dB, no deeper than -6), starting and stopping without a click (${e.edges} dB over its sharpest, ≤ 6), its boil never coming round the same (${e.repeats} ≤ 0.6)`, e.held >= -34 && e.held <= -26 && e.dip >= -6 && e.edges <= 6 && e.repeats <= 0.6);
+  }
+if (W("beam_heating")?.extra) {
+  const e = W("beam_heating").extra;
+  check(`beam_heating: hotter, louder (+${(e.hot - e.cold).toFixed(1)} dB, 1.5-6) and harsher (+${e.hiss} dB above 3 kHz, ≥ 4), no click (${e.edges} ≤ 6)`, e.hot - e.cold >= 1.5 && e.hot - e.cold <= 6 && e.hiss >= 4 && e.edges <= 6);
+}
+if (W("minigun")?.extra && W("ref_flinte_pair")) {
+  const e = W("minigun").extra,
+    pair = W("ref_flinte_pair").short;
+  check(`minigun: firing at ${e.firing} LUFS (the shotgun's pair over 3 s ${pair}: 1-5 under it), its motor under that (${W("minigun_motor")?.extra?.spun}), no drop-outs (${e.dip} ≥ -6), no clicks (${e.edges} ≤ 6; tapped ${W("minigun_taps")?.extra?.edges})`, e.firing <= pair - 1 && e.firing >= pair - 5 && (W("minigun_motor")?.extra?.spun ?? -99) < e.firing - 3 && e.dip >= -6 && e.edges <= 6 && (W("minigun_taps")?.extra?.edges ?? 0) <= 6);
+}
+if (W("minigun_20s")?.extra) {
+  const e = W("minigun_20s").extra;
+  // (Gone after: 20 dB under it at least -- the river's bubbles still rise now and then
+  // with its beds stopped.)
+  check(`minigun_20s: as loud at the end as at the start (${e.early} / ${e.late}, within 1.5), no drop-outs (${e.dip}), gone after (${e.after}, 20 under at least)`, Math.abs(e.early - e.late) <= 1.5 && e.dip >= -6 && e.after <= e.late - 20);
+}
+if (W("saw_cut")?.extra && W("saw_idle")?.extra) {
+  const e = W("saw_cut").extra,
+    i = W("saw_idle").extra;
+  check(`saw: ticking over at ${i.early} LUFS and quieter after five seconds (${i.late}: 3-7 less), revving (${e.rev}) and biting louder (${e.bite}; -24 at most), grinding (+${e.grind} dB at 0.5-1.5 kHz, ≥ 2), no drop-outs (${e.dip}), never coming round the same idling (${i.repeats} ≤ 0.6)`, i.early < e.rev - 4 && i.early - i.late >= 3 && i.early - i.late <= 7 && e.bite > e.rev && e.bite <= -24 && e.grind >= 2 && e.dip >= -8 && i.repeats <= 0.6);
+}
+const weapons = byKind("weapon");
+if (weapons.length) {
+  const over = weapons.filter((r) => r.voices > 26);
+  check(`weapons: never more than the cap's 26 voices at once (most ${Math.max(...weapons.map((r) => r.voices))}${over.length ? `: ${over.map((r) => r.name).join(", ")}` : ""})`, !over.length);
+  const long = ["laser_held_20s", "minigun_20s", "saw_20s"].map(W).filter(Boolean);
+  check(`twenty seconds of fire leave nothing behind (voices at the end ${long.map((r) => r.voicesEnd).join("/")}) and make at most 80 nodes a second (${long.map((r) => (r.shotNodes / 20).toFixed(0)).join("/")})`, long.every((r) => r.voicesEnd === 0 && r.shotNodes / 20 <= 80));
+}
 // Nothing clips: the limiter holds every scene's peaks under full scale.
 const peaky = results.filter((r) => r.peak > -1);
 check(`every scene's peak ≤ -1 dBFS: ${peaky.length ? peaky.map((r) => `${r.name} ${r.peak}`).join(", ") : `loudest ${Math.max(...results.map((r) => r.peak))}`}`, !peaky.length);

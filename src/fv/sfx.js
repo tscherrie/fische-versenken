@@ -11,6 +11,12 @@
 // A voice counts against the cap only while it sounds (from its start to its end, however
 // far ahead it was scheduled), and the last RESERVE voices are kept for what must not go
 // silent: blasts and kills.
+//
+// The player's own weapons (the laser and its beam, the minigun, the chainsaw, the arc, the
+// nodachi, the cannon, the torpedoes, rockets, mines, the harpoon, the anti-tank rifle, a
+// capsule taken) are in src/fv/sfx-spieler.js, made from the helpers here.
+
+import { createPlayerSounds } from "./sfx-spieler.js";
 
 const CAP = 26;
 const RESERVE = 10;
@@ -23,8 +29,9 @@ export function createSfx(sound) {
   const ends = [];
   let looping = 0;
   let white = null,
-    brown = null,
-    curve = null;
+    brown = null;
+  // (One curve for each drive: a boom driven harder clips harder.)
+  const curves = new Map();
 
   // How many voices sound at `now`.
   function sounding(now) {
@@ -63,32 +70,38 @@ export function createSfx(sound) {
   function brownBuffer(c) {
     if (brown && brown.sampleRate === c.sampleRate) return brown;
     const n = Math.round(c.sampleRate * 2);
+    const fade = Math.round(n * 0.1);
+    // (The walk made a tenth longer than the loop, and the loop taken from after that first
+    // tenth: its last tenth fades into the walk just before its start, so its end runs on
+    // into its start as the walk itself would, without a click.)
+    const walk = new Float32Array(n + fade);
+    let v = 0;
+    for (let i = 0; i < n + fade; i++) {
+      v = (v + 0.02 * (Math.random() * 2 - 1)) * 0.998;
+      walk[i] = v;
+    }
     brown = c.createBuffer(1, n, c.sampleRate);
     const data = brown.getChannelData(0);
-    let v = 0,
-      peak = 0;
-    for (let i = 0; i < n; i++) {
-      v = (v + 0.02 * (Math.random() * 2 - 1)) * 0.998;
-      data[i] = v;
-      peak = Math.max(peak, Math.abs(v));
-    }
-    // (Faded into itself over the last tenth, so the loop does not click.)
-    const fade = Math.round(n * 0.1);
+    for (let i = 0; i < n; i++) data[i] = walk[fade + i];
     for (let i = 0; i < fade; i++) {
       const t = i / fade;
-      data[n - fade + i] = data[n - fade + i] * (1 - t) + data[i] * t;
+      data[n - fade + i] = walk[n + i] * (1 - t) + walk[i] * t;
     }
+    let peak = 0;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
     for (let i = 0; i < n; i++) data[i] /= peak || 1;
     return brown;
   }
   // A soft clip, for booms driven hard.
   function saturate(c, drive = 3) {
+    let curve = curves.get(drive);
     if (!curve) {
       curve = new Float32Array(1024);
       for (let i = 0; i < 1024; i++) {
         const x = (i / 1023) * 2 - 1;
         curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
       }
+      curves.set(drive, curve);
     }
     const shaper = c.createWaveShaper();
     shaper.curve = curve;
@@ -174,27 +187,12 @@ export function createSfx(sound) {
     for (const s of l.sources) s.stop(t + release + 0.05);
   }
 
+  // The player's weapons (the laser among them), made from the same helpers.
+  const player = createPlayerSounds({ sound, ready, sounding, noise, tone, click, dry, envelope, filter, voice, CAP, RESERVE, holdVoices: (n) => (looping += n) });
+  const { tick, ...weapons } = player;
+
   return {
-    // ---- Kompaktlaser: a capacitor tick, the tight electric "tsiu" (a square chirp
-    // falling 2200 -> 600 Hz) over a short crackle, and a whine that climbs with heat.
-    piu(size = 0.3, heat = 0) {
-      const buses = ready("piu", 0.045, 4);
-      if (!buses) return;
-      const c = buses.context;
-      const t = c.currentTime;
-      const osc = c.createOscillator();
-      osc.type = "square";
-      const top = 2200 - Math.min(700, size * 400) + Math.random() * 250;
-      osc.frequency.setValueAtTime(top, t + 0.006);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(420, top * 0.28), t + 0.076);
-      const f = filter(c, "lowpass", 3800);
-      osc.connect(f).connect(envelope(c, 0.07, 0.004, 0.07, t + 0.006)).connect(buses.water);
-      osc.start(t);
-      voice(osc, 0.09);
-      click(c, buses.water, { frequency: 5200, peak: 0.05 });
-      noise(c, buses.water, { type: "highpass", frequency: 3000, peak: 0.04, decay: 0.02, at: 0.008 });
-      if (heat > 0.2) tone(c, buses.water, { from: 2600 + 3200 * heat, to: 2700 + 3400 * heat, peak: 0.012 * heat, attack: 0.01, decay: 0.08 });
-    },
+    ...weapons,
     // The laser locks: a relay clack, a steam-vent hiss, a small fan spinning up.
     overheat(id = "piu") {
       const buses = ready("overheat", 0.6, 5);
@@ -428,6 +426,7 @@ export function createSfx(sound) {
     // the tab hidden) is let go.
     update() {
       if (loops.size && performance.now() - lastTouch > 200) for (const kind of [...loops.keys()]) stopLoop(kind, 0.2);
+      tick();
     },
 
     // ---- Hits and the rest.
