@@ -288,10 +288,11 @@ export function showIntro({ resume = null, title = true, quality = null, onResum
   button.disabled = true;
   button.textContent = "Der Fluss entsteht …";
   if (resume) status.textContent = `Gespeichert: ${resume}`;
-  // Vegan mode (vegan.js): nobody is eaten; kept for next time. (What it means is the
-  // switch's tooltip, index.html.)
+  // Vegan mode (vegan.js): nobody is eaten; kept for next time. What it means is its row's
+  // tooltip (index.html), and the switch's own, so that a screen reader says it too.
   const vegan = intro.querySelector("#intro-vegan");
   if (vegan) {
+    vegan.title = vegan.closest("[title]")?.title ?? "";
     vegan.checked = mode.vegan;
     vegan.addEventListener("change", () => {
       setVegan(vegan.checked);
