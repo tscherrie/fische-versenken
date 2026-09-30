@@ -202,6 +202,30 @@ function neckTube(B, J0, radius, { radial = 14, flat = 1, up = new THREE.Vector3
   return g;
 }
 
+// A lofted shape's stations resampled into `n` rings along a smooth curve through them (the
+// few stations a shape is written with would show as kinks in its outline and its shading),
+// its closing points kept at the ends.
+function smoothed(stations, n = 24) {
+  const list = [...stations].sort((a, b) => a.x - b.x);
+  const inner = list.filter((s) => s.w > 0);
+  const k = inner.length;
+  if (k < 3) return stations;
+  const at = (i) => inner[Math.max(0, Math.min(k - 1, i))];
+  const spline = (a, b, c, d, t) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+  const out = [];
+  if (list[0].w <= 0) out.push(list[0]);
+  for (let j = 0; j < n; j++) {
+    const u = (j / (n - 1)) * (k - 1);
+    const i = Math.min(k - 2, Math.floor(u));
+    const t = u - i;
+    const [a, b, c, d] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    const value = (key) => spline(a[key] ?? 0, b[key] ?? 0, c[key] ?? 0, d[key] ?? 0, t);
+    out.push({ x: value("x"), w: Math.max(0.001, value("w")), h: Math.max(0.001, value("h")), y: value("y") });
+  }
+  if (list[list.length - 1].w <= 0) out.push(list[list.length - 1]);
+  return out;
+}
+
 // ---- The wing.
 
 // One wing, the right one (out along +z), spread level, from `lead` and `trail`: the
@@ -400,7 +424,7 @@ function addEyes(plumage, centre, radius, iris, rig, pupil = 0.5) {
 // red feet.
 export function kingfisherShape() {
   const b = new Plumage({ feathers: 11, ruffle: 0.006, grain: 14 });
-  const body = [
+  const body = smoothed([
     { x: -0.47, w: 0, h: 0, y: 0.045 },
     { x: -0.45, w: 0.06, h: 0.05, y: 0.045 },
     { x: -0.37, w: 0.12, h: 0.12, y: 0.035 },
@@ -410,7 +434,7 @@ export function kingfisherShape() {
     { x: 0.22, w: 0.175, h: 0.21, y: 0.035 },
     { x: 0.31, w: 0.13, h: 0.16, y: 0.07 },
     { x: 0.36, w: 0, h: 0, y: 0.085 },
-  ];
+  ], 22);
   const size = sizeAlong(body);
   const BLUE = hex(0x17627a),
     STRIPE = hex(0x3ccaf2),
@@ -423,7 +447,7 @@ export function kingfisherShape() {
       // back from the mantle to the rump.
       const below = smooth(1.15, 1.45, phi);
       let c = mix3(BLUE, ORANGE, below);
-      const stripe = (1 - smooth(0.2, 0.3, phi)) * smooth(-0.46, -0.34, p.x) * (1 - smooth(0.06, 0.16, p.x));
+      const stripe = (1 - smooth(0.42, 0.58, phi)) * smooth(-0.46, -0.34, p.x) * (1 - smooth(0.06, 0.16, p.x));
       c = mix3(c, STRIPE, stripe);
       const k = 0.92 + 0.14 * hash(p.x * 40, p.y * 40, p.z * 40);
       return [...tint(c, k), DOWN];
@@ -450,7 +474,7 @@ export function kingfisherShape() {
     { x: 0.64, w: 0, h: 0, y: 0.104 },
   ];
   const headSize = sizeAlong(skull);
-  b.add(loft(skull, { radial: 22 }), {
+  b.add(loft(smoothed(skull, 16), { radial: 22 }), {
     ...head,
     // (The crown finely spotted paler.)
     feathers: (p) => (around(headSize, p).phi < 0.9 ? -16 : 16),
@@ -566,7 +590,7 @@ export function kingfisherShape() {
 // back.
 export function merganserShape() {
   const b = new Plumage({ feathers: 3.4, ruffle: 0.025, grain: 3 });
-  const body = [
+  const body = smoothed([
     { x: -2.35, w: 0, h: 0, y: 0.14 },
     { x: -2.25, w: 0.2, h: 0.13, y: 0.13 },
     { x: -1.95, w: 0.45, h: 0.36, y: 0.07 },
@@ -577,7 +601,7 @@ export function merganserShape() {
     { x: 1.45, w: 0.5, h: 0.46, y: 0.14 },
     { x: 1.72, w: 0.33, h: 0.34, y: 0.24 },
     { x: 1.86, w: 0, h: 0, y: 0.28 },
-  ];
+  ], 30);
   const size = sizeAlong(body);
   const GREEN = hex(0x0f2a1d),
     SALMON = hex(0xf2d6c6),
@@ -623,7 +647,7 @@ export function merganserShape() {
     { x: 3.0, w: 0.16, h: 0.15, y: 0.41 },
     { x: 3.07, w: 0, h: 0, y: 0.39 },
   ];
-  b.add(loft(skull, { radial: 22 }), {
+  b.add(loft(smoothed(skull, 16), { radial: 22 }), {
     ...head,
     paint: (p) => {
       // (A little greener where the light catches the crown.)
@@ -684,11 +708,12 @@ export function merganserShape() {
     fold: folder(body, { shoulder: [0.75, 0.45, 0.42], sW: 0.43, length: 2.85, top: 0.52, bottom: 1.3 }),
   });
   addWings(b, w, (s, c, top) => {
-    // The inner wing white (the secondaries and their coverts), a thin black bar across it;
-    // the hand black-brown; the scapulars at the root black.
+    // The inner wing white (the secondaries and their coverts), its leading part black above
+    // (where the black scapulars lie over it, so folded it shows as the drake's does: black
+    // along the back, white along the flank); the hand black-brown; the root black.
     const hand = smooth(w.sW - 0.02, w.sW + 0.03, s);
     let col = hex(0xf2f0ea);
-    if (top && c > 0.5 && c < 0.58) col = hex(0x1a1a1a);
+    if (top) col = mix3(hex(0x151517), col, smooth(0.28, 0.36, c));
     col = mix3(col, hex(0x1e1c1c), hand);
     if (top) col = mix3(col, BLACK, 1 - smooth(0.06, 0.14, s));
     if (!top) col = mix3(col, hex(0xd6d6d2), hand * 0.3);
@@ -772,7 +797,7 @@ export const HERON = {
 export function heronShape() {
   const b = new Plumage({ feathers: 3.2, ruffle: 0.03, grain: 2.5 });
   const matrix = new THREE.Matrix4().makeRotationZ(HERON.tilt).setPosition(...HERON.centre);
-  const body = [
+  const body = smoothed([
     { x: -2.25, w: 0, h: 0, y: 0.1 },
     { x: -2.15, w: 0.28, h: 0.18, y: 0.1 },
     { x: -1.6, w: 0.56, h: 0.52, y: 0.05 },
@@ -782,7 +807,7 @@ export function heronShape() {
     { x: 1.7, w: 0.44, h: 0.6, y: 0.2 },
     { x: 2.05, w: 0.3, h: 0.38, y: 0.35 },
     { x: 2.2, w: 0, h: 0, y: 0.4 },
-  ];
+  ], 30);
   const size = sizeAlong(body);
   const GREY = hex(0x8a9095),
     PALE = hex(0xe4e4e0),
@@ -853,7 +878,7 @@ export function heronShape() {
     { x: 0.55, w: 0, h: 0, y: -0.02 },
   ].map((s) => ({ ...s, x: s.x + S0[0], y: s.y + S0[1] }));
   const headSize = sizeAlong(skull);
-  b.add(loft(skull, { radial: 20 }), {
+  b.add(loft(smoothed(skull, 16), { radial: 20 }), {
     ...head,
     paint: (p) => {
       const x = p.x - S0[0];
@@ -979,7 +1004,7 @@ export function heronShape() {
 // webbed feet.
 export function gannetShape() {
   const b = new Plumage({ feathers: 2.8, ruffle: 0.03, grain: 2.5 });
-  const body = [
+  const body = smoothed([
     { x: -2.95, w: 0, h: 0, y: 0.1 },
     { x: -2.85, w: 0.22, h: 0.15, y: 0.1 },
     { x: -2.35, w: 0.5, h: 0.42, y: 0.05 },
@@ -989,14 +1014,14 @@ export function gannetShape() {
     { x: 1.6, w: 0.66, h: 0.6, y: 0.07 },
     { x: 2.2, w: 0.5, h: 0.5, y: 0.13 },
     { x: 2.35, w: 0, h: 0, y: 0.15 },
-  ];
+  ], 32);
   const WHITE = hex(0xf3f2ee),
     BUFF = hex(0xf0bf52),
     BLACK = hex(0x141416);
   b.add(loft(body, { radial: 26, belly: 0.92 }), { paint: (p) => [...tint(WHITE, 0.95 + 0.07 * hash(p.x * 8, p.y * 8, p.z * 8)), DOWN] });
   const B = [2.0, 0.12, 0],
     J0 = [2.75, 0.22, 0];
-  b.add(neckTube(B, J0, (t) => 0.46 - 0.16 * t, { radial: 18 }), {
+  b.add(neckTube(B, J0, (t) => 0.5 - 0.14 * t, { radial: 18 }), {
     part: PART.neck,
     pivot: B,
     joint: J0,
@@ -1015,7 +1040,7 @@ export function gannetShape() {
   ];
   const headSize = sizeAlong(skull);
   const EYE_AT = [3.22, 0.4, 0.31];
-  b.add(loft(skull, { radial: 22 }), {
+  b.add(loft(smoothed(skull, 16), { radial: 22 }), {
     ...head,
     paint: (p) => {
       const { phi } = around(headSize, p);

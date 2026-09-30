@@ -155,8 +155,20 @@ async function live(ctx, record, kind, { ahead = 6, across = 0, distance, under 
   const p = fish.position.clone().addScaledVector(forward, ahead).addScaledVector(left, across);
   const spot = {};
   course.locate(p.x, p.z, fish.river.s, spot);
+  // (For its first frame, a camera toward it, so that it is drawn.)
+  const track0 = (bird) => salmon.view(bird.position.clone().add(new THREE.Vector3(0, 2, 0)).addScaledVector(left, distance).toArray(), bird.position.toArray(), 0.02);
+  // (Whether its first appearance builds any pipeline: the warm-up should have built them
+  // all, so none may be made now.)
+  const pipelines = () => salmon.renderer._pipelines?.caches?.size ?? -1;
+  salmon.draw(0);
+  const before = pipelines();
   const e = combat.enemies.spawn(kind, spot.s, spot.u, height, { heading: forward.clone().multiplyScalar(-1) });
   if (!e) throw new Error(`no ${kind} could be placed here`);
+  track0(e);
+  await salmon.run(1 / 30);
+  extreme.frame(1 / 60);
+  salmon.draw(0);
+  record.push({ label: "pipelines", before, afterFirstFrame: pipelines(), visible: combat.enemies.birds.meshes.filter((m) => m.visible).map((m) => m.name) });
   const eye = new THREE.Vector3();
   const track = () => {
     const X = e.spec.wades ? e.facing.clone() : e.heading.clone().setY(0);

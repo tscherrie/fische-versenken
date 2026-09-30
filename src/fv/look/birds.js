@@ -194,14 +194,18 @@ function birdMaterial() {
   // than a line drawn: kept soft on white.)
   const pale = dot(paint.rgb, vec3(0.3, 0.55, 0.15)).clamp(0, 1);
   const shade = pale.mul(-0.5).add(1);
-  material.colorNode = colour
+  const plumage = colour
     .mul(streak.mul(0.12).mul(feathered).add(1))
     .mul(edges.mul(-0.2).mul(shade).add(1))
-    .mul(seam.mul(-0.36).mul(shade).add(1))
-    .mul(wet.mul(-0.22).add(1));
+    .mul(seam.mul(-0.36).mul(shade).add(1));
+  // Soaked: the feathers darker and greyer, a little of the water's blue in them (a white
+  // flank no longer shines white down there).
+  const grey = dot(plumage, vec3(0.3, 0.55, 0.15));
+  material.colorNode = mix(plumage, vec3(grey).mul(vec3(0.82, 0.92, 1)), wet.mul(0.35)).mul(wet.mul(-0.38).add(1));
   const dry = float(0.82).sub(surface.mul(0.74)).add(streak.mul(0.08).mul(feathered)).add(edges.mul(0.06));
-  material.roughnessNode = mix(dry, dry.mul(0.55), wet);
-  return waterLit(material);
+  material.roughnessNode = mix(dry, dry.mul(0.75).max(0.3), wet);
+  // (A weak mirror of the water round it: wet feathers are no glazed skin.)
+  return waterLit(material, { mirror: 0.2 });
 }
 
 // ---- The kinds.
