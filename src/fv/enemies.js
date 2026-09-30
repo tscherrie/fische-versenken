@@ -84,6 +84,7 @@ export function createEnemies(scene, { random }) {
   const basis = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const roll = new THREE.Quaternion();
+  const pitchAxis = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
   const scale = new THREE.Vector3();
   const spot = {};
@@ -722,6 +723,15 @@ export function createEnemies(scene, { random }) {
     return speed;
   }
 
+  // Which way the body of one that rears (`e.rear`) lies: its heading, pitched as pose()
+  // draws it, kept in `e.along` so that shots and blades find the body where it is seen
+  // (projectiles.js, weapons.js) -- at night the eyes on its raised head are what one aims at.
+  function lie(e) {
+    pitchAxis.crossVectors(e.heading, UP);
+    if (pitchAxis.lengthSq() < 1e-6) pitchAxis.set(0, 0, 1);
+    (e.along ??= new THREE.Vector3()).copy(e.heading).applyAxisAngle(pitchAxis.normalize(), e.rear);
+  }
+
   // A dead enemy: it turns belly up and rises, slowly at first, to float at the surface,
   // rocking a little and drifting with the current, then it is gone.
   function drift(e, dt, time, ground) {
@@ -729,6 +739,7 @@ export function createEnemies(scene, { random }) {
     e.rolled = Math.min(Math.PI, e.rolled + dt * 3);
     // (A head reared for a blow sinks back as it dies.)
     if (e.rear) e.rear *= Math.exp(-dt * 4);
+    if (e.along) lie(e);
     e.speed *= Math.exp(-dt * 3);
     current(e.river.s, e.river.u, e.position.y, flow, time, true);
     e.position.x += (flow.vx * 0.8 + e.heading.x * e.speed) * dt;
@@ -841,6 +852,7 @@ export function createEnemies(scene, { random }) {
           e.blow = e.mode === "strike" ? 0.3 : Math.max(0, (e.blow ?? 0) - dt);
           const wantRear = e.mode === "coil" ? lift * Math.min(1, e.t / e.spec.coil) : e.blow > 0 ? -0.5 * lift : 0;
           e.rear = (e.rear ?? 0) + (wantRear - (e.rear ?? 0)) * (1 - Math.exp(-dt * (e.blow > 0 ? 16 : 8)));
+          lie(e);
         }
       }
       // (A dead fish's fins hang still.)

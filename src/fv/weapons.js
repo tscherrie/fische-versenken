@@ -641,10 +641,12 @@ function pointSegment(p, a, b, closest) {
   closest.copy(a).addScaledVector(ab, t);
   return closest.distanceTo(p);
 }
-// An enemy's body as a segment, tail to head (as projectiles.js tests it).
+// An enemy's body as a segment, tail to head (as projectiles.js tests it): along its heading,
+// or pitched as it is drawn when it rears for a blow (`e.along`, enemies.js).
 function bodyEnds(e, tail, head) {
-  tail.copy(e.position).addScaledVector(e.heading, -0.5 * e.size);
-  head.copy(e.position).addScaledVector(e.heading, 0.44 * e.size);
+  const along = e.along ?? e.heading;
+  tail.copy(e.position).addScaledVector(along, -0.5 * e.size);
+  head.copy(e.position).addScaledVector(along, 0.44 * e.size);
 }
 
 // The closest approach of the segments p0-p1 and q0-q1: the squared distance; how far along
