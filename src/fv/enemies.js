@@ -10,7 +10,7 @@
 import * as THREE from "three";
 import { attribute, uniform, vec3 } from "three/tsl";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
-import { bed, clamp, current, level, locate, place, section } from "../course.js";
+import { bed, clamp, current, level, locate, place, regionWeights, section } from "../course.js";
 import { creatureMaterial, gannetGeometry, heronHeadGeometry, heronLegsGeometry, kingfisherGeometry, merganserGeometry } from "../creatures.js";
 import { SolidBatch } from "../flora.js";
 import { waterLit } from "../render/water.js";
@@ -185,6 +185,8 @@ const TAU = Math.PI * 2;
 export const CORPSE_SECONDS = 40;
 // How far (u) a jellyfish may be left behind by every salmon before it is gone.
 const LEFT_BEHIND = 120;
+// How far (u) a bird that has given up flies off before it is gone.
+const GONE = 90;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
@@ -474,6 +476,16 @@ export function createEnemies(scene, { random }) {
       }
     }
     return best;
+  }
+
+  // How much river place s is a kind's own water, by its regions (kinds.js), as the
+  // director weighs it when it sends one.
+  const weights = {};
+  function waters(spec, s) {
+    regionWeights(s, weights);
+    let w = 0;
+    for (const region in spec.regions) w += spec.regions[region] * (weights[region] ?? 0);
+    return w;
   }
 
   // Turn toward `dir` at up to `rate` radians a second, climbing or diving at most `steepest`
@@ -791,15 +803,22 @@ export function createEnemies(scene, { random }) {
     // Leaning a little the way the water takes it, bell first.
     e.heading.set(e.velocity.x * 0.15, 1, e.velocity.z * 0.15).normalize();
     e.speed = Math.hypot(e.velocity.x, e.velocity.z);
-    if (untouchable) return;
-    // A touch: the salmon's body, tail to head, against the line down through the bell and
-    // the mine, as near as the bell is wide.
-    const L = fish.length;
+    // A touch: a salmon's body, tail to head, against the line down through the bell and
+    // the mine, as near as the bell is wide. (Any salmon's, not only the one it drifts
+    // toward: in co-op another may brush past it while a nearer one is out of reach.)
     bellTop.copy(e.position).addScaledVector(e.heading, 0.4 * e.size);
     mineFoot.copy(e.position).addScaledVector(e.heading, -0.4 * e.size);
-    fishTail.copy(fish.position).addScaledVector(fish.heading, -0.5 * L);
-    fishHead.copy(fish.position).addScaledVector(fish.heading, 0.44 * L);
-    if (gap(fishTail, fishHead, bellTop, mineFoot) < spec.weapon.trigger + 0.08 * L + 0.16 * e.size) hooks.touch?.(e, p);
+    for (const q of players) {
+      const f = q.fish;
+      if (!f || q.down || f.safe || f.captive || f.airborne) continue;
+      const L = f.length;
+      fishTail.copy(f.position).addScaledVector(f.heading, -0.5 * L);
+      fishHead.copy(f.position).addScaledVector(f.heading, 0.44 * L);
+      if (gap(fishTail, fishHead, bellTop, mineFoot) < spec.weapon.trigger + 0.08 * L + 0.16 * e.size) {
+        hooks.touch?.(e, q);
+        return;
+      }
+    }
   }
 
   // A bird that bombs from high up (the gannet). It circles over the water well above what
@@ -808,7 +827,9 @@ export function createEnemies(scene, { random }) {
   // bank (the tell); then it plunges along a line to just over where the salmon will be,
   // lets its bombs go there, pulls out low -- for a moment in reach of the salmon's weapons
   // -- and climbs away at a slant, and comes round again once it has loaded anew. It banks
-  // into its turns (e.bank, for pose). No current carries it in the air.
+  // into its turns (e.bank, for pose). No current carries it in the air. It is a bird of the
+  // sea: once the salmon has gone on up the river, out of its waters, it gives up, flies off
+  // and is gone when it is far from every salmon (as the heron goes).
   function bomber(e, dt, time, players, hooks) {
     const spec = e.spec;
     const gun = spec.weapon;
@@ -847,7 +868,13 @@ export function createEnemies(scene, { random }) {
         flight.y = clamp((high - e.position.y) * 0.2, -0.5, 0.5);
         speed = out > spec.radius * 2 ? spec.chase : spec.cruise;
         bank = e.orbit * 0.4;
-        if (reachable && e.reload <= 0 && e.t > 1 && out < spec.radius * 1.5) {
+        // Out of its waters, it gives up. (Only from its circle, so that a dive once begun is
+        // carried through; and only where there is much less of its water than the director
+        // needs to send one, so that it does not come and go at the edge of the sea.)
+        if (fish && waters(spec, fish.river.s) < 0.1) {
+          e.mode = "leave";
+          e.t = 0;
+        } else if (reachable && e.reload <= 0 && e.t > 1 && out < spec.radius * 1.5) {
           e.mode = "coil";
           e.t = 0;
         }
@@ -901,6 +928,17 @@ export function createEnemies(scene, { random }) {
         }
         e.bank = 0;
         return;
+      }
+      case "leave": {
+        // Off and away from the salmon, climbing, until it is out of the story.
+        if (fish) flight.set(e.position.x - fish.position.x, 0, e.position.z - fish.position.z);
+        else flight.set(e.heading.x, 0, e.heading.z);
+        if (flight.lengthSq() < 1e-6) flight.set(e.orbit, 0, 0);
+        flight.normalize();
+        flight.y = clamp((high + 8 - e.position.y) * 0.2, -0.5, 0.5);
+        speed = spec.chase;
+        if (!fish || e.position.distanceToSquared(fish.position) > GONE * GONE) e.leave = true;
+        break;
       }
       default: {
         // Pulling out of the dive: flattening out low over the water, slowing, then climbing
@@ -1301,6 +1339,10 @@ export function createEnemies(scene, { random }) {
       } else if (e.spec.flies) {
         (e.spec.behaviour === "bomber" ? bomber : dive)(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;
+        if (e.leave) {
+          list.splice(i, 1);
+          continue;
+        }
       } else if (e.spec.behaviour === "drifter") {
         drifting(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;

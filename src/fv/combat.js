@@ -405,7 +405,9 @@ export function createCombat(game) {
     const f = player.fish;
     if (player.down) return;
     for (const e of enemies.list) {
-      if (e.eaten || e.burst || e.size > 1.1 * f.length) continue;
+      // (Nor a jellyfish with its mine: a live one goes off at a touch, and a dead one's own
+      // mine is about to tear it apart.)
+      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact") continue;
       if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
         if (!e.dead) {

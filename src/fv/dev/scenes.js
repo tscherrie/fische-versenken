@@ -54,6 +54,9 @@ export const SCENES = [
   // the fish kept a few units under the surface (`under`), where a gannet goes for it.
   { name: "toelpel", stage: "postsmolt", at: 17000, season: "summer", hour: 13, weapon: "piu", fire: false, alone: true, under: 5, pitch: 1.2, seconds: 18, pictures: [1, 9, 17.5], snaps: ["tell", "dive", "boom"], spawn: [["gannet", 5, 0]] },
   { name: "toelpel-laser", stage: "postsmolt", at: 17000, season: "summer", hour: 13, weapon: "piu", alone: true, under: 5, range: 4, pitch: 1.2, seconds: 18, pictures: [1, 17.5], snaps: ["tell", "dive", "boom", "kill"], spawn: [["gannet", 5, 0]] },
+  // A gannet up the river, out of its waters (the salmon on its way home): it gives up and
+  // flies off without a dive, and is gone before the end.
+  { name: "toelpel-fluss", stage: "postsmolt", at: 14200, season: "summer", hour: 13, weapon: "piu", fire: false, alone: true, pitch: 1.2, seconds: 12, pictures: [1, 11.5], snaps: ["tell", "boom"], spawn: [["gannet", 5, 0]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
