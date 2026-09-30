@@ -83,6 +83,10 @@ export const SCENES = [
   { name: "w-katana", stage: "yearling", at: 1500, season: "summer", hour: 14, weapon: "katana", seconds: 6, melee: true, lunges: [2.5, 4.5], pictures: [0.9, 4.6], snaps: ["kill", "konter", "dash"], spawn: [["troutParr", 3.5, -1], ["troutParr", 4, 0], ["troutParr", 3.5, 1], ["trout", 8, 0]] },
   { name: "w-katana-seite", stage: "yearling", at: 1500, season: "summer", hour: 14, weapon: "katana", seconds: 3, melee: true, side: [1.0, 0.45, 0.8, 1.2], pictures: [2.5], snaps: ["kill", "konter"], spawn: [["troutParr", 2.5, -0.5], ["troutParr", 2.8, 0.2], ["troutParr", 2.5, 0.8]] },
   { name: "w-flammen", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 6, pictures: [0.3, 1, 2.5, 5.5], snaps: ["kill", "lock"], spawn: [["troutParr", 2.2, -0.5], ["troutParr", 2.5, 0], ["troutParr", 2.2, 0.5], ["troutParr", 2.8, -0.25], ["troutParr", 2.8, 0.25], ["bullhead", 2, 0.2], ["trout", 6, 0]] },
+  // The smolt's pair: the minigun into a shoal, and the belly torpedoes (with the katana on
+  // the back, which only cuts what comes close) homing on a trout further off.
+  { name: "w-minigun", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "minigun", seconds: 5, pictures: [0.3, 1.2, 3.5], spawn: [["minnow", 4, -1], ["minnow", 4.5, -0.4], ["minnow", 4, 0.3], ["minnow", 4.6, 0.9], ["minnow", 5, -0.8], ["minnow", 5.2, 0], ["minnow", 5, 0.7], ["trout", 7, 0]] },
+  { name: "w-torpedo", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "torpedo", seconds: 6, pictures: [0.6, 1.4, 4], spawn: [["trout", 9, 0.6], ["trout", 10, -1]] },
   { name: "w-flammen-seite", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3, side: [1.0, 0.5, 1.0, 1.8], pictures: [0.4, 1.2, 2.6], spawn: [["troutParr", 2.2, -0.3], ["troutParr", 2.5, 0.2], ["troutParr", 2.8, 0]] },
   // The phone's auto-fire (on a computer): the gun fires only while the aim has an enemy in
   // reach, the katana only with one in front within its reach.
@@ -112,6 +116,7 @@ export const SCENES = [
   { name: "dps-flinte-weit", stage: "fry", at: 240, season: "summer", hour: 13, weapon: "flinte", seconds: 6, dummy: ["troutParr", 10] },
   { name: "dps-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, weapon: "granate", seconds: 9.3, dummy: ["trout", 8] },
   { name: "dps-katana", stage: "yearling", at: 1500, season: "summer", hour: 14, weapon: "katana", seconds: 6, dummy: ["troutParr", 0.8] },
+  { name: "dps-minigun", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "minigun", seconds: 6, dummy: ["trout", 3] },
   { name: "dps-flammen", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 4.5, dummy: ["trout", 2.2] },
   // Kills close to the eye: what a hit and a sinking leave in the water.
   // (`kill`: the weapon the shots count as: a precise one leaves the fish whole to float up,

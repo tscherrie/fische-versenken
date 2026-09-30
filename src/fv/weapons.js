@@ -18,6 +18,9 @@
 //   lob      a grenade on an arc solved to land at the crosshair, bounces, blast (launcher)
 //   blade    a cut over an arc in front of the snout; Space with the blade out is a dash cut
 //   flame    a held jet: a cone that burns what it touches, and burning spreads
+//   spin     held: the barrels wind up, then a stream of rounds that brakes the fish (minigun)
+//   torpedo  from the belly: a torpedo that speeds up, homes on what is ahead of it and
+//            bursts in a blast (2 tubes, 4 from the postsmolt)
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -186,6 +189,67 @@ export const WEAPONS = {
     tint: [2.1, 1.0, 0.27],
     glow: [0.5, 0.8, 3.2],
   },
+  minigun: {
+    title: "Minigun",
+    mode: "spin",
+    place: "back",
+    mount: "right",
+    muzzle: { x: 0.36, side: 1 },
+    // The barrels wind up this long before the first round, and run down this long after the
+    // trigger lets go; at full speed `interval` between rounds.
+    spinUp: 0.45,
+    spinDown: 0.8,
+    interval: 1 / 30,
+    // Twice the laser's burst, and it sprays: a wall of lead against a shoal.
+    damage: 2.2,
+    heat: 0.011,
+    cool: 0.45,
+    rest: 0.25,
+    unlock: 0.35,
+    spread: 0.045,
+    speed: (L) => 40 + 18 * L,
+    reach: (L) => 5 + 5 * L,
+    // It brakes the fish while it fires (x cruise, each round).
+    recoil: 0.03,
+    size: (L) => 0.02 + 0.02 * L,
+    radius: (L) => 0.015 + 0.02 * L,
+    tint: [5, 3.4, 1.8],
+    stretch: 6,
+    flash: [9, 5.2, 2],
+  },
+  torpedo: {
+    title: "Bauchtorpedos",
+    mode: "torpedo",
+    place: "belly",
+    mount: "belly",
+    // Two tubes, four from the postsmolt on (the rack grows at sea); one torpedo a click.
+    shells: 2,
+    shellsAt: (stage) => (stage >= 6 ? 4 : 2),
+    interval: 0.35,
+    reload: 3.2,
+    idleReload: 4,
+    // Out of the tube slowly, then the motor: up to `top`, homing at `turn` rad/s on what
+    // is within `seek` rad of its nose and `sight` units; it bursts on what it strikes, or
+    // after `fuse` seconds.
+    speed: (L) => 3 + L,
+    top: (L) => 12 + 5 * L,
+    thrust: 20,
+    turn: 2.4,
+    seek: 0.7,
+    sight: (L) => 16 + 8 * L,
+    fuse: 4,
+    direct: 30,
+    damage: 60,
+    blast: (L) => 1.4 * L,
+    edge: 0.3,
+    shove: 2,
+    stun: 2.5,
+    recoil: 0.1,
+    size: (L) => 0.04 + 0.03 * L,
+    radius: (L) => 0.04 + 0.04 * L,
+    tint: [1.4, 1.6, 2],
+    flash: [8, 6, 4],
+  },
 };
 
 // What a kill does to the fish (the user's rule): the big guns burst it into many pieces;
@@ -232,6 +296,16 @@ export function createArsenal() {
     // A laser held down (per place): whether its beam is on, the beam's seconds left, and
     // the pulses fired since the trigger went down or the beam last went off.
     cycle: { back: { beam: false, left: 0, pulses: 0 }, belly: { beam: false, left: 0, pulses: 0 } },
+    // What the models read of each weapon (models.js): `spin` 0..1 of the minigun's barrels,
+    // `loaded` tubes or rounds ready, `reloading`.
+    state: {},
+    // The fish's stage when it last fired (the torpedo rack grows at sea).
+    stage: 0,
+    // How many rounds or tubes weapon `id` holds on this fish now.
+    shells(id) {
+      const w = WEAPONS[id];
+      return w?.shellsAt ? w.shellsAt(this.stage) : w?.shells ?? 0;
+    },
     // The weapon's state, made if it is new (any id can be put on the fish: tests do).
     ensure(id) {
       if (!id || id in this.heat) return;
@@ -240,8 +314,9 @@ export function createArsenal() {
       this.locked[id] = false;
       this.wasLocked[id] = false;
       this.fired[id] = 1;
-      this.ammo[id] = w?.shells ?? null;
+      this.ammo[id] = w?.shells ? this.shells(id) : null;
       this.reloading[id] = 0;
+      this.state[id] = { spin: 0, loaded: this.ammo[id], reloading: false };
     },
     // A weapon found: it goes to its place, replacing what was there, loaded and cold.
     take(id) {
@@ -294,7 +369,7 @@ export function createArsenal() {
       out.kind = w?.shells ? "shells" : w?.fuel ? "fuel" : "heat";
       out.locked = !!this.locked[id];
       out.rounds = this.ammo[id] ?? 0;
-      out.shells = w?.shells ?? 0;
+      out.shells = this.shells(id);
       out.reload = w?.shells && this.reloading[id] > 0 ? 1 - this.reloading[id] / w.reload : 0;
       out.level = out.kind === "shells" ? (out.reload > 0 ? out.reload : out.rounds / Math.max(1, out.shells)) : out.kind === "fuel" ? 1 - Math.min(1, this.heat[id] ?? 0) : Math.min(1, this.heat[id] ?? 0);
       out.label = out.reload > 0 ? "Nachladen" : out.locked ? (out.kind === "fuel" ? "Leer" : "Überhitzt") : "";
@@ -771,6 +846,127 @@ export function createFiring(ctx) {
       a.cooldown[place] = w.interval;
     }
     return true;
+  }
+
+  // spin: the minigun held, a step of it. The barrels wind up first (nothing comes out
+  // until they are at speed) and run down after; at speed a round every `interval`, each a
+  // water round like a pellet, each braking the fish a little. Heat builds per round.
+  function spinStep(player, place, w, id, dt, on) {
+    const a = player.arsenal;
+    const st = a.state[id];
+    st.spin = Math.min(1, Math.max(0, st.spin + (on ? dt / w.spinUp : -dt / w.spinDown)));
+    if (on) {
+      // (Winding up is use as well: it does not cool meanwhile.)
+      a.fired[id] = 0;
+      if (st.spin >= 1)
+        while (a.cooldown[place] <= 0) {
+          a.cooldown[place] += w.interval;
+          round(player, place, w, id);
+          a.heat[id] += w.heat;
+          if (a.heat[id] >= 1) {
+            a.locked[id] = true;
+            if (player.local) sfx.overheat(id);
+            break;
+          }
+        }
+    }
+    // (The motor's whine and the stream of shots, when the sound has them.)
+    if (player.local) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
+  }
+  function round(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    scatter(aimDir, w.spread, tmp);
+    const speed = w.speed(L) * (0.95 + 0.1 * random());
+    flight.copy(tmp).multiplyScalar(speed);
+    const reach = w.reach(L);
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = w.damage * damageScale(L);
+    p.radius = w.radius(L);
+    p.water = true;
+    p.drag = (0.75 * speed) / reach;
+    p.speed0 = speed;
+    p.life = (3 * reach) / speed + 5;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = w.stretch;
+    p.shooter = L;
+    p.sky = SKY;
+    // A flash on every third round or so (the temporal blend makes a flicker of them), a
+    // glint at the muzzle on the others.
+    if (look() < 0.35) flash(muzzle, aimDir, L, w.flash, 0.45, f.river.s);
+    else fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: 0.12 * Math.max(L, 0.45), life: 0.05, r: 6, g: 3.4, b: 1.2 });
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+  }
+
+  // torpedo: one out of its tube under the belly, forward along the aim, slowly at first.
+  // It homes on the enemy under the crosshair, else on the nearest one ahead of it (after()).
+  function launch(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    flight.copy(aimDir).multiplyScalar(w.speed(L));
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = w.direct * damageScale(L);
+    p.radius = w.radius(L);
+    p.life = w.fuse;
+    p.fuse = true;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = 2;
+    p.solid = "torpedo";
+    p.scale = L;
+    p.shooter = L;
+    p.homing = aim.target && !aim.target.dead ? aim.target : null;
+    fx.fizz(muzzle.x, muzzle.y, muzzle.z, { count: 6, size: 0.015 * L + 0.006, spread: 0.1 * L, rise: 1, random: look });
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.torpedo) sfx.torpedo(L);
+      else sfx.granate(L);
+    }
+  }
+  // Each step: the torpedoes speed up and turn toward what they are after (the enemy locked
+  // at the launch while it lives, else the nearest within the nose's cone), keeping under
+  // the surface.
+  const seekDir = new THREE.Vector3();
+  function home(dt) {
+    for (const p of projectiles.live) {
+      if (p.solid !== "torpedo") continue;
+      const w = WEAPONS[p.weapon];
+      const L = p.shooter;
+      const speed = Math.min(w.top(L), p.velocity.length() + w.thrust * dt);
+      seekDir.copy(p.velocity).normalize();
+      let target = p.homing && !p.homing.dead ? p.homing : null;
+      if (!target) {
+        let best = w.sight(L);
+        const cos = Math.cos(w.seek);
+        for (const e of enemies.list) {
+          if (e.dead) continue;
+          tmp.subVectors(e.position, p.position);
+          const d = tmp.length();
+          if (d < best && tmp.dot(seekDir) > cos * d) {
+            best = d;
+            target = e;
+          }
+        }
+        p.homing = target;
+      }
+      if (target) {
+        tmp.subVectors(target.position, p.position).normalize();
+        const angle = Math.acos(Math.min(1, Math.max(-1, tmp.dot(seekDir))));
+        if (angle > 1e-4) seekDir.lerp(tmp, Math.min(1, (w.turn * dt) / angle)).normalize();
+      }
+      locate(p.position.x, p.position.z, p.river.s, where);
+      if (p.position.y > level(where.s) - 0.3 * L) seekDir.y = Math.min(seekDir.y, -0.05);
+      p.velocity.copy(seekDir.normalize()).multiplyScalar(speed);
+    }
   }
 
   // pellets: a shell of pellets in a cone, the flash, the kick.
@@ -1296,15 +1492,23 @@ export function createFiring(ctx) {
     const a = player.arsenal;
     const w = WEAPONS[id];
     if (!w?.shells) return;
+    const full = a.shells(id);
+    // (What the models show: the tubes or rounds ready, and whether it is reloading.)
+    const st = a.state[id];
+    if (st) {
+      st.loaded = a.ammo[id];
+      st.reloading = a.reloading[id] > 0;
+    }
     if (a.reloading[id] > 0) {
       a.reloading[id] -= dt;
       if (a.reloading[id] <= 0) {
         a.reloading[id] = 0;
-        a.ammo[id] = w.shells;
+        a.ammo[id] = full;
       }
       return;
     }
-    const spent = a.ammo[id] < w.shells;
+    // (A rack that has grown -- the torpedoes' at sea -- is filled at the next reload.)
+    const spent = a.ammo[id] < full;
     if (a.ammo[id] <= 0 || (spent && a.fired[id] > (w.idleReload ?? Infinity))) {
       a.reloading[id] = w.reload;
       stat(id).reloads = (stat(id).reloads ?? 0) + 1;
@@ -1318,6 +1522,7 @@ export function createFiring(ctx) {
   function fire(player, dt, held, can) {
     const a = player.arsenal;
     a.cool(dt);
+    a.stage = player.fish.stage ?? 0;
     let beaming = false;
     for (const place of PLACES) {
       // (A beam is on only while a step keeps it on.)
@@ -1346,6 +1551,10 @@ export function createFiring(ctx) {
         if (player.local) sfx.flame(on && !a.locked[id], a.heat[id], player.fish.length);
         continue;
       }
+      if (w.mode === "spin") {
+        spinStep(player, place, w, id, dt, on);
+        continue;
+      }
       if (w.beam && beamStep(player, place, w, id, dt, on)) {
         beaming = true;
         continue;
@@ -1364,6 +1573,7 @@ export function createFiring(ctx) {
         else if (w.mode === "pellets") shell(player, place, w, id);
         else if (w.mode === "lob") lob(player, place, w, id);
         else if (w.mode === "blade") cut(player, place, w, id);
+        else if (w.mode === "torpedo") launch(player, place, w, id);
         a.fired[id] = 0;
         if (w.shells) a.ammo[id]--;
         if (w.mode === "bolt" && w.heat) {
@@ -1417,6 +1627,7 @@ export function createFiring(ctx) {
       if (!on && e.rolled <= 0) stuns.delete(e);
     }
     burn(dt);
+    home(dt);
     for (const p of ctx.players) bladeSteps(p, dt);
   }
 
@@ -1451,8 +1662,8 @@ export function createFiring(ctx) {
   function onEnemy(shot, e) {
     flight.copy(shot.velocity).normalize();
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob") {
-      damage(shot.owner, e, shot.damage, flight, shot.position, shot.weapon, true, { mode: "lob", direct: true, point: shot.position });
+    if (w?.mode === "lob" || w?.mode === "torpedo") {
+      damage(shot.owner, e, shot.damage, flight, shot.position, shot.weapon, true, { mode: w.mode, direct: true, point: shot.position });
       blast(shot.owner, shot.position, w, shot.weapon, shot.shooter, e);
       return;
     }
@@ -1513,7 +1724,7 @@ export function createFiring(ctx) {
   // few beads); fire and grenades have their own endings.
   function onGround(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.mode === "lob" || w?.mode === "torpedo") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
     const L = shot.shooter;
     const p = shot.position;
@@ -1527,7 +1738,7 @@ export function createFiring(ctx) {
   // Off a stone: the same puff, and a pellet ricochets with a spark.
   function onStone(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.mode === "lob" || w?.mode === "torpedo") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
     const L = shot.shooter;
     const p = shot.position;
@@ -1547,7 +1758,7 @@ export function createFiring(ctx) {
   }
   function onExpire(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob") blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.mode === "lob" || w?.mode === "torpedo") blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
   }
 
   // ---- Each step, after the shots have flown: what trails behind them. A grenade draws a
