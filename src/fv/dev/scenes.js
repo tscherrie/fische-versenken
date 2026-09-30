@@ -10,6 +10,9 @@
 import { createGround } from "../ground.js";
 import { LOOK_SCENES, runLook } from "./scenes-look.js";
 
+// A pack of forty (no more of a kind than may be about at once), in rows ahead of the fish.
+const PACK = Array.from({ length: 40 }, (_, i) => [["troutParr", "bullhead", "troutParr", "dragonflyLarva", "troutParr", "bullhead", "trout", "troutParr", "beetleLarva", "dragonflyLarva"][i % 10], 4 + 1.1 * Math.floor(i / 5), 1.1 * ((i % 5) - 2)]);
+
 export const SCENES = [
   // A parr in the brook, a young trout pack and a bullhead ahead: fire into them.
   { name: "piu", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["troutParr", 7, -0.8], ["troutParr", 7.5, 0], ["troutParr", 7, 0.8], ["bullhead", 5, 0.4]] },
@@ -127,6 +130,12 @@ export const SCENES = [
   // shotguns open up on a parr that shrugs the hits off (`endure`), so they keep firing and
   // the rounds that miss sink and lie on the bed (the rounds' own step is timed as well).
   { name: "perf-beschuss", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "piu", fire: false, endure: true, seconds: 10, perf: [5, 9.5], pictures: [4], spawn: [["trout", 8, -1], ["trout", 9, 0], ["trout", 8, 1], ["trout", 10, 0.5], ["bullhead", 4, 0.8], ["bullhead", 4, -0.8]] },
+  // What the players' shots cost: the laser into a pack of forty held where they are
+  // (`hold`), with `bolts` more bolts a step from beside the fish, as other players would
+  // fire them: three more players at the laser's rate (some ten bolts in flight, the pack
+  // being near), and a stress case (some 150). (The shots' own update is timed as well.)
+  { name: "perf-schuesse-vier", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 0.9, spawn: PACK },
+  { name: "perf-schuesse", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 15, spawn: PACK },
   // The effects' own looks, held still in front of the eye: smoke of each kind, and a blast.
   { name: "fx-probe", stage: "parr", at: 2500, season: "summer", hour: 15, probe: true },
   // The numbers: one target that cannot sink, held still at a distance (in fish lengths),
@@ -745,7 +754,19 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
     const l = live();
     return l.length ? l.reduce((m, e) => (e.position.distanceTo(fish.position) < m.position.distanceTo(fish.position) ? e : m)) : null;
   };
+  // `hold`: the enemies there are now are kept where they are from the fish, facing it,
+  // and cannot sink, as the dummy is (a fight that stays the same while it is timed).
+  const pack = scene.hold ? combat.enemies.list.map((e) => ({ e, at: e.position.clone().sub(fish.position), heading: e.heading.clone() })) : [];
+  for (const { e } of pack) e.hp = e.maxHp = 1e6;
   const hold = () => {
+    for (const { e, at, heading } of pack) {
+      e.position.copy(fish.position).add(at);
+      e.heading.copy(heading);
+      e.mode = "recover";
+      e.t = -5;
+      e.velocity.set(0, 0, 0);
+      e.speed = 0;
+    }
     if (!dummy) return;
     // (Kept at its distance from the fish, which drifts and is kicked back by its gun.)
     dummyAt.copy(fish.position).addScaledVector(heading, scene.dummy[1] * L);
@@ -755,6 +776,40 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
     dummy.t = -5;
     dummy.velocity.set(0, 0, 0);
     dummy.speed = 0;
+  };
+  // `bolts`: so many more laser bolts a step, as more players beside the fish would fire
+  // them: from a ring round it, at the enemies in turn, a little scattered -- by a fixed
+  // sequence, not the game's random stream, so the fight goes as it would without them.
+  const { WEAPONS, damageScale } = scene.bolts ? await import("../weapons.js") : {};
+  const boltFrom = new THREE.Vector3(),
+    boltDir = new THREE.Vector3();
+  let bolts = 0,
+    boltsDue = 0;
+  const volley = () => {
+    const l = live();
+    if (!scene.bolts || !l.length) return;
+    const w = WEAPONS.piu;
+    const speed = w.speed(L);
+    for (boltsDue += scene.bolts; boltsDue >= 1; boltsDue--) {
+      const k = bolts++;
+      const a = k * 2.39996;
+      boltFrom.copy(fish.position).addScaledVector(left, Math.cos(a) * 1.5 * L);
+      boltFrom.y += Math.sin(a) * 0.8 * L;
+      boltDir.copy(l[k % l.length].position).sub(boltFrom).normalize();
+      boltDir.x += (((k * 0.618034) % 1) - 0.5) * 0.06;
+      boltDir.y += (((k * 0.414214) % 1) - 0.5) * 0.06;
+      boltDir.z += (((k * 0.732051) % 1) - 0.5) * 0.06;
+      boltDir.normalize().multiplyScalar(speed);
+      const p = combat.projectiles.spawn(player.id, "piu", boltFrom, boltDir, fish.river.s);
+      p.damage = w.damage * damageScale(L);
+      p.radius = w.radius(L);
+      p.life = w.reach(L) / speed;
+      p.size = w.size(L);
+      p.tint = w.tint;
+      p.core = w.core;
+      p.stretch = w.stretch;
+      p.shooter = L;
+    }
   };
   const face = () => {
     // (`swim`: the fish swims round in a wide circle instead, turning that far (rad) a step,
@@ -904,7 +959,7 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   // and with each of combat's pictures hidden in turn; and what combat's step and frame
   // cost the processor, on average.
   const perf = [...(scene.perf ?? [])];
-  const timing = { step: 0, steps: 0, frame: 0, frames: 0, hostile: 0, rounds: 0 };
+  const timing = { step: 0, steps: 0, frame: 0, frames: 0, hostile: 0, rounds: 0, shots: 0 };
   if (perf.length) {
     const step = combat.step,
       frame = combat.frame;
@@ -916,6 +971,14 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       update(dt, players, hooks);
       timing.hostile += performance.now() - t0;
       timing.rounds += hostile.live.length;
+    };
+    // (And the players' shots.)
+    const projectiles = combat.projectiles,
+      move = projectiles.update;
+    projectiles.update = (dt, hooks) => {
+      const t0 = performance.now();
+      move(dt, hooks);
+      timing.shots += performance.now() - t0;
     };
     combat.step = (...args) => {
       const t0 = performance.now();
@@ -953,8 +1016,8 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       }
       parts[key] = +median(differences).toFixed(2);
     }
-    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3), hostileMs: +(timing.hostile / Math.max(1, timing.steps)).toFixed(4), rounds: Math.round(timing.rounds / Math.max(1, timing.steps)) });
-    timing.step = timing.steps = timing.frame = timing.frames = timing.hostile = timing.rounds = 0;
+    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3), hostileMs: +(timing.hostile / Math.max(1, timing.steps)).toFixed(4), rounds: Math.round(timing.rounds / Math.max(1, timing.steps)), shotsMs: +(timing.shots / Math.max(1, timing.steps)).toFixed(4) });
+    timing.step = timing.steps = timing.frame = timing.frames = timing.hostile = timing.rounds = timing.shots = 0;
   };
   if (perf.length) await measure("before");
   let steps = 0;
@@ -963,6 +1026,7 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       hold();
       face();
       follow();
+      volley();
       // (A fish that shrugs the enemies' hits off, so that they keep firing.)
       if (scene.endure) fish.energy = 1;
       if (scene.auto) {
