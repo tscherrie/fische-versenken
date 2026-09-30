@@ -25,10 +25,14 @@ import { ditherThreshold } from "../render/dither.js";
 import { FX_LAYER } from "./fx.js";
 export { createSmoke, createRibbons, POWDER, GAS, SILT, SOOT, GRIT } from "./look/smoke.js";
 
-// Closest distance between segments p0-p1 and q0-q1, squared (a standard clamp-and-project);
-// how far along p0-p1 the closest point lies is left in `along`.
-let along = 0;
-function segmentDistance2(p0, p1, q0, q1) {
+// Whether segments p0-p1 and q0-q1 come near each other (a standard clamp-and-project). The
+// numbers go in and out through `near`: how near is near enough (squared) at [0], and back
+// at [1] how far along p0-p1 the closest point lies (0 to 1), or Infinity if not near.
+// (A number kept in a variable of the module, or handed back from a call that is not inlined,
+// is boxed anew each time: a new object on the heap for every shot near every enemy. One in
+// a typed array is not.)
+const near = new Float64Array(2);
+function segmentsNear(p0, p1, q0, q1) {
   const ux = p1.x - p0.x,
     uy = p1.y - p0.y,
     uz = p1.z - p0.z;
@@ -57,8 +61,18 @@ function segmentDistance2(p0, p1, q0, q1) {
   const dx = wx + ux * s - vx * t,
     dy = wy + uy * s - vy * t,
     dz = wz + uz * s - vz * t;
-  along = s;
-  return dx * dx + dy * dy + dz * dz;
+  near[1] = dx * dx + dy * dy + dz * dz < near[0] ? s : Infinity;
+}
+
+// A point of the shots' own arithmetic: where a step begins and ends, an enemy's spine. Not a
+// THREE.Vector3: in this game V8 keeps the x and y of every Vector3 boxed (three.js's
+// TextureSource.getSize hands Vector3.set the missing width and height of a texture without
+// a size), so each number written into them is a new object on the heap. A record of this
+// file's own shape keeps its numbers unboxed.
+class Point {
+  x = 0;
+  y = 0;
+  z = 0;
 }
 
 // A 40 mm grenade (HE-DP): a stubby olive body with a gold ogive, along +x, 1 long.
@@ -142,11 +156,151 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
   const free = [];
   for (let i = 0; i < capacity; i++) free.push({ position: new THREE.Vector3(), velocity: new THREE.Vector3(), last: new THREE.Vector3(), river: { s: null, u: 0 }, passed: new Set(), born: 0 });
   let born = 0;
-  const tail = new THREE.Vector3();
-  const head = new THREE.Vector3();
-  const from = new THREE.Vector3();
-  const end = new THREE.Vector3();
+  const tail = new Point();
+  const head = new Point();
+  const from = new Point();
+  const end = new Point();
   const normal = new THREE.Vector3();
+
+  // The living enemies' middles and sizes in flat arrays. The first test of a shot against an
+  // enemy -- can its step come near it at all? -- runs for every shot and every enemy, and
+  // the enemy records come in many shapes (fields are added to them as they fight): a number
+  // read from records of that many shapes is looked up the slow, general way, and a fraction
+  // comes back in a new box each time. From a typed array it does neither. Only the enemies
+  // that pass are read as records. Filled when the first shot of a step needs them, and again
+  // after every callback, which may kill, move or add enemies.
+  let enemyX = new Float64Array(64),
+    enemyZ = new Float64Array(64),
+    enemySize = new Float64Array(64);
+  const enemyOf = [];
+  let packed = 0;
+  function pack(enemies) {
+    const n = enemies.length;
+    if (n > enemyX.length) {
+      enemyX = new Float64Array(2 * n);
+      enemyZ = new Float64Array(2 * n);
+      enemySize = new Float64Array(2 * n);
+    }
+    let k = 0;
+    for (let j = 0; j < n; j++) {
+      const e = enemies[j];
+      if (e.dead) continue;
+      enemyX[k] = e.position.x;
+      enemyZ[k] = e.position.z;
+      enemySize[k] = e.size;
+      enemyOf[k++] = e;
+    }
+    // (Let go of the enemies no longer in the list.)
+    for (let j = k; j < packed; j++) enemyOf[j] = null;
+    packed = k;
+  }
+
+  // The stones in cells of STONE_CELL units: a shot's end is tested only against the stones
+  // of its cell. A stone goes into every cell of the square the test below looks within (its
+  // two radii together either way from its middle, and a little more for rounding), and the
+  // stones go in in the list's order, so the first stone a shot is found inside is the one a
+  // pass over the whole list would find. The list is handed in afresh every step
+  // (collidersNear) but mostly holds the same stones: it is sorted again only when its
+  // entries are not those last sorted. Each stone's numbers are copied out as it is sorted,
+  // for the same reason as the enemies' (the colliders are records of many shapes too); the
+  // colliders are made once with their blocks and never changed, so the same entries still
+  // have the same numbers.
+  const STONE_CELL = 2;
+  // (A wide spread of stones -- a big fish reaches far -- gets bigger cells, not more.)
+  const MAX_CELLS = 16384;
+  const sorted = [];
+  let sortedCount = -1;
+  // Eight numbers a stone: its middle (x, y, z), its radii (x, y, z) and its turn (cos, sin).
+  let stoneData = new Float64Array(8 * 64);
+  // Per cell, where its stones begin in `cellStones` (one past the last cell: the end), and
+  // the stones themselves, as places in `sorted`.
+  let cellFirst = new Int32Array(1025),
+    cellNext = new Int32Array(1024),
+    cellStones = new Int32Array(1024);
+  let gridX = 0,
+    gridZ = 0,
+    gridNX = 0,
+    gridNZ = 0,
+    cell = STONE_CELL;
+  function sameStones(stones) {
+    if (stones.length !== sortedCount) return false;
+    for (let j = 0; j < sortedCount; j++) if (stones[j] !== sorted[j]) return false;
+    return true;
+  }
+  function sortStones(stones) {
+    const n = stones.length;
+    if (8 * n > stoneData.length) stoneData = new Float64Array(16 * n);
+    let x0 = Infinity,
+      x1 = -Infinity,
+      z0 = Infinity,
+      z1 = -Infinity;
+    for (let j = 0; j < n; j++) {
+      const c = stones[j];
+      const d = 8 * j;
+      sorted[j] = c;
+      stoneData[d] = c.x;
+      stoneData[d + 1] = c.y;
+      stoneData[d + 2] = c.z;
+      stoneData[d + 3] = c.rx ?? c.r;
+      stoneData[d + 4] = c.ry ?? c.r;
+      stoneData[d + 5] = c.rz ?? c.r;
+      stoneData[d + 6] = c.cos ?? 1;
+      stoneData[d + 7] = c.sin ?? 0;
+      const reach = stoneData[d + 3] + stoneData[d + 5] + 0.01;
+      if (stoneData[d] - reach < x0) x0 = stoneData[d] - reach;
+      if (stoneData[d] + reach > x1) x1 = stoneData[d] + reach;
+      if (stoneData[d + 2] - reach < z0) z0 = stoneData[d + 2] - reach;
+      if (stoneData[d + 2] + reach > z1) z1 = stoneData[d + 2] + reach;
+    }
+    for (let j = n; j < sortedCount; j++) sorted[j] = null;
+    sortedCount = n;
+    gridNX = gridNZ = 0;
+    if (!(x1 >= x0 && z1 >= z0)) return;
+    if (!Number.isFinite(x1 - x0) || !Number.isFinite(z1 - z0)) {
+      // (A stone without bounds: one cell, everywhere, with every stone in it.)
+      gridX = gridZ = 0;
+      gridNX = gridNZ = 1;
+      cell = Infinity;
+      if (n > cellStones.length) cellStones = new Int32Array(2 * n);
+      for (let j = 0; j < n; j++) cellStones[j] = j;
+      cellFirst[0] = 0;
+      cellFirst[1] = n;
+      return;
+    }
+    cell = STONE_CELL;
+    while ((Math.floor((x1 - x0) / cell) + 1) * (Math.floor((z1 - z0) / cell) + 1) > MAX_CELLS) cell *= 2;
+    gridX = x0;
+    gridZ = z0;
+    gridNX = Math.floor((x1 - x0) / cell) + 1;
+    gridNZ = Math.floor((z1 - z0) / cell) + 1;
+    const cells = gridNX * gridNZ;
+    if (cells >= cellFirst.length) {
+      cellFirst = new Int32Array(2 * cells + 1);
+      cellNext = new Int32Array(2 * cells);
+    }
+    // Counted first, then each cell's share laid out, then filled.
+    cellFirst.fill(0, 0, cells + 1);
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1) {
+        for (let k = 0; k < cells; k++) cellFirst[k + 1] += cellFirst[k];
+        if (cellFirst[cells] > cellStones.length) cellStones = new Int32Array(2 * cellFirst[cells]);
+        for (let k = 0; k < cells; k++) cellNext[k] = cellFirst[k];
+      }
+      for (let j = 0; j < n; j++) {
+        const d = 8 * j;
+        const reach = stoneData[d + 3] + stoneData[d + 5] + 0.01;
+        const ix0 = Math.floor((stoneData[d] - reach - x0) / cell),
+          ix1 = Math.floor((stoneData[d] + reach - x0) / cell),
+          iz0 = Math.floor((stoneData[d + 2] - reach - z0) / cell),
+          iz1 = Math.floor((stoneData[d + 2] + reach - z0) / cell);
+        for (let ix = ix0; ix <= ix1; ix++)
+          for (let iz = iz0; iz <= iz1; iz++) {
+            if (pass === 0) cellFirst[ix * gridNZ + iz + 1]++;
+            else cellStones[cellNext[ix * gridNZ + iz]++] = j;
+          }
+      }
+    }
+  }
 
   // Grenades are solid, lit bodies (one instanced draw), not glows.
   let solids = null;
@@ -219,17 +373,28 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
   // onEnemy, onGround, onStone, onBounce(shot, "bed" | "stone"), onExpire (fused shots). The
   // shot is handed back to the pool right after its callback: keep nothing of it.
   function update(dt, { enemies, stones, onEnemy, onGround, onStone, onBounce, onExpire }) {
+    // Whether the enemies' arrays and the stones' cells are up to date: made so by the first
+    // shot that tests them, and no longer after any callback. (The loops here go by index: a
+    // for-of makes an iterator, and a result for each item, wherever the code has not been
+    // optimized fully.)
+    let enemiesPacked = false,
+      stonesSorted = false;
     // (Backwards, so a shot moved into a freed place has had its step already.)
     for (let i = live.length - 1; i >= 0; i--) {
       const p = live[i];
       p.age += dt;
       if (p.age >= p.life) {
-        if (p.fuse) onExpire?.(p);
+        if (p.fuse) {
+          onExpire?.(p);
+          enemiesPacked = stonesSorted = false;
+        }
         drop(i);
         continue;
       }
       if (p.rested) continue;
-      from.copy(p.position);
+      from.x = p.position.x;
+      from.y = p.position.y;
+      from.z = p.position.z;
       p.last.copy(p.position);
       if (p.drag) p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
       if (p.water) {
@@ -245,20 +410,39 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
       p.spin += dt * 14;
       // The enemies: the nearest body along the path (not for a spent round).
       if (!p.ghost && !p.spent) {
+        if (!enemiesPacked) {
+          pack(enemies);
+          enemiesPacked = true;
+        }
         let best = null,
           bestS = 2;
-        for (const e of enemies) {
-          if (e.dead || (p.pierce && p.passed.has(e))) continue;
-          const reach = e.size * 0.6 + p.radius;
-          const dx = e.position.x - from.x,
-            dz = e.position.z - from.z;
-          if (Math.abs(dx) > reach + Math.abs(p.velocity.x * dt) + e.size || Math.abs(dz) > reach + Math.abs(p.velocity.z * dt) + e.size) continue;
-          tail.copy(e.position).addScaledVector(e.heading, -0.5 * e.size);
-          head.copy(e.position).addScaledVector(e.heading, 0.44 * e.size);
-          const r = e.size * 0.09 + p.radius;
-          if (segmentDistance2(from, p.position, tail, head) < r * r && along < bestS) {
+        const radius = p.radius;
+        const fromX = from.x,
+          fromZ = from.z;
+        const stepX = Math.abs(p.velocity.x * dt),
+          stepZ = Math.abs(p.velocity.z * dt);
+        for (let j = 0; j < packed; j++) {
+          const size = enemySize[j];
+          const reach = size * 0.6 + radius;
+          if (Math.abs(enemyX[j] - fromX) > reach + stepX + size || Math.abs(enemyZ[j] - fromZ) > reach + stepZ + size) continue;
+          const e = enemyOf[j];
+          if (p.pierce && p.passed.has(e)) continue;
+          const at = e.position,
+            heading = e.heading;
+          const back = -0.5 * size,
+            ahead = 0.44 * size;
+          tail.x = at.x + heading.x * back;
+          tail.y = at.y + heading.y * back;
+          tail.z = at.z + heading.z * back;
+          head.x = at.x + heading.x * ahead;
+          head.y = at.y + heading.y * ahead;
+          head.z = at.z + heading.z * ahead;
+          const r = size * 0.09 + radius;
+          near[0] = r * r;
+          segmentsNear(from, p.position, tail, head);
+          if (near[1] < bestS) {
             best = e;
-            bestS = along;
+            bestS = near[1];
           }
         }
         if (best) {
@@ -266,42 +450,57 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
             // On through it, a little slower.
             p.pierce--;
             p.passed.add(best);
-            end.copy(p.position);
+            end.x = p.position.x;
+            end.y = p.position.y;
+            end.z = p.position.z;
             p.position.lerpVectors(from, end, bestS);
             onEnemy?.(p, best);
+            enemiesPacked = stonesSorted = false;
             p.position.copy(end);
             p.damage *= p.pierceKeep;
           } else {
             p.position.lerpVectors(from, p.position, bestS);
             onEnemy?.(p, best);
+            enemiesPacked = stonesSorted = false;
             drop(i);
             continue;
           }
         }
       }
-      // Stones: the end of the step inside one (each a turned ellipsoid).
+      // Stones: the end of the step inside one (each a turned ellipsoid), among those of the
+      // cell it is in.
+      if (!stonesSorted) {
+        if (!sameStones(stones)) sortStones(stones);
+        stonesSorted = true;
+      }
       let struck = null;
-      for (const c of stones) {
-        const rx = c.rx ?? c.r,
-          rz = c.rz ?? c.r,
-          ry = c.ry ?? c.r;
-        const ox = p.position.x - c.x,
-          oy = p.position.y - c.y,
-          oz = p.position.z - c.z;
-        if (Math.abs(ox) > rx + rz || Math.abs(oz) > rx + rz) continue;
-        const cs = c.cos ?? 1,
-          sn = c.sin ?? 0;
-        const ax = (ox * cs - oz * sn) / rx,
-          ay = oy / ry,
-          az = (ox * sn + oz * cs) / rz;
-        if (ax * ax + ay * ay + az * az < 1) {
-          struck = c;
-          // The surface's normal there (the ellipsoid's gradient, turned back to the world).
-          const gx = ax / rx,
-            gy = ay / ry,
-            gz = az / rz;
-          normal.set(gx * cs + gz * sn, gy, -gx * sn + gz * cs).normalize();
-          break;
+      const ix = Math.floor((p.position.x - gridX) / cell),
+        iz = Math.floor((p.position.z - gridZ) / cell);
+      if (ix >= 0 && ix < gridNX && iz >= 0 && iz < gridNZ) {
+        const k = ix * gridNZ + iz;
+        for (let q = cellFirst[k], stop = cellFirst[k + 1]; q < stop; q++) {
+          const d = 8 * cellStones[q];
+          const rx = stoneData[d + 3],
+            ry = stoneData[d + 4],
+            rz = stoneData[d + 5];
+          const ox = p.position.x - stoneData[d],
+            oy = p.position.y - stoneData[d + 1],
+            oz = p.position.z - stoneData[d + 2];
+          if (Math.abs(ox) > rx + rz || Math.abs(oz) > rx + rz) continue;
+          const cs = stoneData[d + 6],
+            sn = stoneData[d + 7];
+          const ax = (ox * cs - oz * sn) / rx,
+            ay = oy / ry,
+            az = (ox * sn + oz * cs) / rz;
+          if (ax * ax + ay * ay + az * az < 1) {
+            struck = sorted[cellStones[q]];
+            // The surface's normal there (the ellipsoid's gradient, turned back to the world).
+            const gx = ax / rx,
+              gy = ay / ry,
+              gz = az / rz;
+            normal.set(gx * cs + gz * sn, gy, -gx * sn + gz * cs).normalize();
+            break;
+          }
         }
       }
       if (struck) {
@@ -316,9 +515,11 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
           if (vn < 0) p.velocity.addScaledVector(normal, -(1 + p.bounce) * vn);
           p.velocity.multiplyScalar(0.8);
           onBounce?.(p, "stone");
+          enemiesPacked = stonesSorted = false;
           continue;
         }
         onStone?.(p, struck);
+        enemiesPacked = stonesSorted = false;
         drop(i);
         continue;
       }
@@ -346,9 +547,11 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
           p.velocity.x *= 0.7;
           p.velocity.z *= 0.7;
           onBounce?.(p, "bed");
+          enemiesPacked = stonesSorted = false;
           continue;
         }
         onGround?.(p);
+        enemiesPacked = stonesSorted = false;
         drop(i);
         continue;
       }
