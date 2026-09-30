@@ -20,14 +20,15 @@ try {
   level = LEVELS.find((l) => l.id === localStorage.getItem(KEY)) ?? level;
 } catch {}
 
-// On the title card, where the vegan switch was: the three levels as one row of buttons,
-// their line in the tooltip. The card (card.js) builds the row as the page loads, gives it
-// its label and its place among the settings, so it carries no heading of its own.
+// On the title card, where the vegan switch was: the three levels as one row of buttons
+// (a .seg, which the card's settings give the look of their other rows), each level's line
+// in its tooltip. card.js adds it among the settings as the page loads, with its label, so
+// it carries no heading of its own.
 let row = null;
 export function difficultyRow() {
   if (row || typeof document === "undefined") return row;
   row = document.createElement("div");
-  row.className = "fv-difficulty";
+  row.className = "fv-difficulty seg";
   row.setAttribute("role", "group");
   row.setAttribute("aria-label", t("Schwierigkeit"));
   const buttons = LEVELS.map((l) => {

@@ -6,8 +6,8 @@ import { finishCard, layOutCard } from "./card.js";
 import { createCombat } from "./combat.js";
 import { createCoop } from "./coop.js";
 
-// The title card is laid out as this module is read -- the page is there by then, and the
-// game has not yet put the card up -- so that it goes up in its final order (card.js).
+// Extreme's parts go onto the title card as this module is read -- the page is there by
+// then, and the game has not yet put the card up -- so that it goes up with them (card.js).
 layOutCard();
 
 export const extreme = {
@@ -21,8 +21,8 @@ export const extreme = {
     this.combat = createCombat(game);
     // Co-op: the lobby on the title card, and with ?room the others in the river.
     this.coop = createCoop(game);
-    // The graphics steps' tooltips, now that the game has built its picker on the card.
-    finishCard(game);
+    // In a co-op room, the graphics steps' tooltips, now that the game has built its picker.
+    finishCard();
     // Development handle, under the same condition as the game's own window.salmon.
     const query = game.query;
     if (query.get("capture") || query.get("diagnostics") === "1" || query.has("shots")) window.extreme = this;

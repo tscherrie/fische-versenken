@@ -49,17 +49,15 @@ const WORDS = [
   ["wartet", "waiting", "等待中", "待機中", "чака"],
   ["Du spielst in diesem Raum schon in einem anderen Fenster.", "You are already playing in this room in another window.", "你已在另一个窗口中进入这个房间。", "このルームには別のウィンドウですでに参加しています。", "Вече играеш в тази стая в друг прозорец."],
   ["Der Fluss entsteht noch …", "The river is still being built …", "河流还在生成……", "川をまだ作っています……", "Реката още се изгражда …"],
-  // The title card: the settings' labels, the difficulty levels (their lines are the
-  // buttons' tooltips), and the note on the recommended graphics step.
+  // The title card: the difficulty's label and its levels (their lines are the buttons'
+  // tooltips).
   ["Schwierigkeit", "Difficulty", "难度", "難易度", "Трудност"],
-  ["Sprache", "Language", "语言", "言語", "Език"],
   ["Tourist", "Tourist", "游客", "ツーリスト", "Турист"],
   ["Normal", "Normal", "普通", "ノーマル", "Нормално"],
   ["Serious", "Serious", "严肃", "シリアス", "Сериозно"],
   ["Die Gegner treffen kaum, verschluckt wirst du nicht.", "Enemies hardly ever hit you, and nothing swallows you whole.", "敌人几乎打不中你，你也不会被整条吞下。", "敵の攻撃はほとんど当たらず、丸呑みにもされない。", "Враговете почти не те улучват и никой не те поглъща цяла."],
   ["So, wie es gedacht ist.", "The way it is meant to be.", "游戏本来的样子。", "本来の想定どおり。", "Така, както е замислено."],
   ["Mehr Gegner, die härter zuschlagen und mehr aushalten.", "More enemies, who hit harder and take more to sink.", "更多敌人，下手更狠，也更耐打。", "敵が増え、攻撃はより激しく、よりしぶとい。", "Повече врагове, които удрят по-силно и издържат повече."],
-  ["Empfohlen für dieses Gerät.", "Recommended for this device.", "推荐用于此设备。", "このデバイスにおすすめ。", "Препоръчано за това устройство."],
   // (In a co-op room, where a reload starts the fish afresh.)
   ["Ein Wechsel lädt das Spiel neu.", "Switching reloads the game.", "切换会重新加载游戏。", "切り替えるとゲームを読み込み直します。", "Смяната презарежда играта."],
   // The weapon cards' places, on a phone.
