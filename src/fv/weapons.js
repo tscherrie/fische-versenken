@@ -21,6 +21,10 @@
 //   spin     held: the barrels wind up, then a stream of rounds that brakes the fish (minigun)
 //   torpedo  from the belly: a torpedo that speeds up, homes on what is ahead of it and
 //            bursts in a blast (2 tubes, 4 from the postsmolt)
+//   rockets  held: a salvo from the two pods by turns, each rocket on its motor with a smoke
+//            trail, bursting on what it strikes
+//   mines    from the belly: a horned mine dropped behind, hanging where it stops; armed, it
+//            goes off when something swims into it, and a blast sets off the mines near it
 //
 // What it looks like is meant seriously, like the weapons: flesh is left to the splatter
 // (gore.js); the weapons add what a real gun adds -- a muzzle flash held a few frames, powder
@@ -237,6 +241,8 @@ export const WEAPONS = {
     turn: 2.4,
     seek: 0.7,
     sight: (L) => 16 + 8 * L,
+    // (How far it is worth aiming, and on a phone firing, at something.)
+    reach: (L) => 16 + 8 * L,
     fuse: 4,
     direct: 30,
     damage: 60,
@@ -249,6 +255,68 @@ export const WEAPONS = {
     radius: (L) => 0.04 + 0.04 * L,
     tint: [1.4, 1.6, 2],
     flash: [8, 6, 4],
+  },
+  raketen: {
+    title: "Zwillings-Raketenwerfer",
+    mode: "rockets",
+    place: "back",
+    mount: "middle",
+    muzzle: { x: 0.3, bore: 0.03 },
+    // Two pods of four; while the trigger is held, one every `interval`, left and right by
+    // turns (`pods`: how far apart, L).
+    shells: 8,
+    interval: 0.14,
+    reload: 3.4,
+    idleReload: 5,
+    pods: 0.09,
+    // Off the rail slowly, then the motor: up to `top`, wavering a little (`wobble` rad).
+    speed: (L) => 6 + 2 * L,
+    top: (L) => 26 + 8 * L,
+    thrust: 70,
+    wobble: 0.006,
+    reach: (L) => 30 + 10 * L,
+    fuse: 2.5,
+    direct: 25,
+    damage: 40,
+    blast: (L) => 1.1 * L,
+    edge: 0.3,
+    shove: 1.6,
+    stun: 1.5,
+    recoil: 0.08,
+    size: (L) => 0.03 + 0.03 * L,
+    radius: (L) => 0.03 + 0.04 * L,
+    tint: [1.6, 1.3, 1],
+    flash: [9, 6, 3],
+  },
+  minen: {
+    title: "Seeminen",
+    mode: "mines",
+    place: "belly",
+    mount: "belly",
+    // A rack of three; one a click, dropped behind the fish.
+    shells: 3,
+    interval: 0.4,
+    reload: 4.5,
+    idleReload: 6,
+    // How fast it leaves the rack backward (L/s), how soon it is armed (s), how long it
+    // hangs there (s), and how near something must come to set it off (L).
+    drop: 1.2,
+    arm: 0.8,
+    life: 45,
+    trigger: 0.55,
+    // (On a phone it drops one when something is this close.)
+    reach: (L) => 2 * L,
+    direct: 0,
+    damage: 70,
+    blast: (L) => 1.6 * L,
+    edge: 0.3,
+    shove: 2.2,
+    stun: 3,
+    recoil: 0,
+    size: (L) => 0.05 + 0.04 * L,
+    radius: (L) => 0.05 + 0.05 * L,
+    tint: [1, 1, 1],
+    flash: [9, 7, 5],
   },
 };
 
@@ -969,6 +1037,106 @@ export function createFiring(ctx) {
     }
   }
 
+  // rockets: one from the pod whose turn it is, along the aim, slow off the rail; the motor
+  // (rockets(), each step) takes it up to speed.
+  const podSide = new THREE.Vector3();
+  function rocket(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    const a = player.arsenal;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    aimFrom(muzzle, L, aimDir);
+    // (Left and right by turns: the rounds left say which pod.)
+    podSide.crossVectors(aimDir, UP);
+    if (podSide.lengthSq() < 1e-6) podSide.set(1, 0, 0);
+    podSide.normalize().multiplyScalar(((a.ammo[id] ?? 0) % 2 ? 1 : -1) * w.pods * L);
+    muzzle.add(podSide);
+    flight.copy(aimDir).multiplyScalar(w.speed(L));
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = w.direct * damageScale(L);
+    p.radius = w.radius(L);
+    p.life = w.fuse;
+    p.fuse = true;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = 2;
+    p.solid = "rocket";
+    p.scale = L;
+    p.shooter = L;
+    // A puff of the motor's first flame and smoke off the pod.
+    flash(muzzle, aimDir, L, w.flash, 0.6, f.river.s);
+    kick(player, aimDir, w.recoil);
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.rocket) sfx.rocket(L);
+      else sfx.granate(L);
+    }
+  }
+  // Each step: the rockets' motors -- up to speed along their line, wavering a little.
+  function rockets(dt) {
+    for (const p of projectiles.live) {
+      if (p.solid !== "rocket") continue;
+      const w = WEAPONS[p.weapon];
+      const speed = Math.min(w.top(p.shooter), p.velocity.length() + w.thrust * dt);
+      seekDir.copy(p.velocity).normalize();
+      seekDir.x += (random() - 0.5) * w.wobble;
+      seekDir.y += (random() - 0.5) * w.wobble;
+      seekDir.z += (random() - 0.5) * w.wobble;
+      p.velocity.copy(seekDir.normalize()).multiplyScalar(speed);
+    }
+  }
+
+  // mines: one off the rack under the belly, backward; the water stops it and it hangs there.
+  function mine(player, place, w, id) {
+    const f = player.fish;
+    const L = f.length;
+    muzzleOf(player, place, muzzle);
+    models.recoil(player, place);
+    flight.copy(f.heading).multiplyScalar(-w.drop * L);
+    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    p.damage = 0;
+    p.radius = w.radius(L);
+    p.life = w.life;
+    p.fuse = false;
+    p.drag = 3;
+    p.size = w.size(L);
+    p.tint = w.tint;
+    p.stretch = 1;
+    p.solid = "mine";
+    p.scale = L;
+    p.shooter = L;
+    // (A shot does not set it off, nor do the fish it belongs to: something must swim in.)
+    p.ghost = true;
+    stat(id).shots++;
+    if (player.local) {
+      if (sfx.mine) sfx.mine(L);
+      else sfx.reload(id, 0.3);
+    }
+  }
+  // Each step: an armed mine goes off when an enemy comes near enough (at the next step, by
+  // its fuse, so the blast is where the mine is).
+  function mines() {
+    for (const p of projectiles.live) {
+      if (p.solid !== "mine" || p.fuse || p.age < WEAPONS.minen.arm) continue;
+      const reach = WEAPONS.minen.trigger * p.shooter;
+      for (const e of enemies.list) {
+        if (e.dead) continue;
+        bodyEnds(e, tail, head);
+        if (pointSegment(p.position, tail, head, closest) < reach + e.size * 0.1) {
+          detonate(p, 0);
+          break;
+        }
+      }
+    }
+  }
+  // A mine set to go off in `delay` seconds (its fuse: projectiles.js calls onExpire).
+  function detonate(p, delay) {
+    if (p.fuse) return;
+    p.fuse = true;
+    p.life = p.age + delay;
+  }
+
   // pellets: a shell of pellets in a cone, the flash, the kick.
   function shell(player, place, w, id) {
     const f = player.fish;
@@ -1129,6 +1297,8 @@ export function createFiring(ctx) {
       const sunk = damage(owner, e, amount, tmp, closest, id, true, { mode: "lob", blast: true, burst: k < 0.5, point: at, power: 1 - k });
       if (!sunk && k >= 0.5) stun(e, w.stun, true, L);
     }
+    // Mines near it go off too, a moment later each (a chain along a line of them).
+    for (const p of projectiles.live) if (p.solid === "mine" && !p.fuse && p.position.distanceTo(at) < R * 1.6) detonate(p, 0.12 + 0.08 * random());
     // The fish that fired, and any other player in reach: pushed, never hurt.
     for (const p of ctx.players) {
       if (p.down) continue;
@@ -1574,6 +1744,8 @@ export function createFiring(ctx) {
         else if (w.mode === "lob") lob(player, place, w, id);
         else if (w.mode === "blade") cut(player, place, w, id);
         else if (w.mode === "torpedo") launch(player, place, w, id);
+        else if (w.mode === "rockets") rocket(player, place, w, id);
+        else if (w.mode === "mines") mine(player, place, w, id);
         a.fired[id] = 0;
         if (w.shells) a.ammo[id]--;
         if (w.mode === "bolt" && w.heat) {
@@ -1628,6 +1800,8 @@ export function createFiring(ctx) {
     }
     burn(dt);
     home(dt);
+    rockets(dt);
+    mines();
     for (const p of ctx.players) bladeSteps(p, dt);
   }
 
@@ -1662,8 +1836,8 @@ export function createFiring(ctx) {
   function onEnemy(shot, e) {
     flight.copy(shot.velocity).normalize();
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob" || w?.mode === "torpedo") {
-      damage(shot.owner, e, shot.damage, flight, shot.position, shot.weapon, true, { mode: w.mode, direct: true, point: shot.position });
+    if (w?.blast) {
+      if (shot.damage > 0) damage(shot.owner, e, shot.damage, flight, shot.position, shot.weapon, true, { mode: w.mode, direct: true, point: shot.position });
       blast(shot.owner, shot.position, w, shot.weapon, shot.shooter, e);
       return;
     }
@@ -1724,7 +1898,7 @@ export function createFiring(ctx) {
   // few beads); fire and grenades have their own endings.
   function onGround(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob" || w?.mode === "torpedo") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.blast) return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
     const L = shot.shooter;
     const p = shot.position;
@@ -1738,7 +1912,7 @@ export function createFiring(ctx) {
   // Off a stone: the same puff, and a pellet ricochets with a spark.
   function onStone(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob" || w?.mode === "torpedo") return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.blast) return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
     const L = shot.shooter;
     const p = shot.position;
@@ -1758,7 +1932,7 @@ export function createFiring(ctx) {
   }
   function onExpire(shot) {
     const w = WEAPONS[shot.weapon];
-    if (w?.mode === "lob" || w?.mode === "torpedo") blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    if (w?.blast) blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
   }
 
   // ---- Each step, after the shots have flown: what trails behind them. A grenade draws a
@@ -1766,8 +1940,15 @@ export function createFiring(ctx) {
   // so its arc stays in the water a moment and can be followed.
   function trails(dt) {
     for (const p of projectiles.live) {
-      if (!p.solid) continue;
+      if (!p.solid || p.solid === "mine") continue;
       const L = p.scale;
+      if (p.solid === "rocket") {
+        // The motor's smoke: grey puffs left along the way, swelling and hanging.
+        for (let k = 0; k < 3; k++) {
+          tmp.lerpVectors(p.last, p.position, (k + look()) / 3);
+          puff(POWDER, tmp.x, tmp.y, tmp.z, 0, 0.05 * L, 0, 0.06 * L + 0.015, 3.5, 1.4 + 0.6 * look(), 0.4, 3, 0.1 * L, p.river.s);
+        }
+      }
       for (let k = 0; k < 4; k++) {
         const u = (k + look()) / 4;
         tmp.lerpVectors(p.last, p.position, u);
@@ -1806,6 +1987,14 @@ export function createFiring(ctx) {
         continue;
       }
       fx.add(p.position.x, p.position.y, p.position.z, size, r * fade, g * fade, b * fade, p.stretch, v.x, v.y, v.z);
+    }
+    // The rockets' motors: a hot point at the tail.
+    for (const p of projectiles.live) {
+      if (p.solid !== "rocket") continue;
+      const v = p.velocity;
+      const k = 0.5 * p.scale;
+      tmp.copy(v).normalize();
+      fx.add(p.position.x - tmp.x * 0.05 * k, p.position.y - tmp.y * 0.05 * k, p.position.z - tmp.z * 0.05 * k, 0.12 * k, 6, 3, 1, 3, v.x, v.y, v.z);
     }
     // The lasers' beams.
     if (camera && beams.size) {

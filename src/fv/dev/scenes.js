@@ -87,6 +87,11 @@ export const SCENES = [
   // the back, which only cuts what comes close) homing on a trout further off.
   { name: "w-minigun", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "minigun", seconds: 5, pictures: [0.3, 1.2, 3.5], spawn: [["minnow", 4, -1], ["minnow", 4.5, -0.4], ["minnow", 4, 0.3], ["minnow", 4.6, 0.9], ["minnow", 5, -0.8], ["minnow", 5.2, 0], ["minnow", 5, 0.7], ["trout", 7, 0]] },
   { name: "w-torpedo", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "torpedo", seconds: 6, pictures: [0.6, 1.4, 4], spawn: [["trout", 9, 0.6], ["trout", 10, -1]] },
+  // The postsmolt's pair: a salvo of rockets into a group of trout, and sea mines dropped
+  // behind (the katana on the back) with a pack circling through them.
+  { name: "w-raketen", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "raketen", seconds: 5, pictures: [0.5, 1.2, 3.5], spawn: [["trout", 9, -1], ["trout", 10, 0], ["trout", 9, 1.2], ["troutParr", 7, 0.3]] },
+  { name: "w-minen-allein", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "minen", seconds: 8, pictures: [2, 6], spawn: [["troutParr", 4, -1], ["troutParr", 4.5, 0], ["troutParr", 4, 1], ["troutParr", 5, -0.5], ["troutParr", 5, 0.5]] },
+  { name: "w-minen", stage: "postsmolt", at: 11790, season: "spring", hour: 12, weapon: "katana", belly: "minen", seconds: 8, pictures: [1, 4, 7], spawn: [["troutParr", 4, -1], ["troutParr", 4.5, 0], ["troutParr", 4, 1], ["troutParr", 5, -0.5], ["troutParr", 5, 0.5]] },
   { name: "w-flammen-seite", stage: "parr", at: 2500, season: "summer", hour: 15, weapon: "flammen", seconds: 3, side: [1.0, 0.5, 1.0, 1.8], pictures: [0.4, 1.2, 2.6], spawn: [["troutParr", 2.2, -0.3], ["troutParr", 2.5, 0.2], ["troutParr", 2.8, 0]] },
   // The phone's auto-fire (on a computer): the gun fires only while the aim has an enemy in
   // reach, the katana only with one in front within its reach.
