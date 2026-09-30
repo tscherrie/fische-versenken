@@ -433,6 +433,17 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
       if (!g || !frameOf(e, g, body)) return null;
       return out.set(p[0], p[1], p[2]).applyMatrix4(body);
     },
+    // The line of `e`'s bore as its gun points now, into `from` (a little behind the muzzle)
+    // and `to` (the muzzle), in the world: the look scenes check the rounds fly along it.
+    aimLine(e, from, to) {
+      const g = gear[e.kind];
+      if (!g?.muzzles || !frameOf(e, g, body)) return false;
+      const st = stateOf(e);
+      const m = g.muzzles[st.shot % g.muzzles.length];
+      onGun(g, st, m, to).applyMatrix4(body);
+      onGun(g, st, [m[0] - 0.1, m[1], m[2]], from).applyMatrix4(body);
+      return true;
+    },
     // Copies drawn per kind this frame, and triangles in all (for the tests).
     counts: () => Object.fromEntries(Object.entries(gear).map(([kind, g]) => [kind, g.mesh.visible ? g.n : 0])),
     triangles: () => Object.fromEntries(Object.entries(gear).map(([kind, g]) => [kind, g.triangles])),

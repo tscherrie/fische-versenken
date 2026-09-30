@@ -1,4 +1,4 @@
-// The enemies' weapons as solid things, strapped on the way the salmon's are: black webbing
+// The enemies' weapons as solid things, strapped on the way the salmon's are: webbing straps
 // round the body, a plate or a clamp where the gun sits, and the gun itself -- the fixed
 // weapon of each kind (kinds.js, `weapon.id`), modelled low-poly from its real shape in real
 // materials, far too big for the animal that carries it. Nothing here may look like a toy:
@@ -246,8 +246,9 @@ function knife(k, s, { edgeUp = false, bare = false } = {}) {
   const flip = edgeUp ? -1 : 1;
   const P = (x, y) => [x * s, flip * y * s];
   const blade = [P(0, -0.012), P(0.17, -0.013), P(0.215, -0.006), P(0.235, 0.002), P(0.2, 0.006), P(0.165, 0.011), P(0, 0.012)];
-  // (A throwing knife is bare satin steel; a fighting knife's blade is coated dark.)
-  if (bare) k.paint(0x7c8288, ZONE.alu);
+  // (A throwing knife is bare satin steel, light enough to be told from the dark holster it
+  // lies on; a fighting knife's blade is coated dark.)
+  if (bare) k.paint(0xa4aab0, ZONE.alu);
   else k.paint(0x40444a, ZONE.parker);
   k.plate(blade, -t, t);
   // The ground edge: a bright strip down the belly and up the clip.
@@ -549,8 +550,8 @@ function prod(k, s) {
   return [[S1(0.42), 0, 0]];
 }
 
-// A machete: a long black blade widening toward its tip, a bright ground edge along its belly,
-// a riveted rubber grip with a lanyard hole. Edge down, 0.46 long.
+// A machete: a long blade of satin steel widening toward its tip, its spine coated black, a
+// bright ground edge along its belly, a riveted rubber grip. Edge down, 0.46 long.
 function machete(k, s) {
   const S1 = (v) => v * s;
   const t = S1(0.0024);
@@ -565,7 +566,9 @@ function machete(k, s) {
     [0.3, 0.013],
     [0, 0.012],
   ].map(([x, y]) => [S1(x), S1(y)]);
-  k.paint(0x5a5e62, ZONE.steel);
+  // (Satin, not bare steel: a metal that only mirrors the dark water round it reads as a
+  // black paddle.)
+  k.paint(0x868b90, ZONE.alu);
   k.plate(blade, -t, t);
   // The black-coated spine, and the ground edge bright along the belly.
   k.paint(0x2e3033, ZONE.parker);
@@ -608,8 +611,8 @@ function machete(k, s) {
 }
 
 // A heavy revolver (a .500's frame): a long barrel with its underlug and ribbed top, the
-// cylinder (the moving part: it turns a sixth with every shot), the frame, a hammer and the
-// rubber grip. 0.42 long; the cylinder's axis at y = 0.
+// cylinder (the moving part: five chambers, it turns a fifth with every shot), the frame, a
+// hammer and the rubber grip. 0.42 long; the cylinder's axis at y = 0.
 function revolver(k, s, cylinder) {
   const S1 = (v) => v * s;
   const bore = S1(0.011);
@@ -867,9 +870,12 @@ function star(k, r) {
 }
 
 // An aircraft bomb as the gannet's fall (enemies.js, a unit long, nose first along +x): the
-// olive body, the rounded nose, the tapered tail with its four fins, the yellow band.
+// olive body, the rounded nose, the tapered tail with its four fins, the yellow band -- in the
+// colours of the bomb that falls (enemies.js, bombGeometry: linear), so the one that leaves
+// the rack is the one that was hanging there.
+const DRAB = [0.16, 0.17, 0.1];
 function bomb(k, L) {
-  k.paint(0x292b1b, ZONE.paint);
+  k.paint(DRAB, ZONE.paint);
   k.lathe(
     [
       [-0.3, 0.1],
@@ -890,9 +896,9 @@ function bomb(k, L) {
     ].map(([x, r]) => [x * L, r * L]),
     10,
   );
-  k.paint(0xa08418, ZONE.paint);
+  k.paint([0.5, 0.42, 0.08], ZONE.paint);
   k.cylinder(0.04 * L, 0.07 * L, 0.132 * L, 0.132 * L, 12);
-  k.paint(0x22241a, ZONE.paint);
+  k.paint(shade(DRAB, 0.75), ZONE.paint);
   for (let i = 0; i < 4; i++)
     k.with(RX((i / 4) * TAU + Math.PI / 4), () =>
       k.plate(
@@ -906,9 +912,9 @@ function bomb(k, L) {
         0.006 * L,
       ),
     );
-  // The suspension lug on top.
+  // The suspension lug on top, standing along the bomb.
   k.paint(C.steel, ZONE.steel);
-  k.torus(0.03 * L, 0.008 * L, { major: 8, minor: 4 });
+  k.with(M(T(0, 0.155 * L, 0), RY(Math.PI / 2)), () => k.torus(0.03 * L, 0.008 * L, { major: 8, minor: 4 }));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1002,41 +1008,60 @@ function gearKing() {
   };
 }
 
-// The minnow: three razor blades on a strap round the shoal fish, two standing out from its
-// flanks like fins with their edges forward, one up in front of the dorsal fin.
+// The minnow: three double-edged razor blades on a strap round the shoal fish, each gripped
+// by its short end in a steel clip on the strap and standing straight out of the skin like a
+// fin of steel, a long edge forward and swept back a little: two out of its lower flanks, one
+// up in front of the dorsal fin. (Laid flat on the skin they would read as tags; standing out
+// edge first they read as blades.) Dozens of these swim at once: a few flat plates, nothing
+// round.
 function gearMinnow() {
   const S = shape("minnow");
   const k = new Kit({ part: PART.mount, detail: false });
   strap(k, S, 0.14, { w: 0.014, n: 12 });
+  // A blade 0.12 out of the skin and 0.05 across, its corners clipped.
+  const W = 0.025,
+    L = 0.12,
+    c = 0.006;
   const bladeShape = [
-    [-0.045, -0.02],
-    [0.045, -0.02],
-    [0.05, -0.015],
-    [0.05, 0.015],
-    [0.045, 0.02],
-    [-0.045, 0.02],
-    [-0.05, 0.015],
-    [-0.05, -0.015],
+    [-W, 0.004],
+    [W, 0.004],
+    [W, L - c],
+    [W - c, L],
+    [-W + c, L],
+    [-W, L - c],
   ];
-  const blade = (o, n, lean) => {
-    // Its frame: x along the body (tipped forward by `lean`), y out of the skin, z round.
-    k.push(M(frame(o, [1, 0, 0], n), RZ(lean)));
+  const blade = (o, n, sweep) => {
+    // Its frame: x along the body, y out of the skin, z round; the outer end swept back.
+    k.push(M(frame(o, [1, 0, 0], n), RZ(sweep)));
     k.paint(PALETTE.darkSteel, ZONE.parker);
-    k.box(-0.012, 0.012, 0, 0.01, -0.009, 0.009);
-    k.with(M(T(0, 0.03, 0), RX(Math.PI / 2)), () => {
-      k.paint(EDGE, ZONE.alu);
-      k.plate(bladeShape, -0.0012, 0.0012);
-      k.paint(0x2e3033, ZONE.parker);
-      k.box(-0.03, 0.03, -0.0035, 0.0035, -0.0014, 0.0014);
-    });
+    k.bevelBox(-W - 0.004, W + 0.004, -0.002, 0.014, -0.0045, 0.0045, 0.002);
+    // Grey steel, its two long edges ground bright (a blade bright all over reads as paper).
+    k.paint(0x6c7278, ZONE.alu);
+    k.plate(bladeShape, -0.0011, 0.0011);
+    k.paint(EDGE, ZONE.alu);
+    for (const s of [-1, 1])
+      k.plate(
+        [
+          [s * W, 0.004],
+          [s * (W - 0.0045), 0.004],
+          [s * (W - 0.0045), L - c],
+          [s * W, L - c],
+        ],
+        -0.0012,
+        0.0012,
+        { sides: false },
+      );
+    // The slot down its middle, dark through the steel.
+    k.paint(0x2e3033, ZONE.parker);
+    k.box(-0.0025, 0.0025, 0.03, L - 0.025, -0.0013, 0.0013);
     k.pop();
   };
   for (const side of [-1, 1]) {
-    const o = S.off(0.14, 0.05, side, 0.002);
-    blade(o.p, o.n, 0);
+    const o = S.off(0.14, -0.25, side, 0.002);
+    blade(o.p, o.n, 0.45);
   }
   const top = S.off(0.14, 1, 1, 0.002);
-  blade(top.p, top.n, -0.35);
+  blade(top.p, top.n, 0.45);
   return { frame: "fish", kit: k, pivot: [0.14, 0, 0], muzzles: null, melee: "static" };
 }
 
@@ -1293,14 +1318,18 @@ function gearGannet() {
     k.loft([ring(-0.1, 0.01), ring(-0.1, 0.05), ring(0.1, 0.05), ring(0.1, 0.01)], { crease: 0.5 });
   }
   const L = 1.48;
-  const y = -0.52,
+  // (Under the wing roots, as far out as enemies.js lets them go from, and hung low: right
+  // under the rack a bomb seen from below merges with it into one dark bar.)
+  const y = -0.7,
     z = 0.74;
   for (const side of [1, -1]) {
-    // The rack: a steel beam under the wing root from strap to strap, with its sway braces.
+    // The rack: a steel beam under the wing root from strap to strap; the bomb hangs from it
+    // by its lug, held still by two pairs of sway braces on its shoulders.
     k.paint(PALETTE.darkSteel, ZONE.parker);
-    k.bevelBox(-0.7, 1.0, y + 0.2, y + 0.3, side * z - 0.06, side * z + 0.06, 0.02);
+    k.bevelBox(-0.7, 1.0, -0.42, -0.3, side * z - 0.06, side * z + 0.06, 0.02);
     k.paint(C.steel, ZONE.steel);
-    for (const x of [-0.25, 0.45]) for (const s2 of [-1, 1]) k.tube([[x, y + 0.22, side * z], [x + s2 * 0.12, y + 0.12, side * z + s2 * 0.08]], 0.018, 4);
+    k.box(0.02, 0.18, -0.46, -0.4, side * z - 0.02, side * z + 0.02);
+    for (const x of [-0.3, 0.45]) for (const s2 of [-1, 1]) k.tube([[x, -0.41, side * z + s2 * 0.04], [x, y + 0.14, side * z + s2 * 0.14]], 0.02, 4);
     // Right first (slot 1), then left (slot 2): the gannet lets the left one go first.
     k.item(side > 0 ? 0 : 1, 2);
     k.with(T(0.1, y, side * z), () => bomb(k, L));

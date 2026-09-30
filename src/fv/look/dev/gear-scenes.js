@@ -45,7 +45,69 @@ const VIEWS = {
   untenVorn: { eye: [0.55, -0.35, 0.35] },
 };
 
+// The guns in a real fight (the scene's `spawn`, nobody firing back): at every shot, how far
+// the round's way is off the line of the bore that fired it, and whether it left from the
+// muzzle. A gun pointing more than 12 degrees off on the mean is an error in the report.
+async function aimCheck(ctx, record) {
+  const { salmon, extreme, scene, errors } = ctx;
+  const { THREE } = salmon;
+  const combat = extreme.combat;
+  const foes = window.fvModels?.foes;
+  const from = new THREE.Vector3(),
+    to = new THREE.Vector3(),
+    bore = new THREE.Vector3(),
+    way = new THREE.Vector3();
+  const shots = [];
+  const fire = combat.hostile.fire;
+  combat.hostile.fire = function (round) {
+    const e = round.source;
+    if (e && foes.aimLine(e, from, to)) {
+      bore.subVectors(to, from).normalize();
+      way.copy(round.velocity).normalize();
+      shots.push({ kind: e.kind, off: +((Math.acos(Math.min(1, Math.max(-1, bore.dot(way)))) * 180) / Math.PI).toFixed(1), fromMuzzle: +round.position.distanceTo(to).toFixed(4) });
+    }
+    return fire.apply(this, arguments);
+  };
+  combat.fire(false);
+  // (Frames drawn as the game draws them: the guns ease toward their aim frame by frame.)
+  await salmon.run(scene.seconds ?? 10, () => extreme.frame(1 / 30));
+  combat.hostile.fire = fire;
+  extreme.frame(1 / 30);
+  await salmon.capture(`${ctx.set}/${scene.name}-ende`, 1280, 720);
+  const byKind = {};
+  for (const s of shots) (byKind[s.kind] ??= []).push(s);
+  for (const [kind, list] of Object.entries(byKind)) {
+    // (Shotguns spread their pellets: each pellet is off by its spread as well.)
+    const mean = list.reduce((a, s) => a + s.off, 0) / list.length;
+    const worstMuzzle = Math.max(...list.map((s) => s.fromMuzzle));
+    record.push({ label: `ziel-${kind}`, pellets: list.length, meanDeg: +mean.toFixed(1), maxDeg: Math.max(...list.map((s) => s.off)), worstMuzzle });
+    if (mean > 12) errors.push(`${kind}: its rounds fly ${mean.toFixed(1)} degrees off its bore on the mean`);
+    if (worstMuzzle > 1e-3) errors.push(`${kind}: a round left ${worstMuzzle} from its muzzle`);
+  }
+  if (!shots.length) errors.push("no enemy fired");
+  // What placing the gear costs the script, a frame: with this fight, and with a crowd of the
+  // small armed fish (hundreds may come in a long game; the crowds hold 24 of a kind).
+  const cost = (n = 300) => {
+    const list = combat.enemies.list;
+    const t = performance.now();
+    for (let i = 0; i < n; i++) foes.update(list);
+    return +((performance.now() - t) / n).toFixed(4);
+  };
+  record.push({ label: "update", enemies: combat.enemies.list.length, ms: cost() });
+  const spot = {};
+  const { fish } = salmon;
+  for (const kind of ["minnow", "stickleback", "herring", "mackerel", "perch", "troutParr"])
+    for (let i = 0; i < 24; i++) {
+      const p = fish.position.clone().add(new THREE.Vector3((i % 6) - 2.5, 0, Math.floor(i / 6) - 1.5).multiplyScalar(0.8));
+      salmon.course.locate(p.x, p.z, fish.river.s, spot);
+      combat.enemies.spawn(kind, spot.s, spot.u, fish.position.y);
+    }
+  extreme.frame(1 / 30);
+  record.push({ label: "update-crowd", enemies: combat.enemies.list.length, drawn: foes.counts(), ms: cost() });
+}
+
 async function look(ctx, record) {
+  if (ctx.scene.aimCheck) return aimCheck(ctx, record);
   const { salmon, extreme, scene } = ctx;
   const { fish, THREE } = salmon;
   const combat = extreme.combat;

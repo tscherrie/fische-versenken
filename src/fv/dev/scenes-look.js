@@ -1724,4 +1724,7 @@ LOOK_SCENES.push(
   { name: "waffen-reiher", look: true, gear: ["heron"], stage: "parr", at: 1800, season: "summer", hour: 14 },
   { name: "waffen-koenig", look: true, gear: ["king"], stage: "yearling", at: 690, season: "summer", hour: 13 },
   { name: "waffen-larven", look: true, gear: ["dragonflyLarva", "beetleLarva"], stage: "alevin", at: 24, season: "spring", hour: 11 },
+  // A fight with the gunners of the middle river round a parr that does not fire back: every
+  // round must leave its muzzle and fly along its bore.
+  { name: "waffen-ziel", look: true, gear: [], aimCheck: true, seconds: 10, stage: "parr", at: 12500, season: "summer", hour: 14, spawn: [["perch", 5, -1.2], ["perch", 5.5, 1], ["pike", 9, 1.5], ["trout", 8, -2], ["bullhead", 4, 0.8], ["grayling", 7, 0]] },
 );
