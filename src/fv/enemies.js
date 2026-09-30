@@ -21,6 +21,7 @@ const BIRD_MODELS = { kingfisher: kingfisherGeometry, merganser: merganserGeomet
 
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
+const ACROSS = new THREE.Vector3(0, 0, 1);
 const TAU = Math.PI * 2;
 // How long a dead enemy stays before it goes (the look fades it out on the same beat).
 export const CORPSE_SECONDS = 40;
@@ -533,11 +534,11 @@ export function createEnemies(scene, { random }) {
       return spec.cruise * 0.5;
     }
     const gun = spec.weapon?.kind === "ranged" ? spec.weapon : null;
-    // A bird under water (the goosander) holds its breath `air` seconds, then goes up for a
-    // few breaths at the surface -- but not in the middle of a burst.
+    // A bird under water (the goosander) or an otter holds its breath `air` seconds, then goes
+    // up for a few breaths at the surface -- but not in the middle of a burst or a blow.
     if (spec.air) {
       e.air = (e.air ?? spec.air) - dt;
-      if (e.air <= 0 && e.mode !== "aim" && e.mode !== "fire" && e.mode !== "breathe") {
+      if (e.air <= 0 && e.mode !== "aim" && e.mode !== "fire" && e.mode !== "coil" && e.mode !== "strike" && e.mode !== "breathe") {
         e.mode = "breathe";
         e.t = 0;
       }
@@ -601,12 +602,18 @@ export function createEnemies(scene, { random }) {
         break;
       }
       case "breathe": {
-        // Up to the surface, a few breaths there, and down again.
-        want.set(to.x * 0.2, 1, to.z * 0.2);
-        steer(e, want, rate, dt, 1.2);
+        // Up to the surface, a few breaths there, and down again: up steeply and briskly, its
+        // breath being out; up there it lies along the surface, its nose a little raised out
+        // of the water, paddling slowly.
         locate(e.position.x, e.position.z, e.river.s, e.river);
         const up = e.position.y > level(e.river.s) - e.size * 0.2;
-        speed = spec.cruise * (up ? 0.3 : 1.2);
+        if (up) want.set(e.heading.x, 0, e.heading.z).normalize().setY(0.15);
+        else want.set(to.x, 0, to.z).normalize().multiplyScalar(0.4).setY(1);
+        steer(e, want, rate, dt, 1.2);
+        speed = up ? spec.cruise * 0.3 : spec.chase * 0.6;
+        // (Up there it comes the last bit of the way to lie in the surface: update() holds it
+        // no higher than that.)
+        if (up) e.position.y += e.size * 0.3 * dt;
         if (!up) e.t = 0;
         else if (e.t > 3) {
           e.air = spec.air;
@@ -667,9 +674,10 @@ export function createEnemies(scene, { random }) {
         break;
       }
       case "coil": {
-        // The tell: it stops and draws itself up. Then it goes.
+        // The tell: it stops and draws itself up. Then it goes. (Winding up to swing a heavy
+        // blade, it backs off a little as it rears: the blow wants room.)
         steer(e, to, rate * 1.5, dt);
-        speed = spec.cruise * 0.15;
+        speed = spec.weapon?.rear ? -spec.cruise * 0.25 : spec.cruise * 0.15;
         if (untouchable) {
           e.mode = spec.behaviour === "ambush" ? "lurk" : "approach";
           break;
@@ -695,13 +703,13 @@ export function createEnemies(scene, { random }) {
         break;
       }
       case "recover": {
-        // Off to one side before the next go.
+        // Off to one side before the next go (for `rest` seconds, where its kind gives them).
         want.copy(to).multiplyScalar(-1);
         want.x += e.orbit * to.z;
         want.z -= e.orbit * to.x;
         steer(e, want, rate * 0.8, dt);
         speed = spec.cruise * 1.2;
-        const rest = spec.behaviour === "pack" ? 0.6 : spec.behaviour === "ambush" ? 0.9 : 1.6;
+        const rest = spec.rest ?? (spec.behaviour === "pack" ? 0.6 : spec.behaviour === "ambush" ? 0.9 : 1.6);
         if (e.t > rest) {
           e.mode = spec.behaviour === "ambush" ? "lurk" : spec.behaviour === "pack" ? "orbit" : "approach";
           e.t = 0;
@@ -719,6 +727,8 @@ export function createEnemies(scene, { random }) {
   function drift(e, dt, time, ground) {
     e.corpse += dt;
     e.rolled = Math.min(Math.PI, e.rolled + dt * 3);
+    // (A head reared for a blow sinks back as it dies.)
+    if (e.rear) e.rear *= Math.exp(-dt * 4);
     e.speed *= Math.exp(-dt * 3);
     current(e.river.s, e.river.u, e.position.y, flow, time, true);
     e.position.x += (flow.vx * 0.8 + e.heading.x * e.speed) * dt;
@@ -798,7 +808,8 @@ export function createEnemies(scene, { random }) {
         // A crawler walks on whatever lies there: the bed, the stones, the gravel -- until its
         // prey is close above it: then it swims up at it (the larvae do, in jerks).
         const low = (e.spec.crawls && hooks.ground ? hooks.ground.height(e.position.x, e.position.z, floor) + e.size * 0.08 : floor + e.size * 0.12);
-        const high = Math.max(low, top - e.size * 0.1);
+        // (Breathing, it lies higher: its back out of the water, its nose over it.)
+        const high = Math.max(low, top - e.size * (e.mode === "breathe" ? 0.06 : 0.1));
         let climbing = false;
         if (e.spec.crawls && e.target) {
           const fp = e.target.fish.position;
@@ -820,6 +831,17 @@ export function createEnemies(scene, { random }) {
         e.phase = (e.phase + dt * TAU * beat) % TAU;
         const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;
         e.gape += (wantGape - e.gape) * (1 - Math.exp(-dt * 12));
+        // A heavy blade is swung from high up: as it winds up, its bearer rears its head
+        // further and further (so the wind-up can be seen coming, and how far along it is),
+        // then brings it down hard with the blow -- for a moment past level, whether the blow
+        // landed at once or not (`e.blow`, seconds left of it) -- and lets it come back after.
+        // `e.rear` pitches the body in pose(), and whatever is strapped to it with it.
+        const lift = e.spec.weapon?.rear;
+        if (lift) {
+          e.blow = e.mode === "strike" ? 0.3 : Math.max(0, (e.blow ?? 0) - dt);
+          const wantRear = e.mode === "coil" ? lift * Math.min(1, e.t / e.spec.coil) : e.blow > 0 ? -0.5 * lift : 0;
+          e.rear = (e.rear ?? 0) + (wantRear - (e.rear ?? 0)) * (1 - Math.exp(-dt * (e.blow > 0 ? 16 : 8)));
+        }
       }
       // (A dead fish's fins hang still.)
       if (!e.dead) e.finPhase = (e.finPhase + dt * TAU * 1.4) % TAU;
@@ -860,6 +882,8 @@ export function createEnemies(scene, { random }) {
     axisY.crossVectors(axisZ, e.heading).normalize();
     basis.makeBasis(e.heading, axisY, axisZ);
     quaternion.setFromRotationMatrix(basis);
+    // (Reared for a blow: the nose up about the body's own across, `e.rear` radians.)
+    if (e.rear) quaternion.multiply(roll.setFromAxisAngle(ACROSS, e.rear));
     if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled + (e.dead ? 0.12 * Math.sin(e.corpse * 1.7 + e.id) : 0)));
     const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
     const k = (e.size / MODEL_LENGTH) * fade * (e.shown ?? 1);
@@ -952,9 +976,15 @@ export function createEnemies(scene, { random }) {
     e.hp -= damage;
     e.lastHitBy = by;
     e.hitAt = clockNow;
-    // (A hit makes it flinch, but never cuts short a longer stun.)
-    e.stagger = Math.max(e.stagger ?? 0, 0.12);
-    if (dir) e.position.addScaledVector(dir, Math.min(0.3, 0.04 * e.size));
+    // (A hit makes it flinch, but never cuts short a longer stun. A heavy beast -- `steady`,
+    // 0 to 1 -- is hardly pushed back, and under a stream of hits it flinches only now and
+    // then and pushes on through in between, where a fish would be held off for good.)
+    const steady = e.spec.steady ?? 0;
+    if (!steady || clockNow - (e.flinchAt ?? -Infinity) > 0.6 * steady) {
+      e.flinchAt = clockNow;
+      e.stagger = Math.max(e.stagger ?? 0, 0.12);
+    }
+    if (dir) e.position.addScaledVector(dir, Math.min(0.3, 0.04 * e.size) * (1 - steady));
     // Woken: an ambusher hit on the bed goes for whoever shot it.
     if (e.mode === "lurk") {
       e.mode = "approach";

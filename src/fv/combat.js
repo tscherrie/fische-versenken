@@ -369,7 +369,7 @@ export function createCombat(game) {
     } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, Math.max(w.reach(L), 4 * L));
     fireWeapons(local, dt);
     enemies.hpScale = difficulty.level.hp;
-    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count });
+    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count, dark: 1 - (game.daylight?.state?.daylight ?? 1) });
     gravel.update(dt, { fish, enemies, players: players.length });
     bosses.update(dt, {
       fish,
@@ -457,10 +457,12 @@ export function createCombat(game) {
   // a thin red laser line through the water (by day as well, faintly: the tell before the
   // shot). Only near the camera, and not for the birds over the water.
   const EYE = [1.1, 1.3, 0.45];
+  const EYES_AT = [0.3, 0.04, 0.055];
   const LASER = [3.2, 0.25, 0.15];
   const LASER_CORE = [4, 1.2, 1];
   const eyeAt = new THREE.Vector3();
   const across = new THREE.Vector3();
+  const head = new THREE.Vector3();
   const aimAt = new THREE.Vector3();
   const muzzleAt = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
@@ -474,13 +476,20 @@ export function createCombat(game) {
         across.crossVectors(e.heading, UP);
         if (across.lengthSq() < 1e-6) across.set(0, 0, 1);
         across.normalize();
+        // (The eyes go with the head: up, when it rears for a blow, as the otter does.)
+        head.copy(e.heading);
+        if (e.rear) head.applyAxisAngle(across, e.rear);
         // (Brighter the more it faces the eye: a mirror throws the light back the way it came.)
-        const facing = Math.max(0, -e.heading.dot(eyeAt.subVectors(e.position, camera.position).normalize()));
+        const facing = Math.max(0, -head.dot(eyeAt.subVectors(e.position, camera.position).normalize()));
         const k = night * (0.35 + 0.65 * facing) * (1 - d / 30);
         const size = Math.max(0.012 * e.size, 0.004 * d);
+        // (Where its eyes are, in lengths ahead of its middle, up and to either side: a kind
+        // whose head is not a fish's says so itself, `eyes` in kinds.js.)
+        const [ahead, up, aside] = e.spec.eyes ?? EYES_AT;
         for (const side of [-1, 1]) {
-          eyeAt.copy(e.position).addScaledVector(e.heading, 0.3 * e.size).addScaledVector(across, side * 0.055 * e.size);
-          eyeAt.y += 0.04 * e.size;
+          eyeAt.copy(e.heading).multiplyScalar(ahead * e.size).addScaledVector(UP, up * e.size).addScaledVector(across, side * aside * e.size);
+          if (e.rear) eyeAt.applyAxisAngle(across, e.rear);
+          eyeAt.add(e.position);
           fx.add(eyeAt.x, eyeAt.y, eyeAt.z, size, EYE[0] * k, EYE[1] * k, EYE[2] * k, 1);
         }
       }

@@ -36,6 +36,14 @@ export const SCENES = [
   // The heron in the shallows with its harpoon gun: once taking it, once against the laser.
   { name: "reiher", stage: "fingerling", at: 1500, season: "summer", hour: 14, fire: false, spawn: [["heron", 6, 1]] },
   { name: "reiher-laser", stage: "parr", at: 1800, season: "summer", hour: 14, spawn: [["heron", 6, 1]] },
+  // The otter with its machete, in the upper river: it comes fast, backs off and rears for
+  // each blow (the tell), hacks, and now and then goes up for air -- once taking a parr (no
+  // shooting back), once against the laser, and once at night, to see that it can be made
+  // out in the dark. (`watch`: the fight watched that many seconds; `modes`: a picture the
+  // first time it winds up, strikes, and lies at the surface for air.)
+  { name: "otter", stage: "parr", at: 3000, season: "summer", hour: 14, fire: false, watch: 24, side: true, modes: ["coil", "strike", "breathe"], spawn: [["otter", 14, 0]] },
+  { name: "otter-laser", stage: "parr", at: 3000, season: "summer", hour: 14, watch: 10, side: true, modes: ["coil", "strike"], spawn: [["otter", 14, 0]] },
+  { name: "otter-nacht", stage: "parr", at: 3000, season: "summer", hour: 1, fire: false, watch: 8, modes: ["coil"], spawn: [["otter", 14, 0]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
@@ -277,6 +285,7 @@ async function runScene(salmon, extreme, query) {
   if (scene.splatter) return splatter(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.probe) return probe(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.rounds) return roundsCheck(salmon, set, scene, list, index, extra, errors);
+  if (scene.watch) return watch(salmon, extreme, set, scene, list, index, extra, errors, aimAt);
   aimAt();
   await salmon.run(0.4, aimAt);
   const record = [];
@@ -310,6 +319,133 @@ async function runScene(salmon, extreme, query) {
   note("5 s");
   await picture(`${scene.name}-3`);
   combat.fire(false);
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
+// A fight watched longer than a plain scene's five seconds (`watch`: how many), for an enemy
+// whose plan takes that long to play out: the fish faces the nearest enemy and fires or not
+// (`fire`), as in a plain scene, and nobody else comes (the director is held). There is a
+// note every second, a picture half a second in and one at the end, and one the first time
+// an enemy is in each of `modes`: winding up ("coil", most of the way through), striking
+// ("strike", a tenth of a second into the blow), or breathing ("breathe", once it is up at
+// the surface). With `side` the camera is beside the fight instead of behind the fish.
+async function watch(salmon, extreme, set, scene, list, index, extra, errors, aimAt) {
+  const { fish, course, THREE } = salmon;
+  const combat = extreme.combat;
+  combat.director.hold(1e6);
+  const dt = 1 / 30;
+  const record = [];
+  let t = 0,
+    strikes = 0,
+    breaths = 0,
+    blows = 0,
+    minEnergy = fish.energy,
+    lastEnergy = fish.energy;
+  const note = (label) =>
+    record.push({
+      label,
+      t: +t.toFixed(2),
+      energy: +fish.energy.toFixed(3),
+      kills: combat.players[0].kills,
+      dead: extreme.game.now.dead > 0,
+      deaths: combat.deaths.map((d) => `${d.by}@${d.t}`),
+      threats: salmon.life.hunters.threats(fish, []).map((x) => `${x.kind}:${x.level}`),
+      enemies: combat.enemies.list.filter((e) => !e.neutral).map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, air: e.air === undefined ? null : +e.air.toFixed(1), rear: +(e.rear ?? 0).toFixed(2), d: +e.position.distanceTo(fish.position).toFixed(2), under: +(course.level(e.river.s) - e.position.y).toFixed(2) })),
+    });
+  // The camera beside the fight: level with the middle between the fish and the nearest
+  // enemy (a dead one too, to see where it goes), off to whichever side the water is deeper,
+  // far enough back to have both in the picture, a little above them and never out of the
+  // water or into the bed.
+  const mid = new THREE.Vector3(),
+    across = new THREE.Vector3(),
+    eye = new THREE.Vector3(),
+    best = new THREE.Vector3();
+  const spot = {};
+  const beside = () => {
+    if (!scene.side) return;
+    const others = combat.enemies.list.filter((e) => !e.neutral);
+    if (!others.length) return;
+    const e = others.reduce((a, b) => (b.position.distanceTo(fish.position) < a.position.distanceTo(fish.position) ? b : a));
+    mid.addVectors(fish.position, e.position).multiplyScalar(0.5);
+    across.set(e.position.z - fish.position.z, 0, fish.position.x - e.position.x);
+    const d = across.length();
+    if (d < 1e-3) across.set(1, 0, 0);
+    else across.divideScalar(d);
+    const back = 0.8 * d + 0.9 * e.size + 2 * fish.length;
+    let deepest = -Infinity;
+    for (const sign of [1, -1]) {
+      eye.copy(mid).addScaledVector(across, sign * back);
+      course.locate(eye.x, eye.z, fish.river.s, spot);
+      const floor = course.bed(spot.s, spot.u),
+        top = course.level(spot.s);
+      eye.y = Math.min(top - 0.4, Math.max(floor + 0.6, mid.y + 0.15 * back));
+      if (top - floor > deepest) {
+        deepest = top - floor;
+        best.copy(eye);
+      }
+    }
+    salmon.view(best.toArray(), mid.toArray(), 0.05);
+  };
+  const picture = async (name) => {
+    beside();
+    await salmon.run(dt, aimAt);
+    t += dt;
+    extreme.frame(1 / 60);
+    await salmon.capture(`${set}/${scene.name}-${name}`, 1280, 720);
+    note(`picture ${name}`);
+  };
+  const modes = new Set(scene.modes ?? []);
+  // (When each enemy last began a blow, for the picture a tenth of a second into it.)
+  const was = new Map(),
+    struckAt = new Map();
+  const due = (e, m) => !e.dead && (m === "strike" ? t - (struckAt.get(e) ?? Infinity) >= 0.1 : e.mode === m && e.t > (m === "coil" ? 0.75 * e.spec.coil : m === "breathe" ? 0.6 : 0));
+  aimAt();
+  beside();
+  await salmon.run(0.4, aimAt);
+  note("start");
+  combat.fire(scene.fire !== false);
+  let steps = 0,
+    nextNote = 1,
+    first = false;
+  while (t < scene.watch - 1e-6) {
+    beside();
+    await salmon.run(dt, aimAt);
+    t += dt;
+    if (++steps % 15 === 0) await nextTask();
+    // (What the enemies began this step: a blow, a breath.)
+    for (const e of combat.enemies.list) {
+      if (e.neutral || e.mode === was.get(e)) continue;
+      if (e.mode === "strike") {
+        strikes++;
+        struckAt.set(e, t);
+      }
+      if (e.mode === "breathe") breaths++;
+      was.set(e, e.mode);
+    }
+    if (fish.energy < lastEnergy - 0.03) blows++;
+    lastEnergy = fish.energy;
+    minEnergy = Math.min(minEnergy, fish.energy);
+    if (!first && t >= 0.5) {
+      first = true;
+      await picture("1");
+    }
+    for (const m of modes) {
+      if (!combat.enemies.list.some((e) => due(e, m))) continue;
+      modes.delete(m);
+      await picture(m);
+      break;
+    }
+    if (t >= nextNote - 1e-6) {
+      note(`${nextNote} s`);
+      nextNote++;
+    }
+  }
+  await picture("ende");
+  combat.fire(false);
+  if (scene.side) salmon.view(null);
+  record.push({ label: "end", t: +t.toFixed(2), energy: +fish.energy.toFixed(3), minEnergy: +minEnergy.toFixed(3), kills: combat.players[0].kills, strikes, blows, breaths, deaths: combat.deaths.map((d) => `${d.by}@${d.t}`) });
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
