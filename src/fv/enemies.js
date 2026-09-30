@@ -577,7 +577,7 @@ export function createEnemies(scene, { random }) {
         if (dist > radius * 3) {
           e.mode = "approach";
           e.t = 0;
-        } else if (e.t > e.nextDart && striking(p) < 2 && !untouchable) {
+        } else if (e.t > e.nextDart && striking(p) < (spec.school ? 3 : 2) && !untouchable) {
           e.mode = "coil";
           e.t = 0;
           e.nextDart = range(1.2, 3.2);

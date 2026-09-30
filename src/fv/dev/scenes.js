@@ -27,6 +27,9 @@ export const SCENES = [
   // The goosander under water with its revolver: once taking it, once against the laser.
   { name: "saeger", stage: "fingerling", at: 400, season: "summer", hour: 13, fire: false, spawn: [["merganser", 8, 0]] },
   { name: "saeger-laser", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["merganser", 8, 0]] },
+  // A shoal of minnows with razor blades round a parr: once taking it, once with the laser.
+  { name: "elritzen", stage: "parr", at: 2500, season: "summer", hour: 15, fire: false, spawn: [["minnow", 4, -1], ["minnow", 4.5, -0.5], ["minnow", 4, 0], ["minnow", 4.5, 0.5], ["minnow", 4, 1], ["minnow", 5, -0.8], ["minnow", 5, 0.2], ["minnow", 5, 0.9], ["minnow", 5.5, 0]] },
+  { name: "elritzen-laser", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["minnow", 4, -1], ["minnow", 4.5, -0.5], ["minnow", 4, 0], ["minnow", 4.5, 0.5], ["minnow", 4, 1], ["minnow", 5, -0.8], ["minnow", 5, 0.2], ["minnow", 5, 0.9], ["minnow", 5.5, 0]] },
   // The heron in the shallows with its harpoon gun: once taking it, once against the laser.
   { name: "reiher", stage: "fingerling", at: 1500, season: "summer", hour: 14, fire: false, spawn: [["heron", 6, 1]] },
   { name: "reiher-laser", stage: "parr", at: 1800, season: "summer", hour: 14, spawn: [["heron", 6, 1]] },

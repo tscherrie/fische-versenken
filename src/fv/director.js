@@ -34,6 +34,7 @@ export function createDirector({ random }) {
     if (suits("troutParr", s) > 0.2) options.push(["troutParr", 3]);
     if (suits("bullhead", s) > 0.2) options.push(["bullhead", 2]);
     if (stage >= 2 && suits("trout", s) > 0.2) options.push(["trout", stage >= 3 ? 1.5 : 0.7]);
+    if (suits("minnow", s) > 0.2) options.push(["minnow", 1.2]);
     // (The kingfisher goes for small fish only, as it does in the base game, and one at a
     // time.)
     if (stage >= 1 && stage <= 4 && suits("kingfisher", s) > 0.2 && !enemies.list.some((e) => e.kind === "kingfisher" && !e.dead)) options.push(["kingfisher", 1]);
@@ -78,8 +79,9 @@ export function createDirector({ random }) {
       const cycle = clock % (PRESSURE + BREATHER);
       const calm = cycle > PRESSURE;
       const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * count);
+      // (A shoal counts as a few enemies, not as every fish in it.)
       let alive = 0;
-      for (const e of enemies.list) if (!e.dead) alive++;
+      for (const e of enemies.list) if (!e.dead) alive += e.spec.school ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
       const kind = choose(stage, fish.river.s, enemies);
       if (!kind) {
@@ -93,8 +95,8 @@ export function createDirector({ random }) {
         nextSpawn = clock + 1;
         return;
       }
-      // A pack comes as three; the others alone.
-      const n = spec.behaviour === "pack" ? Math.min(3, cap - alive) : 1;
+      // A shoal comes whole, a pack as three; the others alone.
+      const n = spec.school ? Math.round(range(spec.school[0], spec.school[1])) : spec.behaviour === "pack" ? Math.max(1, Math.min(3, Math.floor(cap - alive))) : 1;
       for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-2, 2), where.u + range(-1.5, 1.5));
       nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1));
     },

@@ -19,7 +19,8 @@ const BULLHEAD = PREDATORS.bullhead;
 // behaviour:
 //   ambush   lies still on the bed until the salmon comes close, then snaps
 //   stalker  follows at a distance, draws itself up (the tell) and strikes
-//   pack     a few together circle the salmon and dart in one after another
+//   pack     a few together circle the salmon and dart in one after another; with
+//            `school` [least, most] a whole shoal comes, and three may dart at once
 //   diver    a bird over the water (flies): it hovers over the salmon (the tell) and plunges
 //            beak first at it, `height` above the surface, down to `depth` below it
 //   wader    a bird standing in the shallows (wades), its head `head` over the water: it
@@ -119,6 +120,32 @@ export const KINDS = {
     coil: 0.45,
     regions: {},
     weapon: { id: "minigun", title: "Minigun", kind: "ranged", range: [3, 14], tell: 0.8, burst: 26, interval: 0.05, pellets: 1, spread: 0.08, speed: 18, drag: 1.2, damage: 0.018, reload: 2.2, cause: "Vom alten König durchsiebt" },
+  },
+  // A shoal of minnows with razor blades: many small fish round the salmon, slashing as
+  // they dart past. Each is little (a pulse or two of the laser), the shoal is the danger.
+  minnow: {
+    title: "Elritze",
+    name: "Von Elritzen zerschnitten",
+    body: "minnow",
+    coat: "minnow",
+    size: [0.55, 0.85],
+    hp: 4,
+    capacity: 24,
+    behaviour: "pack",
+    school: [8, 11],
+    swallows: false,
+    bite: 0.03,
+    sight: 8,
+    // (Quick for their size: a shoal keeps round the salmon against the current.)
+    cruise: 2.6,
+    chase: 5.5,
+    strike: 9,
+    range: 0.35,
+    turn: 6,
+    coil: 0.25,
+    from: 600,
+    regions: { upper: 1, middle: 0.6 },
+    weapon: { id: "razor", title: "Rasierklingen", kind: "melee", damage: 0.03 },
   },
   // The kingfisher over the brook, with a push dagger strapped to its beak (plan, part 4a).
   // It is drawn with its own model (`render: "bird"`; for now the base game's), and is hit
