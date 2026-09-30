@@ -844,6 +844,7 @@ async function measure(ctx, here, name, undo) {
     parts.get(key).push(o);
   });
   const everything = [...parts.values()].flat();
+  const ordnanceMeshes = Object.values(combat.ordnance?.meshes ?? {}).map((m) => m.mesh);
   // The draw calls and triangles of `objects`, shown against hidden: the scene's own count
   // changes from frame to frame (some passes run only every few frames), so the difference
   // of two single frames, or of a fight and a calm, would not be theirs alone. The fewest of
@@ -978,6 +979,9 @@ async function measure(ctx, here, name, undo) {
     const ref = await condition(OFF, { settleFor: 1 });
     const stress = await condition(STRESS);
     stress.aa = await pairedCost([]);
+    // (The look's rounds, cases and ordnance alone, look/ordnance.js, the same way: their own
+    // share of the card, which the whole of combat's meshes is too noisy to show.)
+    if (ordnanceMeshes.length) stress.ordnance = await pairedCost(ordnanceMeshes);
     combat.hostile.reset();
     const four = await condition(FOUR, { settleFor: 4, card: false, backToBackToo: false });
     runs.push({ ref, stress, four });
