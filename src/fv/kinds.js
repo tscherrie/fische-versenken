@@ -11,7 +11,8 @@ const TROUT = PREDATORS.trout;
 const BULLHEAD = PREDATORS.bullhead;
 
 // Every kind carries one fixed weapon, strapped on like the salmon's: a melee weapon makes
-// its strike a stab or a slash, a ranged one lets it shoot from a distance (hostile.js):
+// its strike a stab or a slash, a charge (`contact`, `bomb`) goes off in a blast (combat's
+// explode), a ranged one lets it shoot from a distance (hostile.js):
 //   range [near, far] in units, tell: how long it aims before it fires (the moment to
 //   dodge), burst: shots in a row, interval between them, pellets per shot, spread (rad),
 //   speed, drag (how fast the water stops a round, per second), damage per hit (of the
@@ -25,6 +26,11 @@ const BULLHEAD = PREDATORS.bullhead;
 //            beak first at it, `height` above the surface, down to `depth` below it
 //   wader    a bird standing in the shallows (wades), its head `head` over the water: it
 //            turns to the salmon and shoots down into the river; its legs are its body
+//   drifter  drifts with the water, beating its bell, and comes on only very slowly: a mine
+//            that goes off at a touch (the jellyfish); with `field` [least, most] a loose
+//            field of them comes
+//   bomber   a bird high over the water (flies), out of reach: it lines up over the salmon
+//            (the tell), dives, lets its bombs go just above the water and climbs away
 // swallows: a strike from a fish at least 2.2 times the salmon's length swallows it whole
 // (the base game's rule), otherwise it bites: `bite` of the strength bar, less when the
 // enemy is smaller than the salmon.
@@ -223,6 +229,87 @@ export const KINDS = {
     from: 4000,
     regions: { estuary: 1, lower: 0.4 },
     weapon: { id: "stars", title: "Wurfsterne", kind: "ranged", range: [1.5, 6], tell: 0.35, burst: 1, interval: 0.1, pellets: 1, spread: 0.05, speed: 11, drag: 2, damage: 0.022, reload: 1.6, cause: "Von Stichlingen mit Wurfsternen gespickt" },
+  },
+  // A jellyfish with a spiked sea mine strapped under its bell. It drifts with the water,
+  // each beat of its bell lifting it a little and the water letting it sink back, and
+  // steers toward the salmon only very slowly (`cruise`, on top of the drift); they come as
+  // a loose field of them (`field` [least, most]), a minefield to thread through. It has no
+  // strike: its mine goes off when the salmon touches it, and when it dies -- it takes very
+  // little -- so a blast next to another sets that one off as well. It is drawn with its own
+  // placeholder (`render: "jelly"`), faintly glowing, more so at night; `beat` is how often
+  // its bell beats (a second), `lift` how fast a beat lifts it and `sink` how fast it sinks
+  // between (u/s). (The coat only colours what is left of it.)
+  jellyfish: {
+    title: "Qualle",
+    name: "Von einer Qualle mit Seemine zerrissen",
+    render: "jelly",
+    coat: { flank: [0.5, 0.52, 0.52], back: [0.34, 0.24, 0.24] },
+    size: [2, 2.8],
+    hp: 5,
+    capacity: 16,
+    behaviour: "drifter",
+    field: [4, 7],
+    blood: "jelly",
+    swallows: false,
+    bite: 0,
+    sight: 16,
+    cruise: 0.3,
+    chase: 0.3,
+    strike: 0,
+    range: 0,
+    turn: 0.5,
+    coil: 0,
+    beat: 0.55,
+    lift: 1.7,
+    sink: 0.36,
+    from: 14500,
+    regions: { estuary: 1, sea: 0.8 },
+    // A contact mine: it goes off when the salmon's body comes within `trigger` (u) of the
+    // bell or the mine, with a blast of radius `blast` (u) that takes `damage` of the
+    // strength bar at its heart and `edge` of that at its rim, and does `harm` hit points to
+    // the enemies caught in it at its heart, `edge` of that at its rim (so a jellyfish near
+    // it goes off too, one further off only if it was already hurt).
+    weapon: { id: "seamine", title: "Seemine", kind: "contact", trigger: 0.3, blast: 2.8, damage: 0.45, edge: 0.15, harm: 16, cause: "Von einer Qualle mit Seemine zerrissen" },
+  },
+  // The gannet with bombs under its wings: it circles high over the sea, far out of reach of
+  // the salmon's weapons (they carry only a little way out of the water), and draws its
+  // circle over the salmon; lined up, its circle tightens and it tips over (the tell,
+  // `coil` seconds), then it plunges steeply, lets its bombs go just above the water, pulls
+  // out low and climbs away, and comes round again once it has loaded anew. At the bottom
+  // of its dive it is in reach: the moment to shoot it. It circles `height` over the water,
+  // `radius` round the salmon, at `cruise`; it dives at `strike` (u/s).
+  gannet: {
+    title: "Basstölpel",
+    name: "Von einem Basstölpel mit Fliegerbomben zerfetzt",
+    render: "bird",
+    model: "gannet",
+    size: [8.5, 9.5],
+    hp: 45,
+    capacity: 1,
+    behaviour: "bomber",
+    flies: true,
+    blood: "bird",
+    swallows: false,
+    bite: 0,
+    sight: 60,
+    cruise: 9,
+    chase: 13,
+    strike: 24,
+    range: 0,
+    turn: 1.6,
+    coil: 1.2,
+    height: 17,
+    radius: 11,
+    from: 15000,
+    regions: { sea: 1, estuary: 0.3 },
+    // `bombs` a pass, `interval` apart (a pair, one under each wing: let go together),
+    // `release` (u) over the water; in the water a bomb is braked (`drag`, per second) and
+    // sinks, and goes off on its fuse -- set when it is let go for the depth the salmon is
+    // at, within `fuse` [least, most] seconds after it went in -- or at once when it comes
+    // within `trigger` (u) of the salmon's body; its blast as the sea mine's. `reload`:
+    // seconds before the next pass. It goes for a salmon no deeper than `depth` (u): its
+    // bombs would not get down to one deeper.
+    weapon: { id: "bombs", title: "Fliegerbomben", kind: "bomb", bombs: 2, interval: 0, release: 2.6, drag: 3.2, fuse: [0.1, 1.2], depth: 12, trigger: 1, blast: 3.2, damage: 0.3, edge: 0.25, harm: 60, reload: 4.5, cause: "Von einem Basstölpel mit Fliegerbomben zerfetzt" },
   },
   herring: {
     title: "Hering",

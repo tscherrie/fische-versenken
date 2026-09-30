@@ -23,6 +23,10 @@ export function createSignals({ life }, enemies) {
       if (d > 45) continue;
       let level = 0;
       if (e.mode === "coil" || e.mode === "strike" || e.mode === "aim" || e.mode === "fire") level = 1;
+      // (A bird bombing from high up is always there, circling or climbing away, even far
+      // overhead; a jellyfish drifting near is a mine in the way.)
+      else if (e.spec.behaviour === "bomber") level = 0.6;
+      else if (e.mode === "drift") level = d < 5 ? 0.8 : d < 12 ? 0.5 : 0;
       else if (e.mode === "orbit" || e.mode === "hover" || ((e.mode === "approach" || e.mode === "circle") && d < 20)) level = 0.8;
       else if ((e.mode === "lurk" && d < 8) || (e.mode === "stand" && d < 20)) level = 0.6;
       else if (e.mode === "approach") level = 0.4;

@@ -68,7 +68,7 @@ const WATER_DRAG = 1.4;
 const WATER_SINK = 30;
 // How far above the surface the shots and the beam still go (u): far enough for a bird
 // hovering over the water.
-const SKY = 5;
+export const SKY = 5;
 
 export const WEAPONS = {
   piu: {
@@ -504,8 +504,10 @@ export const WEAPONS = {
 
 // What a kill does to the fish (the user's rule): the big guns burst it into many pieces;
 // the precise weapons (the laser, the blades, the beams) only kill it, and it floats up
-// whole; fire chars it, and it floats up too. A weapon may say so itself (`burst`).
-const BURSTS = new Set(["flinte", "granate", "minigun", "torpedo", "raketen", "minen", "panzerbuechse", "harpune", "kanone", "saege"]);
+// whole; fire chars it, and it floats up too. A weapon may say so itself (`burst`). (The
+// enemies' charges burst what they kill as well: the jellyfish's sea mine, the gannet's
+// bombs.)
+const BURSTS = new Set(["flinte", "granate", "minigun", "torpedo", "raketen", "minen", "panzerbuechse", "harpune", "kanone", "saege", "seamine", "bombs"]);
 export const bursts = (id) => WEAPONS[id]?.burst ?? BURSTS.has(id);
 
 // Where a fish is between the alevin (0) and the spawner (1), by the log of its length.
@@ -2393,7 +2395,8 @@ export function createFiring(ctx) {
         shoves.delete(e);
         continue;
       }
-      e.position.y = Math.min(Math.max(e.position.y, floor + e.size * 0.1), top - e.size * 0.05);
+      // (A bird in the air is thrown about in the air: only the bed holds it.)
+      e.position.y = Math.min(Math.max(e.position.y, floor + e.size * 0.1), e.spec?.flies && !e.dead ? Infinity : top - e.size * 0.05);
       s.v.multiplyScalar(Math.exp(-dt / s.tau));
       if (s.v.lengthSq() < 1e-4) shoves.delete(e);
     }
@@ -2825,5 +2828,6 @@ export function createFiring(ctx) {
     chain(a, b, width, tint, core, k, Math.min(24, Math.max(4, Math.ceil(a.distanceTo(b) / 0.8))), tall);
   }
 
-  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, line, stunned, stats, burning, blades, beams, options };
+  // (blast: for the enemies' charges too, combat's explode.)
+  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, line, blast, stunned, stats, burning, blades, beams, options };
 }

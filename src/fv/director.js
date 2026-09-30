@@ -39,6 +39,9 @@ export function createDirector({ random }) {
     if (stage >= 3 && suits("grayling", s) > 0.3) options.push(["grayling", 0.9]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
+    // (The jellyfish come as a field, the gannet one at a time.)
+    if (stage >= 5 && suits("jellyfish", s) > 0.3) options.push(["jellyfish", 0.7]);
+    if (stage >= 6 && suits("gannet", s) > 0.25 && !enemies.list.some((e) => e.kind === "gannet" && !e.dead)) options.push(["gannet", 0.6]);
     if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
     if (stage >= 6 && suits("mackerel", s) > 0.3) options.push(["mackerel", 0.8]);
     // (The kingfisher goes for small fish only, as it does in the base game, and one at a
@@ -85,9 +88,10 @@ export function createDirector({ random }) {
       const cycle = clock % (PRESSURE + BREATHER);
       const calm = cycle > PRESSURE;
       const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * count);
-      // (A shoal counts as a few enemies, not as every fish in it.)
+      // (A shoal counts as a few enemies, not as every fish in it; so does a field of
+      // jellyfish.)
       let alive = 0;
-      for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school ? 0.3 : 1;
+      for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school || e.spec.field ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
       const kind = choose(stage, fish.river.s, enemies);
       if (!kind) {
@@ -101,9 +105,12 @@ export function createDirector({ random }) {
         nextSpawn = clock + 1;
         return;
       }
-      // A shoal comes whole, a pack as three; the others alone.
-      const n = spec.school ? Math.round(range(spec.school[0], spec.school[1])) : spec.behaviour === "pack" ? Math.max(1, Math.min(3, Math.floor(cap - alive))) : 1;
-      for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-2, 2), where.u + range(-1.5, 1.5));
+      // A shoal comes whole, a pack as three, a field of jellyfish loosely spread across the
+      // way; the others alone.
+      const crowd = spec.school ?? spec.field;
+      const n = crowd ? Math.round(range(crowd[0], crowd[1])) : spec.behaviour === "pack" ? Math.max(1, Math.min(3, Math.floor(cap - alive))) : 1;
+      const [lengthwise, crosswise] = spec.field ? [8, 6] : [2, 1.5];
+      for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-lengthwise, lengthwise), where.u + range(-crosswise, crosswise));
       nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1));
     },
   };
