@@ -257,7 +257,11 @@ export function createGore(scene, camera, { light = false } = {}) {
   // Scratch.
   const where = { s: 0, u: 0 };
   const flow = { vx: 0, vy: 0, vz: 0 };
-  const site = { s: 0, fx: 0, fz: 0, floor: 0, top: 0 };
+  // (Not `s` first, and `s` a fraction from the start: a record of five numbers starting
+  // with an integer `s` shares its hidden class with four of the river's falls (course.js
+  // FALLS), and writing a fraction into it retired that class under them, so level() kept
+  // throwing its fast code away wherever a fish was near a fall.)
+  const site = { fx: 0, fz: 0, floor: 0, top: 0, s: 0.5 };
   const eye = new THREE.Vector3();
   const ahead = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
