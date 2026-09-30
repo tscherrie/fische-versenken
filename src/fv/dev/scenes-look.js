@@ -1710,6 +1710,9 @@ LOOK_SCENES.push(
   { name: "modelle-kosten", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
 );
 
+// Every armed kind, for the fights of the gear's checks below ([kind, how many]).
+const FIGHT = [["perch", 3], ["trout", 2], ["bullhead", 2], ["minnow", 8], ["troutParr", 2], ["pike", 1], ["grayling", 2], ["eel", 1], ["otter", 1], ["merganser", 1], ["kingfisher", 1], ["stickleback", 3], ["herring", 3], ["mackerel", 2], ["cod", 1], ["king", 1], ["dragonflyLarva", 2], ["beetleLarva", 2], ["gannet", 1], ["heron", 1]];
+
 // ---- The enemies' weapons (look/foe-gear.js, model-foes.js): each armed kind close up in its
 // own water -- swimming, aiming, at the kick of a shot, striking -- and a group of them as the
 // game's camera meets them. Run in src/fv/look/dev/gear-scenes.js.
@@ -1727,4 +1730,10 @@ LOOK_SCENES.push(
   // A fight with the gunners of the middle river round a parr that does not fire back: every
   // round must leave its muzzle and fly along its bore.
   { name: "waffen-ziel", look: true, gear: [], aimCheck: true, seconds: 10, stage: "parr", at: 12500, season: "summer", hour: 14, spawn: [["perch", 5, -1.2], ["perch", 5.5, 1], ["pike", 9, 1.5], ["trout", 8, -2], ["bullhead", 4, 0.8], ["grayling", 7, 0]] },
+  // Every armed kind at once in a real fight round a smolt that does not fire back (`fight`),
+  // by day and by night: pictures from the game's camera, from over the water and from the
+  // bed, close by as they swim (`close`); nothing may be built after the warm-up, and each
+  // state (dead, burst, eaten, neutral, fleeing, faded) must show or hide the gear.
+  { name: "waffen-kampf", look: true, gear: [], fight: FIGHT, close: ["perch", "trout", "minnow", "grayling", "merganser", "beetleLarva"], stage: "smolt", at: 12500, season: "summer", hour: 14 },
+  { name: "waffen-kampf-nacht", look: true, gear: [], fight: FIGHT, close: ["perch", "mackerel"], stage: "smolt", at: 12500, season: "summer", hour: 23 },
 );

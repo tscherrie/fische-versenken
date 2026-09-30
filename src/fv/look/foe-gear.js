@@ -111,7 +111,8 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
   for (const [kind, build] of Object.entries(FOE_GEAR)) {
     const spec = KINDS[kind];
     if (!spec) continue;
-    const g = build();
+    // (A bird's straps are laid on its model as the enemies draw it.)
+    const g = build({ body: enemies?.birds?.[kind]?.mesh?.geometry ?? null });
     const geometry = g.kit.geometry();
     const capacity = Math.max(1, spec.capacity ?? 1);
     const data = new Float32Array(capacity * STRIDE);
@@ -128,7 +129,8 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     mesh.receiveShadow = true;
     // Under the water with the fish (layer 1: the mirror and the window leave it out); a bird's
     // above it with the bird, where the window must show it.
-    mesh.layers.set(g.frame === "bird" || g.frame === "head" ? 0 : 1);
+    const layer = g.frame === "bird" || g.frame === "head" ? 0 : 1;
+    mesh.layers.set(layer);
     const part = g.part ?? { pivot: [0, 0, 0], axis: [1, 0, 0], slide: false };
     mesh.userData = {
       pivot: new THREE.Vector3(...g.pivot),
@@ -138,7 +140,7 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     };
     scene.add(mesh);
     meshes.push(mesh);
-    gear[kind] = { ...g, kind, spec, weapon: spec.weapon, mesh, buffer, data, capacity, n: 0, triangles: g.kit.triangles };
+    gear[kind] = { ...g, kind, spec, weapon: spec.weapon, mesh, layer, buffer, data, capacity, n: 0, triangles: g.kit.triangles };
   }
 
   const timeOf = clock ?? (() => performance.now() / 1000);
@@ -162,6 +164,9 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     frustum = new THREE.Frustum(),
     viewProjection = new THREE.Matrix4();
   const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+  // How far an eased value goes toward its aim in dt at `rate` (a function made once, not a
+  // closure per enemy per frame).
+  const ease = (dt, rate) => 1 - Math.exp(-dt * rate);
 
   // Whether an enemy carries its weapon to be seen: the gear goes where the body goes -- a
   // sunk fish floats up belly first with its gun still strapped on, and shrinks away with the
@@ -214,7 +219,6 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     // (Settled at once for the look scenes' posed stills.)
     const dt = api.settle ? 5 : clamp(now - st.t, 0, 0.1);
     st.t = now;
-    const ease = (rate) => 1 - Math.exp(-dt * rate);
     const spec = e.spec;
     const gun = spec.weapon;
     // The aim: the lead the enemy fires along (enemies.js: lead), in the gear's own frame.
@@ -234,8 +238,8 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
       yaw = clamp(Math.atan2(-lz, lx), -g.aim[0], g.aim[0]);
       pitch = clamp(Math.atan2(ly, Math.hypot(lx, lz)), -g.aim[1], g.aim[1]);
     }
-    st.yaw += (yaw - st.yaw) * ease(9);
-    st.pitch += (pitch - st.pitch) * ease(9);
+    st.yaw += (yaw - st.yaw) * ease(dt, 9);
+    st.pitch += (pitch - st.pitch) * ease(dt, 9);
     // The kick of the last shot: back fast, then home (and the muzzle's flip).
     const r = g.recoil;
     let kick = 0,
@@ -257,14 +261,14 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     switch (g.melee) {
       case "thrust":
         // The knife goes in with the lunge.
-        st.thrust += ((mode === "strike" ? -0.05 : 0) - st.thrust) * ease(mode === "strike" ? 30 : 8);
+        st.thrust += ((mode === "strike" ? -0.05 : 0) - st.thrust) * ease(dt, mode === "strike" ? 30 : 8);
         st.kick = st.thrust;
         break;
       case "chop": {
         // The machete is raised as the otter rears for the blow, and comes down with it.
         const coil = spec.coil || 0.6;
         const want = mode === "coil" ? 1.1 * Math.min(1, (e.t ?? 0) / coil) : mode === "strike" || (e.blow ?? 0) > 0 ? -0.7 : 0;
-        st.swing += (want - st.swing) * ease(mode === "strike" || (e.blow ?? 0) > 0 ? 30 : 10);
+        st.swing += (want - st.swing) * ease(dt, mode === "strike" || (e.blow ?? 0) > 0 ? 30 : 10);
         st.aimPitch = st.swing;
         break;
       }
@@ -284,7 +288,7 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
         // while after.
         if (mode === "coil" || mode === "strike") st.openAt = now;
         const open = now - st.openAt < 2.5 ? 1 : 0;
-        st.open += (open - st.open) * ease(open ? 40 : 5);
+        st.open += (open - st.open) * ease(dt, open ? 40 : 5);
         st.a = (1 - st.open) * Math.PI * 0.94;
         break;
       }
@@ -319,7 +323,7 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
     }
     if (g.string !== undefined) {
       // The string lies loose, forward at the limbs, until it is drawn again for the next bolt.
-      st.string += ((st.loaded > 0 ? 0 : g.string) - st.string) * ease(st.loaded > 0 ? 6 : 30);
+      st.string += ((st.loaded > 0 ? 0 : g.string) - st.string) * ease(dt, st.loaded > 0 ? 6 : 30);
       st.a = st.string;
     }
     if (g.bombs) {
@@ -365,11 +369,13 @@ export function createFoeGear(scene, { enemies, camera, clock }) {
         const g = gear[e.kind];
         if (!g || g.n >= g.capacity || !armed(e, g)) continue;
         if (!frameOf(e, g, body)) continue;
-        // (Out of the view, or too far to make out, it is not drawn; its state waits.)
+        // (Out of the view, or too far to make out, it is not drawn; its state waits. Not so a
+        // bird's: a bird is drawn for the water's mirror and the window in the surface too,
+        // which see what the camera does not, and there are never more than a few.)
         const m = body.elements;
         sphere.center.set(m[12], m[13], m[14]);
-        sphere.radius = g.frame === "head" ? 10 : e.size * 1.2;
-        if (camera) {
+        sphere.radius = e.size * 1.2;
+        if (camera && g.layer === 1) {
           if (!frustum.intersectsSphere(sphere)) continue;
           if (sphere.center.distanceTo(camera.position) > 12 + e.size * 60) continue;
         }

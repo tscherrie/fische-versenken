@@ -106,8 +106,159 @@ async function aimCheck(ctx, record) {
   record.push({ label: "update-crowd", enemies: combat.enemies.list.length, drawn: foes.counts(), ms: cost() });
 }
 
+// The gear in a real fight, checked rather than posed (the scene's `fight`: [kind, how many]):
+// every armed kind of it about at once round a salmon that does not fire back, pictured from
+// the game's own camera as the fight goes on, from over the water and from the bed, and close
+// by as they swim; whether the renderer builds anything once the warm-up is over (a node
+// build or a new program now is a stall mid-swim); and which enemies carry their gear in each
+// state: a corpse keeps it, a burst or eaten one, a peaceful stand-in, a fleeing fish and one
+// faded out do not, and a kind with nobody left hides its mesh.
+async function gearCheck(ctx, record) {
+  const { salmon, extreme, scene, errors } = ctx;
+  const { THREE, fish, renderer, course } = salmon;
+  const combat = extreme.combat;
+  const enemies = combat.enemies;
+  const foes = window.fvModels?.foes;
+  const shot = (name) => salmon.capture(`${ctx.set}/${scene.name}-${name}`, 1280, 720);
+  // Whatever the renderer builds from here on, by the name of the object it is built for.
+  const built = [];
+  const nodes = renderer._nodes;
+  const createBuilder = nodes._createNodeBuilder;
+  nodes._createNodeBuilder = function (renderObject) {
+    built.push(renderObject.object?.name || renderObject.object?.type);
+    return createBuilder.apply(this, arguments);
+  };
+  const programs = () => renderer.info.memory.programs;
+  combat.fire(false);
+  combat.director.hold(1e6);
+  // (A first picture with nobody about, so that what the picture's own size builds is not
+  // counted.)
+  await shot("leer");
+  built.length = 0;
+  const programs0 = programs();
+
+  const ahead = fish.heading.clone().setY(0).normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+  const left = up.clone().cross(ahead).normalize();
+  const L = Math.max(1, fish.length);
+  const spot = {};
+  let i = 0;
+  for (const [kind, n] of scene.fight)
+    for (let j = 0; j < n; j++, i++) {
+      // (Round the salmon and ahead of it, at three heights.)
+      const a = (i * 2.4) % (Math.PI * 2);
+      const r = (5 + (i % 5) * 1.6) * L;
+      const p = fish.position.clone().addScaledVector(ahead, Math.cos(a) * r + 4 * L).addScaledVector(left, Math.sin(a) * r);
+      course.locate(p.x, p.z, fish.river.s, spot);
+      enemies.spawn(kind, spot.s, spot.u, fish.position.y + ((i % 3) - 1) * 0.35 * L, { heading: ahead.clone().negate() });
+    }
+  record.push({ label: "kampf", enemies: enemies.list.map((e) => e.kind).join(" ") });
+  // (The salmon is kept alive: this is about the enemies.)
+  const alive = () => (fish.energy = 1);
+  const run = (seconds) => salmon.run(seconds, () => (alive(), extreme.frame(1 / 30)));
+  // As the game's camera sees it, the fight going on.
+  salmon.view(null);
+  for (let k = 1; k <= 4; k++) {
+    await run(0.5);
+    extreme.frame(1 / 60);
+    await shot(`spiel-${k}`);
+    record.push({ label: `spiel-${k}`, drawn: foes.counts(), modes: enemies.list.map((e) => e.mode).join(" ") });
+  }
+  const top = course.level(fish.river.s);
+  const floor = course.bed(fish.river.s, fish.river.u);
+  const middle = new THREE.Vector3();
+  const live = enemies.list.filter((e) => !e.dead && !e.neutral && !e.spec.flies && !e.spec.wades);
+  for (const e of live) middle.add(e.position);
+  middle.divideScalar(Math.max(1, live.length));
+  // From over the water, looking down into it; from the bed, looking up at the fish against
+  // the surface.
+  // (A view takes its place at the next step; the models are then placed for it, as the game's
+  // frame does after its step: a capture only draws.)
+  const view = async (eye, target, near) => {
+    salmon.view(eye, target, near);
+    await run(1 / 30);
+    extreme.frame(1 / 60);
+  };
+  await view([middle.x - ahead.x * 4 * L, top + 3 * L, middle.z - ahead.z * 4 * L], middle.toArray(), 0.05);
+  await shot("von-oben");
+  await view([middle.x - ahead.x * 3 * L + left.x * 2 * L, floor + 0.3 * L, middle.z - ahead.z * 3 * L + left.z * 2 * L], [middle.x, Math.min(top - 0.2, middle.y + 1.5 * L), middle.z], 0.05);
+  await shot("vom-grund");
+  // Close by, as they swim and aim (no pose held): one of each kind named in `close`.
+  for (const kind of scene.close ?? []) {
+    const e = enemies.list.find((x) => x.kind === kind && !x.dead && !x.neutral);
+    if (!e) continue;
+    const side = e.heading.clone().cross(up).normalize();
+    const eye = e.position.clone().addScaledVector(side, 0.9 * e.size).addScaledVector(e.heading, 0.3 * e.size).addScaledVector(up, 0.25 * e.size);
+    eye.y = Math.min(eye.y, top - 0.2);
+    await view(eye.toArray(), e.position.toArray(), Math.max(0.004, e.size * 0.01));
+    await shot(`nah-${kind}`);
+    record.push({ label: `nah-${kind}`, mode: e.mode });
+    // And a moment later, from the same place, the fish and its gun moved on.
+    await run(0.1);
+    extreme.frame(1 / 60);
+    await shot(`nah-${kind}-danach`);
+  }
+  salmon.view(null);
+  if (programs() !== programs0 || built.length) errors.push(`built after the warm-up: ${programs() - programs0} programs, node builds for ${[...new Set(built)].join(", ")}`);
+  record.push({ label: "gebaut", programs: programs() - programs0, builds: [...new Set(built)] });
+
+  // The states. Each is tried on an enemy whose gear is drawn now: the count of its kind must
+  // go down by one (or stay, for a corpse) and come back when the state is taken away again.
+  // (Seen from well back, so that most are in view; the camera then stays where it is.)
+  await view([middle.x - ahead.x * 14 * L, middle.y + 2 * L, middle.z - ahead.z * 14 * L], middle.toArray(), 0.05);
+  const draw = () => foes.update(enemies.list);
+  const drawn = (kind) => foes.counts()[kind] ?? 0;
+  draw();
+  const states = [
+    ["neutral", true, -1],
+    ["passive", true, -1],
+    ["eaten", true, -1],
+    ["burst", true, -1],
+    ["shown", 0, -1],
+    ["dead", true, 0],
+  ];
+  const tried = {};
+  for (const e of enemies.list) {
+    if (e.dead || e.neutral || tried[e.kind] || !foes.gear[e.kind]) continue;
+    const before = drawn(e.kind);
+    if (!before) continue;
+    // (Only one whose own gear is among those drawn: it goes when the enemy fades out.)
+    const shown = e.shown;
+    e.shown = 0;
+    draw();
+    const own = drawn(e.kind) < before;
+    e.shown = shown;
+    draw();
+    if (!own) continue;
+    tried[e.kind] = {};
+    for (const [field, value, change] of states) {
+      const old = e[field];
+      e[field] = value;
+      draw();
+      const now = drawn(e.kind);
+      e[field] = old;
+      draw();
+      const back = drawn(e.kind);
+      // (The heron's gun goes with its head, which a dead heron no longer shows.)
+      const want = field === "dead" && foes.gear[e.kind].frame === "head" ? -1 : change;
+      tried[e.kind][field] = now - before;
+      if (now - before !== want || back !== before) errors.push(`${e.kind} ${field}: ${before} drawn, ${now} with it, ${back} after (wanted ${want})`);
+    }
+  }
+  record.push({ label: "zustaende", tried });
+  // Everyone gone: every kind's mesh hidden.
+  const list = enemies.list.splice(0);
+  draw();
+  const shown = foes.meshes.filter((m) => m.visible).map((m) => m.name);
+  if (shown.length) errors.push(`gear still shown with nobody about: ${shown.join(", ")}`);
+  enemies.list.push(...list);
+  draw();
+  nodes._createNodeBuilder = createBuilder;
+}
+
 async function look(ctx, record) {
   if (ctx.scene.aimCheck) return aimCheck(ctx, record);
+  if (ctx.scene.fight) return gearCheck(ctx, record);
   const { salmon, extreme, scene } = ctx;
   const { fish, THREE } = salmon;
   const combat = extreme.combat;
@@ -149,10 +300,13 @@ async function look(ctx, record) {
   const eyeFor = (e, view) => {
     const heading = e.spec.wades ? e.facing.clone() : e.heading.clone();
     const right = heading.clone().cross(up).normalize();
-    const size = e.spec.wades ? 12 : e.size;
+    // (The heron's gun is looked at where it is lashed under the bill, from a few metres off:
+    // the bird itself is taller than any view of it would hold.)
+    const size = e.spec.wades ? 5 : e.size;
     const g = foes.gear[e.kind];
     const centre = foes.where(e, g.pivot, new THREE.Vector3()) ?? e.position.clone();
-    if (g.muzzles) centre.lerp(foes.where(e, g.muzzles[0], new THREE.Vector3()) ?? centre, 0.35);
+    if (e.spec.wades) foes.where(e, [1.4, -0.4, 0], centre);
+    else if (g.muzzles) centre.lerp(foes.where(e, g.muzzles[0], new THREE.Vector3()) ?? centre, 0.35);
     const eye = centre.clone().addScaledVector(heading, view.eye[0] * size).addScaledVector(up, view.eye[1] * size).addScaledVector(right, view.eye[2] * size);
     // (Under the water with one that swims, over it with a bird in the air.)
     const top = salmon.course.level(e.river.s);

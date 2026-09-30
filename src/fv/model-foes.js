@@ -18,13 +18,17 @@
 // radians and kicks back along its bore; the mount and the harness (PART.mount) stay on the
 // body; `part` says how the moving part moves (turned about `axis` through `pivot`, or slid
 // along it); ammunition that goes and comes back (a bolt, the bombs, the throwing stars) is
-// made of items (Kit.item) that the material hides beyond the count still loaded.
+// made of items (Kit.item) that the material hides beyond the count still loaded. A builder
+// is handed { body }: a bird's model as the enemies draw it (null elsewhere), which the straps
+// of a body that is not a fish's are laid on (band, hug), as the larvae's are on theirs.
 
 import * as THREE from "three";
 import { BODIES } from "../anatomy.js";
 import { PALETTE, bodyFrame, bodyShape, buildHarness } from "./model-harness.js";
 import { Kit, PART, ZONE, circle, colour, curve, frame, rect, shade, stream, T, RX, RY, RZ, M, vec } from "./model-parts.js";
 import { C, WEAPON_MODELS } from "./model-weapons.js";
+import { merganserGeometry } from "../creatures.js";
+import { PART as LARVA, beetleLarvaGeometry, dragonflyLarvaGeometry } from "./look/larva-shapes.js";
 
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
@@ -63,6 +67,113 @@ function strap(k, S, x, { w = 0.014, d = 0.003, n = 16, rgb = WEB } = {}) {
   k.paint(rgb, ZONE.fabric);
   k.loft([section(S, x - w / 2, d * 0.25, n), section(S, x - w / 2, d, n), section(S, x + w / 2, d, n), section(S, x + w / 2, d * 0.25, n)], { crease: 0.5 });
 }
+// ---------------------------------------------------------------------------------------
+// A strap round a body that is not a fish's (a bird's, a larva's, the heron's bill), laid on
+// that body as it is drawn: an ellipse guessed for it stands off the back in one place and
+// sinks into the flank in another.
+
+// The triangles of `geometry` that cross the plane at x, those whose corners all pass `keep`
+// (a vertex index: a larva's body without its legs), each as three points.
+function crossing(geometry, x, keep = null) {
+  const pos = geometry.attributes.position;
+  const index = geometry.index;
+  const count = index ? index.count : pos.count;
+  const out = [];
+  for (let i = 0; i + 2 < count; i += 3) {
+    const a = index ? index.getX(i) : i,
+      b = index ? index.getX(i + 1) : i + 1,
+      c = index ? index.getX(i + 2) : i + 2;
+    const xa = pos.getX(a),
+      xb = pos.getX(b),
+      xc = pos.getX(c);
+    if (Math.min(xa, xb, xc) > x || Math.max(xa, xb, xc) < x) continue;
+    if (keep && !(keep(a) && keep(b) && keep(c))) continue;
+    out.push([a, b, c].map((v) => new THREE.Vector3().fromBufferAttribute(pos, v)));
+  }
+  return out;
+}
+
+// How far out a body's surface lies round (x, cy, 0), as [y, z] points about that centre: in
+// each of `n` directions the farthest surface the triangles show, and none beyond `reach` (a
+// spread wing is not the body a strap goes round).
+const probe = new THREE.Ray();
+const probeHit = new THREE.Vector3();
+function surfaceRound(tris, x, cy, n, reach) {
+  const out = [];
+  for (let j = 0; j < n; j++) {
+    const a = (j / n) * TAU;
+    probe.origin.set(x, cy, 0);
+    probe.direction.set(0, Math.cos(a), Math.sin(a));
+    let far = 0;
+    for (const [p, q, r] of tris)
+      if (probe.intersectTriangle(p, q, r, false, probeHit)) {
+        const t = probeHit.distanceTo(probe.origin);
+        if (t > far && t <= reach) far = t;
+      }
+    if (far > 0) out.push([Math.cos(a) * far, Math.sin(a) * far]);
+  }
+  return out;
+}
+
+// A strap pulled taut round the points [y, z] (about 0, 0): over hollows, not into them (the
+// convex hull). Returns how far out it lies in each of `n` directions, top first and down the
+// right side (+z), as `section` goes round a fish.
+function taut(points, n) {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [],
+    upper = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  for (let i = p.length - 1; i >= 0; i--) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p[i]) <= 0) upper.pop();
+    upper.push(p[i]);
+  }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  const out = [];
+  for (let j = 0; j < n; j++) {
+    const a = (j / n) * TAU,
+      dy = Math.cos(a),
+      dz = Math.sin(a);
+    let far = 0;
+    for (let i = 0; i < hull.length; i++) {
+      const [py, pz] = hull[i],
+        [qy, qz] = hull[(i + 1) % hull.length];
+      const ey = qy - py,
+        ez = qz - pz;
+      const den = dy * ez - dz * ey;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = (py * ez - pz * ey) / den,
+        s = (py * dz - pz * dy) / den;
+      if (s >= -1e-9 && s <= 1 + 1e-9 && t > far) far = t;
+    }
+    out.push(far);
+  }
+  return out;
+}
+
+// A strap round a body at x, `w` wide and `d` thick, about (x, cy, 0): `round(x)` gives the
+// points [y, z] it has to go round at x (surfaceRound, or points of our own), and it is pulled
+// taut over them. Returns the height of its top, for what rides on it.
+function band(k, round, x, cy, { w, d, n = 18, rgb = WEB }) {
+  const edges = [x - w / 2, x + w / 2].map((xr) => ({ xr, r: taut(round(xr), n) }));
+  const ring = ({ xr, r }, off) =>
+    r.map((ri, j) => {
+      const a = (j / n) * TAU;
+      return [xr, cy + Math.cos(a) * (ri + off), Math.sin(a) * (ri + off)];
+    });
+  k.paint(rgb, ZONE.fabric);
+  k.loft([ring(edges[0], d * 0.25), ring(edges[0], d), ring(edges[1], d), ring(edges[1], d * 0.25)], { crease: 0.5 });
+  return cy + Math.max(edges[0].r[0], edges[1].r[0]) + d;
+}
+// A strap round a drawn body (`geometry`) at x: see band. `keep`: which of its vertices are
+// body; `reach`: how far out from (x, cy) the body goes at most.
+function hug(k, geometry, x, cy, { w, d, n = 18, keep = null, reach = Infinity, rgb = WEB }) {
+  return band(k, (xr) => surfaceRound(crossing(geometry, xr, keep), xr, cy, 36, reach), x, cy, { w, d, n, rgb });
+}
+
 // A cam buckle on a strap, at v round the section (1 the top, -1 the belly) on `side`.
 function buckle(k, S, x, v, side, size = 0.01) {
   const o = S.off(x, v, side, 0.003);
@@ -1263,19 +1374,13 @@ function gearKingfisher() {
 
 // The goosander (creatures.js: its body about x -2.2 ... 2.2, the neck forward to the head at
 // 2.85): a chest harness, and the revolver in a holster clamp at the right of its breast, the
-// barrel along the neck.
-function gearMerganser() {
+// barrel along the neck. (`body`: the goosander's model as the enemies draw it.)
+function gearMerganser({ body = null } = {}) {
   const k2 = new Kit({ part: PART.mount });
-  // Straps round the body behind the wings' shoulders and in front of them (ellipses round
-  // its section there).
-  for (const [x, ry, rz, y0] of [
-    [0.3, 0.92, 1.0, 0.05],
-    [1.25, 0.66, 0.74, 0.06],
-  ]) {
-    const ring = (dx, grow) => circle(16, ry + grow, 0, rz + grow).map(([y, z]) => [x + dx, y + y0, z]);
-    k2.paint(WEB, ZONE.fabric);
-    k2.loft([ring(-0.06, 0.01), ring(-0.06, 0.05), ring(0.06, 0.05), ring(0.06, 0.01)], { crease: 0.5 });
-  }
+  // Straps round the body over the folded wings and round the breast in front of them, laid on
+  // the model as it is drawn.
+  const shape = body ?? merganserGeometry();
+  for (const x of [0.3, 1.25]) hug(k2, shape, x, 0.05, { w: 0.12, d: 0.045, reach: 1.4 });
   const P = [1.3, -0.25, 0.86];
   k2.paint(PALETTE.molle, ZONE.polymer);
   k2.bevelBox(0.7, 1.45, -0.5, 0.05, 0.62, 0.72, 0.03);
@@ -1293,11 +1398,11 @@ function gearMerganser() {
 // body): lashed under the bill with two straps round the head, the spear on past the bill's tip.
 function gearHeron() {
   const k = new Kit({ part: PART.mount });
-  for (const x of [0.6, 2.2]) {
-    const r = 0.42 - x * 0.08;
-    k.paint(WEB, ZONE.fabric);
-    k.cylinder(x - 0.14, x + 0.14, r + 0.02, r, 10);
-  }
+  // Two lashings round the bill (creatures.js: a cone from 0.3 ahead of the head, 0.26 across
+  // at its root, to its tip 4.8 on) and the mount block under it, pulled taut over both.
+  const bill = (x) => 0.26 * Math.max(0, 1 - (x - 0.3) / 4.8);
+  const round = (x) => [...circle(24, bill(x)), [-0.5, -0.12], [-0.5, 0.12]];
+  for (const x of [0.6, 2.2]) band(k, round, x, 0, { w: 0.2, d: 0.035, n: 20 });
   k.paint(PALETTE.darkSteel, ZONE.parker);
   k.box(0.4, 2.4, -0.5, -0.26, -0.12, 0.12);
   k.part = PART.gun;
@@ -1309,14 +1414,12 @@ function gearHeron() {
 // The gannet (its glide model: the body an ellipsoid 3.1 x 0.72 x 0.8 at the origin): a
 // harness of two straps round the body with a rack under each wing root, a bomb hung from each
 // on its lug and sway braces; each is gone once it has fallen, and back once it has reloaded.
-function gearGannet() {
+// (`body`: the glide model as the enemies draw it; its spread wings are not what the straps go
+// round, so nothing farther out than the body is.)
+function gearGannet({ body = null } = {}) {
   const k = new Kit({ part: PART.mount });
-  for (const x of [-0.6, 0.9]) {
-    const f = Math.sqrt(1 - (x / 3.1) ** 2);
-    const ring = (dx, grow) => circle(18, 0.72 * f + grow, 0, 0.8 * f + grow).map(([y, z]) => [x + dx, y, z]);
-    k.paint(WEB, ZONE.fabric);
-    k.loft([ring(-0.1, 0.01), ring(-0.1, 0.05), ring(0.1, 0.05), ring(0.1, 0.01)], { crease: 0.5 });
-  }
+  const shape = body ?? new THREE.SphereGeometry(1, 24, 16).scale(3.1, 0.72, 0.8);
+  for (const x of [-0.6, 0.9]) hug(k, shape, x, 0, { w: 0.2, d: 0.045, reach: 0.9 });
   const L = 1.48;
   // (Under the wing roots, as far out as enemies.js lets them go from, and hung low: right
   // under the rack a bomb seen from below merges with it into one dark bar.)
@@ -1338,18 +1441,29 @@ function gearGannet() {
   return { frame: "bird", kit: k, pivot: [0, 0, 0], muzzles: null, bombs: 2 };
 }
 
+// A larva's body as the larvae draw it (look/larva-shapes.js), for the straps to lie on: the
+// geometry, and which of its vertices are the body itself (not a leg, a mandible or the mask).
+function larvaBody(shape) {
+  const geometry = shape({ detail: 1 });
+  const rig = geometry.attributes.rig;
+  return { geometry, keep: (i) => rig.getX(i) === LARVA.body };
+}
+
 // The dragonfly larva (a unit long, head at +x, the wing pads' top at y 0.12): the switchblade
 // strapped along its back, the blade flicking open over its head as it draws up to strike.
 function gearDragonflyLarva() {
   const k = new Kit({ part: PART.mount });
-  for (const x of [0.02, 0.2]) {
-    k.paint(WEB, ZONE.fabric);
-    const ring = (dx, grow) => circle(14, 0.1 + grow, 0, 0.13 + grow).map(([yy, zz]) => [x + dx, yy + 0.03, zz]);
-    k.loft([ring(-0.018, 0.0), ring(-0.018, 0.012), ring(0.018, 0.012), ring(0.018, 0.0)], { crease: 0.5 });
-  }
-  const P = [0.26, 0.15, 0];
+  // Two straps round the thorax (it does not bend; the abdomen behind the waist sways and
+  // curls), over the roots of the wing pads, laid on the body as it is drawn (its legs left
+  // out), and the knife's plate riding on them.
+  const body = larvaBody(dragonflyLarvaGeometry);
+  const tops = [0.1, 0.205].map((x) => hug(k, body.geometry, x, 0.01, { w: 0.034, d: 0.011, n: 16, keep: body.keep, reach: 0.2 }));
+  const y0 = Math.max(...tops) - 0.002;
+  // (Each strap goes through a bracket under the plate, as high as the plate lies over it.)
   k.paint(PALETTE.darkSteel, ZONE.parker);
-  k.box(0.0, 0.22, 0.12, 0.138, -0.022, 0.022);
+  for (const [x, top] of [[0.1, tops[0]], [0.205, tops[1]]]) if (y0 - top > 0.001) k.box(x - 0.014, x + 0.014, top - 0.003, y0, -0.016, 0.016);
+  k.box(0.0, 0.22, y0, y0 + 0.018, -0.022, 0.022);
+  const P = [0.26, y0 + 0.03, 0];
   k.part = PART.gun;
   const blade = new Kit({ part: PART.a });
   blade.push(T(P[0], P[1], P[2]));
@@ -1362,15 +1476,16 @@ function gearDragonflyLarva() {
 // jaws.
 function gearBeetleLarva() {
   const k = new Kit({ part: PART.mount });
-  for (const x of [0.02, 0.18]) {
-    const ring = (dx, grow) => circle(14, 0.055 + grow, 0, 0.09 + grow).map(([yy, zz]) => [x + dx, yy + 0.005, zz]);
-    k.paint(WEB, ZONE.fabric);
-    k.loft([ring(-0.02, 0.0), ring(-0.02, 0.012), ring(0.02, 0.012), ring(0.02, 0.0)], { crease: 0.5 });
-  }
+  // Two straps round the thorax (the abdomen behind the waist sways as it crawls), laid on the
+  // body as it is drawn (its legs left out), and the plate riding on them.
+  const body = larvaBody(beetleLarvaGeometry);
+  const tops = [0.09, 0.2].map((x) => hug(k, body.geometry, x, 0.008, { w: 0.036, d: 0.011, n: 16, keep: body.keep, reach: 0.2 }));
+  const y0 = Math.max(...tops) - 0.002;
   k.paint(PALETTE.darkSteel, ZONE.parker);
-  k.box(-0.02, 0.22, 0.06, 0.075, -0.03, 0.03);
-  const P = [0.1, 0.095, 0];
-  swivel(k, [0.1, 0.07, 0], P, { r: 0.022, arm: 0.008, clamps: [-0.02, 0.02], lift: 0.03 });
+  for (const [x, top] of [[0.09, tops[0]], [0.2, tops[1]]]) if (y0 - top > 0.001) k.box(x - 0.015, x + 0.015, top - 0.003, y0, -0.02, 0.02);
+  k.box(-0.02, 0.22, y0, y0 + 0.015, -0.03, 0.03);
+  const P = [0.1, y0 + 0.035, 0];
+  swivel(k, [0.1, y0 + 0.01, 0], P, { r: 0.022, arm: 0.008, clamps: [-0.02, 0.02], lift: 0.03 });
   k.part = PART.gun;
   const muzzles = place(k, [P[0] + 0.03, P[1] + 0.03, P[2]], null, () => nailgun(k, 1.4));
   return { frame: "larva", kit: k, pivot: P, muzzles, recoil: { d: 0.02, flip: 6 * DEG, time: 0.1 }, aim: [0.4, 0.45] };
