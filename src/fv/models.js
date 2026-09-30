@@ -29,6 +29,11 @@
 //     drawn (a blade out), charge 0..1 (the cannon's fuse)
 // and the magazine fields some arsenals keep: ammo[id] (rounds left), reloading[id] (> 0 while
 // reloading).
+//
+// The enemies' own weapons are strapped on the same way (look/foe-gear.js, the shapes in
+// model-foes.js), given the enemy system (`enemies`: their poses) and the camera (what is out
+// of view is not drawn): enemies(list, larvae) places them every frame, enemyMuzzle(e, out)
+// says where an enemy's round leaves its barrel, enemyShot(e) makes the gun kick.
 
 import * as THREE from "three";
 import { Fn, attribute, exp, float, mod, normalGeometry, normalLocal, positionGeometry, select, uniform, vec3, vec4 } from "three/tsl";
@@ -38,6 +43,7 @@ import { extreme } from "./extreme.js";
 import { PALETTE, bodyFrame, buildAlevinGear, buildHarness } from "./model-harness.js";
 import { Kit, colour, lift } from "./model-parts.js";
 import { WEAPON_MODELS } from "./model-weapons.js";
+import { createFoeGear } from "./look/foe-gear.js";
 
 const KINDS = ["alevin", "parr", "salmon"];
 const PLACES = ["back", "belly"];
@@ -174,7 +180,7 @@ function bladeFrame(out, px, py, pz, alpha, pitch, roll) {
   return out.makeBasis(vx, vy, vz).setPosition(px, py, pz);
 }
 
-export function createWeaponModels(scene, { mirror, clock } = {}) {
+export function createWeaponModels(scene, { mirror, clock, enemies, camera } = {}) {
   const material = gearMaterial();
   const game = extreme.game;
   // The game's clock (paused with the world, slowed in the celebration).
@@ -257,6 +263,8 @@ export function createWeaponModels(scene, { mirror, clock } = {}) {
   }
   for (let i = 0; i < PLAYERS; i++) createRig(i);
   if (mirror) mirror(rigs[0].meshes);
+  // The enemies' weapons, made now too (before the warm-up), on the game's clock.
+  const foes = enemies ? createFoeGear(scene, { enemies, camera, clock: timeOf }) : null;
 
   const stateOf = (rig, id) =>
     (rig.state[id] ??= {
@@ -824,8 +832,23 @@ export function createWeaponModels(scene, { mirror, clock } = {}) {
         st.lastCut = now;
       }
     },
+    // Each frame, after the enemies have moved and the larvae are drawn: the enemies' weapons
+    // on their bodies.
+    enemies(list, larvae) {
+      foes?.update(list, larvae);
+    },
+    // Where an enemy's round leaves its barrel, in the world, into `out` (false: it has none,
+    // and the round leaves from its snout).
+    enemyMuzzle(e, out) {
+      return foes ? foes.muzzle(e, out) : false;
+    },
+    // An enemy fired: its gun kicks (the next barrel, the cylinder turning on ...).
+    enemyShot(e) {
+      foes?.shot(e);
+    },
     // Everything gone (a new game in the same page).
     dispose() {
+      foes?.dispose();
       for (const rig of rigs) {
         rig.group.removeFromParent();
         rig.harness.alevin.geometry.dispose();
@@ -850,6 +873,8 @@ export function createWeaponModels(scene, { mirror, clock } = {}) {
         ),
       // Visible gear meshes per player (each one draw, plus its shadow and mirror passes).
       draws: () => rigs.map((rig) => (rig.group.visible ? rig.meshes.filter((m) => m.visible).length : 0)),
+      // The enemies' gear: copies drawn per kind, triangles per kind.
+      foes,
     };
   return api;
 }

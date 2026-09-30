@@ -1708,6 +1708,9 @@ export function createEnemies(scene, { random }) {
     snout,
     // The bombs falling and sinking ({ position, velocity, wet, source, gun, ... }).
     bombs,
+    // The birds' models by kind ({ length, middle, plunge }): what is strapped to a bird is
+    // placed by them as the bird is (models.js). Read only.
+    birds,
     // How dark it is (0 day, 1 night): the jellyfish glow the more.
     night(k) {
       glow.value = 0.03 + 0.1 * clamp(k, 0, 1);
