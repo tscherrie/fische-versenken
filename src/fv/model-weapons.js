@@ -1198,6 +1198,23 @@ function buildMinigun(F) {
 // warhead tips in the tube mouths go one by one as the rockets leave (a part whose draw range
 // shrinks), and come back one by one as the tubes are refilled.
 
+// A rocket's red warhead tip, its base `d` along x from where it stands in its tube: the
+// pods' loaded rounds, and the rockets in flight (look/ordnance-shapes.js), so that a rocket
+// fired is the one that stood in the tube.
+export const ROCKET_R = 0.0044;
+export function rocketTip(k, centre, d = 0, sides = 7) {
+  k.paint(C.red, ZONE.paint);
+  k.lathe(
+    [
+      [0.2285 + d, ROCKET_R],
+      [0.2328 + d, 0.0034],
+      [0.2346 + d, 0],
+    ],
+    sides,
+    { centre },
+  );
+}
+
 const POD_TUBES = [
   [0, 0],
   ...[0, 1, 2, 3, 4, 5].map((i) => [Math.cos((i * Math.PI) / 3 + Math.PI / 6) * 0.0125, Math.sin((i * Math.PI) / 3 + Math.PI / 6) * 0.0125]),
@@ -1254,16 +1271,7 @@ function buildRaketen(F) {
     const [s, t] = order[n];
     const [ty, tz] = POD_TUBES[t];
     tk.item(n, order.length);
-    tk.paint(C.red, ZONE.paint);
-    tk.lathe(
-      [
-        [0.2285, 0.0044],
-        [0.2328, 0.0034],
-        [0.2346, 0],
-      ],
-      7,
-      { centre: [ya + ty, s * za + tz] },
-    );
+    rocketTip(tk, [ya + ty, s * za + tz]);
   }
   const muzzles = order.map(([s, t]) => [0.234, ya + POD_TUBES[t][0], s * za + POD_TUBES[t][1]]);
   fcbLead(k, F, [0.1, F.clamp.y - 0.002, -za], [[0.101, F.fcb ? F.fcb.out[1] - 0.004 : 0, -0.03]]);
@@ -1278,7 +1286,26 @@ function buildRaketen(F) {
 // reloaded. The noses are items; the doors are the moving parts, hinged on the outboard side
 // of each mouth (the left tubes' doors share one hinge line, the right ones' another).
 
-const TORPEDO_GREY = 0x3a4148;
+export const TORPEDO_GREY = 0x3a4148;
+// A torpedo's warhead, radius rn, its shoulder `d` along x from where it stands in the tube's
+// mouth: olive drab with a red ring and a yellow tip band. The loaded noses in the tubes, and
+// the torpedoes in flight (look/ordnance-shapes.js).
+export const TORPEDO_WARHEAD = 0x4e5436;
+export function torpedoNose(k, rn, centre, d = 0) {
+  k.lathe(
+    [
+      [0.188 + d, rn],
+      [0.2 + d, rn],
+      [0.2045 + d, rn],
+      [0.2075 + d, rn * 0.93],
+      [0.2105 + d, rn * 0.78],
+      [0.2135 + d, rn * 0.5],
+      [0.2152 + d, 0],
+    ],
+    10,
+    { centre, band: (i) => (i === 1 ? C.red : i === 3 ? C.yellow : TORPEDO_WARHEAD), crease: 0.2 },
+  );
+}
 function buildTorpedo(F, four = false) {
   const k = new Kit({ part: PART.mount, mode: MODE.rigid });
   const tubes = four
@@ -1333,20 +1360,7 @@ function buildTorpedo(F, four = false) {
   const nk = new Kit({ part: PART.mount });
   tubes.forEach(([ty, tz], n) => {
     nk.item(n, tubes.length);
-    const rn = r - 0.0017;
-    nk.lathe(
-      [
-        [0.188, rn],
-        [0.2, rn],
-        [0.2045, rn],
-        [0.2075, rn * 0.93],
-        [0.2105, rn * 0.78],
-        [0.2135, rn * 0.5],
-        [0.2152, 0],
-      ],
-      10,
-      { centre: [ty, tz], band: (i) => (i === 1 ? C.red : i === 3 ? C.yellow : 0x4e5436), crease: 0.2 },
-    );
+    torpedoNose(nk, r - 0.0017, [ty, tz]);
   });
   // The muzzle doors: a lid for each mouth, built shut (the code swings them forward and
   // outboard, open, while a tube behind them is loaded).
@@ -1392,12 +1406,51 @@ function buildTorpedo(F, four = false) {
 // caps, a lifting eye, and under each a short chain to a flat anchor plate. The rearmost
 // rolls off on a drop and the others slide back (items, moving together as one part).
 
-function buildMinen(F) {
-  const k = new Kit({ part: PART.mount, mode: MODE.rigid });
-  const R = 0.0155,
-    horn = 0.011,
+// One horned contact mine at (x, yc, 0), its short chain `drop` down to the top of its anchor
+// plate; `rust` the stream its streaks draw from. The mines on the rack, and a mine dropped
+// (look/ordnance-shapes.js), so that the one hanging in the water is the one that left the rack.
+export const MINE_R = 0.0155,
+  MINE_HORN = 0.011;
+export function hornedMine(mk, x, yc, rust, drop) {
+  const R = MINE_R,
+    horn = MINE_HORN,
     rise = Math.sin(40 * DEG),
     out = Math.cos(40 * DEG);
+  const from = mk.count;
+  mk.paint(0x1c1d1e, ZONE.paint);
+  mk.sphere([x, yc, 0], R, { wide: 12, high: 8 });
+  mk.tint(from, ([px, py, pz], rgb) => {
+    const nse = Math.sin(px * 900 + pz * 700) * Math.sin(py * 1200 + px * 300) + (rust() - 0.5) * 0.6;
+    const streak = Math.max(0, nse) * Math.max(0, 1 - (py - yc + R) / (2 * R));
+    if (Math.abs(py - yc) < 0.0011) return colour(0x6e1e16);
+    return mixColour(rgb, 0x3e2616, Math.min(0.3, streak * 0.6));
+  });
+  // Five Hertz horns on the upper half, sticking well out (they must read from the side and
+  // from below): pale lead, with bright glass-vial caps.
+  for (let h = 0; h < 5; h++) {
+    const a = (h / 5) * Math.PI * 2 + Math.PI / 10;
+    const dir = vec.unit([Math.cos(a) * out, rise, Math.sin(a) * out]);
+    const base = vec.add([x, yc, 0], vec.scale(dir, R - 0.001));
+    const top = vec.add(base, vec.scale(dir, horn));
+    mk.paint(0xa4a8ac, ZONE.steel);
+    mk.tube([base, vec.add(base, vec.scale(dir, horn * 0.72))], 0.0024, 6, { capStart: false, capEnd: false });
+    mk.paint(0xe2e6ea, ZONE.polished);
+    mk.tube([vec.add(base, vec.scale(dir, horn * 0.72)), top], 0.002, 6, { capStart: false });
+  }
+  mk.paint(C.steel, ZONE.steel);
+  mk.with(M(T(x, yc + R + 0.0006, 0), RY(Math.PI / 2)), () => mk.torus(0.0024, 0.0007, { major: 6, minor: 3, rz: 0.0024 }));
+  // A short chain and the flat anchor plate below.
+  mk.paint(0x3a3b3c, ZONE.steel);
+  mk.tube(helix([x, yc - R + 0.0004, 0], [x, yc - drop, 0], 1.5, 0.0013, 5), 0.0006, 3, { capStart: false, capEnd: false });
+  mk.paint(0x2a2b2c, ZONE.paint);
+  mk.bevelBox(x - 0.0065, x + 0.0065, yc - drop - 0.003, yc - drop, -0.0065, 0.0065, 0.0009);
+}
+
+function buildMinen(F) {
+  const k = new Kit({ part: PART.mount, mode: MODE.rigid });
+  const R = MINE_R,
+    horn = MINE_HORN,
+    rise = Math.sin(40 * DEG);
   // The sphere's centre: its lifting eye and the horn tops just under the belly limit (-0.086).
   const yc = -0.086 - Math.max(rise * (R + horn), R + 0.003) - 0.0006;
   // The rail, hung from the cradle's bands.
@@ -1422,34 +1475,7 @@ function buildMinen(F) {
   const rust = stream(21);
   cups.forEach((x, n) => {
     mk.item(n, cups.length);
-    const from = mk.count;
-    mk.paint(0x1c1d1e, ZONE.paint);
-    mk.sphere([x, yc, 0], R, { wide: 12, high: 8 });
-    mk.tint(from, ([px, py, pz], rgb) => {
-      const nse = Math.sin(px * 900 + pz * 700) * Math.sin(py * 1200 + px * 300) + (rust() - 0.5) * 0.6;
-      const streak = Math.max(0, nse) * Math.max(0, 1 - (py - yc + R) / (2 * R));
-      if (Math.abs(py - yc) < 0.0011) return colour(0x6e1e16);
-      return mixColour(rgb, 0x3e2616, Math.min(0.3, streak * 0.6));
-    });
-    // Five Hertz horns on the upper half, sticking well out (they must read from the side and
-    // from below): pale lead, with bright glass-vial caps.
-    for (let h = 0; h < 5; h++) {
-      const a = (h / 5) * Math.PI * 2 + Math.PI / 10;
-      const dir = vec.unit([Math.cos(a) * out, rise, Math.sin(a) * out]);
-      const base = vec.add([x, yc, 0], vec.scale(dir, R - 0.001));
-      const top = vec.add(base, vec.scale(dir, horn));
-      mk.paint(0xa4a8ac, ZONE.steel);
-      mk.tube([base, vec.add(base, vec.scale(dir, horn * 0.72))], 0.0024, 6, { capStart: false, capEnd: false });
-      mk.paint(0xe2e6ea, ZONE.polished);
-      mk.tube([vec.add(base, vec.scale(dir, horn * 0.72)), top], 0.002, 6, { capStart: false });
-    }
-    mk.paint(C.steel, ZONE.steel);
-    mk.with(M(T(x, yc + R + 0.0006, 0), RY(Math.PI / 2)), () => mk.torus(0.0024, 0.0007, { major: 6, minor: 3, rz: 0.0024 }));
-    // A short chain and the flat anchor plate below.
-    mk.paint(0x3a3b3c, ZONE.steel);
-    mk.tube(helix([x, yc - R + 0.0004, 0], [x, -0.1245, 0], 1.5, 0.0013, 5), 0.0006, 3, { capStart: false, capEnd: false });
-    mk.paint(0x2a2b2c, ZONE.paint);
-    mk.bevelBox(x - 0.0065, x + 0.0065, -0.1275, -0.1245, -0.0065, 0.0065, 0.0009);
+    hornedMine(mk, x, yc, rust, yc + 0.1245);
   });
   mk.item(null);
   return {
@@ -1723,6 +1749,34 @@ function buildStrahl(F) {
 // brass fittings on a fork yoke from the keel rail, the loaded harpoon sticking out under the
 // chin (a part: gone once fired, back after the reload), and a rope tub with coiled hemp.
 
+// The grenade harpoon itself, on the axis at height y, its tail `d` along x from where it
+// lies loaded (0.2, the head's point at 0.545): black shaft, the eye for the line, folded
+// barbs, the brass grenade head with its red band. Loaded in the gun, and in flight
+// (look/ordnance-shapes.js).
+export function harpoonShaft(hk, y, d = 0) {
+  hk.paint(0x161718, ZONE.parker);
+  hk.cylinder(0.2 + d, 0.49 + d, 0.004, 0.004, 10, { centre: [y, 0] });
+  hk.paint(C.steel, ZONE.steel);
+  hk.with(M(T(0.243 + d, y + 0.0048, 0.0035)), () => hk.torus(0.002, 0.0006, { major: 8, minor: 4 }));
+  hk.paint(0x2a2b2c, ZONE.steel);
+  for (let i = 0; i < 4; i++)
+    hk.with(aboutX(Math.PI / 4 + (i * Math.PI) / 2, y, 0), () => hk.prism(0.455 + d, 0.49 + d, rect(y + 0.0036, y + 0.0062, -0.0007, 0.0007), { taper: 0.4, shift: [-0.0022, 0] }));
+  hk.paint(C.brass, ZONE.brass);
+  hk.lathe(
+    [
+      [0.487 + d, 0.0045],
+      [0.49 + d, 0.008],
+      [0.513 + d, 0.008],
+      [0.518 + d, 0.0062],
+      [0.545 + d, 0],
+    ],
+    14,
+    { centre: [y, 0], crease: 0.5 },
+  );
+  hk.paint(C.red, ZONE.paint);
+  hk.cylinder(0.5 + d, 0.5035 + d, 0.0082, 0.0082, 14, { centre: [y, 0] });
+}
+
 function buildHarpune(F) {
   // The barrel kicks back in its yoke; the yoke, the rope tub and the band stay.
   const k = new Kit({ part: PART.gun, mode: MODE.rigid });
@@ -1787,27 +1841,7 @@ function buildHarpune(F) {
   k.part = PART.gun;
   const hk = new Kit({ part: PART.gun });
   hk.item(0, 1);
-  hk.paint(0x161718, ZONE.parker);
-  hk.cylinder(0.2, 0.49, 0.004, 0.004, 10, { centre: [y, 0] });
-  hk.paint(C.steel, ZONE.steel);
-  hk.with(M(T(0.243, y + 0.0048, 0.0035)), () => hk.torus(0.002, 0.0006, { major: 8, minor: 4 }));
-  hk.paint(0x2a2b2c, ZONE.steel);
-  for (let i = 0; i < 4; i++)
-    hk.with(aboutX(Math.PI / 4 + (i * Math.PI) / 2, y, 0), () => hk.prism(0.455, 0.49, rect(y + 0.0036, y + 0.0062, -0.0007, 0.0007), { taper: 0.4, shift: [-0.0022, 0] }));
-  hk.paint(C.brass, ZONE.brass);
-  hk.lathe(
-    [
-      [0.487, 0.0045],
-      [0.49, 0.008],
-      [0.513, 0.008],
-      [0.518, 0.0062],
-      [0.545, 0],
-    ],
-    14,
-    { centre: [y, 0], crease: 0.5 },
-  );
-  hk.paint(C.red, ZONE.paint);
-  hk.cylinder(0.5, 0.5035, 0.0082, 0.0082, 14, { centre: [y, 0] });
+  harpoonShaft(hk, y);
   return { main: k, parts: { harpoon: { kit: hk } }, ammo: { count: 1, kind: "rack", reload: 3.0 }, muzzles: [[0.545, y, 0]] };
 }
 

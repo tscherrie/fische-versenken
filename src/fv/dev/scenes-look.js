@@ -311,6 +311,10 @@ async function measure(ctx, here, name, undo) {
     // (signals.js lays Extreme's enemies into the game's threat list, which the game asks
     // for in its own step, outside combat.step.)
     threats: meter(salmon.life.hunters, "threats"),
+    // (The rounds, the cases and the ordnance as things, look/ordnance.js: its step is a part
+    // of combat.step's rest, its frame of combat.frame; the report's parts have them apart.)
+    ordnanceStep: meter(combat.ordnance ?? { update() {} }, "update"),
+    ordnanceFrame: meter(combat.ordnance ?? { draw() {} }, "draw"),
   };
   for (const m of Object.values(meters)) undo.push(m.restore);
   const phasedStep = meters.step.fn;
@@ -636,7 +640,7 @@ async function measure(ctx, here, name, undo) {
   for (const key of SERIES) series[key] = new Float64Array(Math.max(frames, 1));
   const queries = [];
   const kinds = {};
-  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "firing", "after", "smoke", "colliders", "gravel", "groundStones", "threats"];
+  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "firing", "after", "smoke", "colliders", "gravel", "groundStones", "threats", "ordnanceStep", "ordnanceFrame"];
   // Frames timed one by one, each begun with the card idle, so the script's time is not
   // held up by the card: the world's step, combat's frame, the draw.
   async function timedFrames(n) {
@@ -1668,6 +1672,7 @@ export const LOOK_SCENES = [
 // end to go on to the following scene.
 export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
+  if (ctx.scene.shots) return (await import("../look/dev/shot-scenes.js")).runShotScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1707,4 +1712,22 @@ LOOK_SCENES.push(
   // What 24 of each cost, in the redd where the larvae come, seen by the game's own camera: the
   // frame timed with and without them, and draw() on the processor.
   { name: "modelle-kosten", look: true, models: true, manual: true, stage: "alevin", at: 24, season: "spring", hour: 11 },
+);
+
+// ---- The rounds, the cases and the ordnance (look/ordnance.js), close up and in the game's
+// steps. Run in src/fv/look/dev/shot-scenes.js. Pictures: shots/<set>/<scene>-<picture>.jpg.
+LOOK_SCENES.push(
+  // The players' torpedo, rocket, mine, harpoon (and its line) and ball posed close by.
+  { name: "geschosse-nah", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The launchers fired for real, seen from beside the fish.
+  { name: "geschosse-flug", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The cases of the minigun, the shotgun and the rifle, flying and on the bed.
+  { name: "huelsen", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The enemies' guns throwing out their cases (fired through the game's own path).
+  { name: "gegner-huelsen", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // Each of the enemies' things close by, flying and on the bed.
+  { name: "gegner-nah", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // The enemies' bolts, spear, stars, knives and nails (flying, lying, stuck in the bed),
+  // tracers fading, spent rounds, bombs.
+  { name: "gegner-dinge", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
 );

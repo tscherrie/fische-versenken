@@ -1588,9 +1588,10 @@ export function createEnemies(scene, { random }) {
       crowd.mouth.setX(slot, e.gape);
     }
     for (const crowd of Object.values(crowds)) crowd.finish();
-    // The bombs, nose first along their way, 14 cm long.
+    // The bombs, nose first along their way, 14 cm long (unless the look draws them).
     bombMeshes[0].count = bombMeshes[1].count = 0;
     for (const b of bombs) {
+      if (drawnElsewhere.has("bombs")) break;
       const mesh = bombMeshes[b.wet ? 1 : 0];
       tmp.copy(b.velocity);
       if (tmp.lengthSq() < 1e-6) tmp.set(0, -1, 0);
@@ -1695,7 +1696,8 @@ export function createEnemies(scene, { random }) {
     night(k) {
       glow.value = 0.03 + 0.1 * clamp(k, 0, 1);
     },
-    // A kind now drawn by its own models: its stand-in body is no longer drawn.
+    // A kind now drawn by its own models: its stand-in body is no longer drawn. ("bombs": the
+    // bombs' stand-ins.)
     drawnBy(kind) {
       drawnElsewhere.add(kind);
       // (Its slots are simply never written, so the crowd draws none of it.)

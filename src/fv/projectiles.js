@@ -318,6 +318,8 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
     solids.count = 1;
     scene.add(solids);
   }
+  // The kinds of solid shot the look draws with models of its own (look/ordnance.js).
+  const drawnElsewhere = new Set();
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const spin = new THREE.Quaternion();
@@ -571,7 +573,7 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
     const tall = 2 * Math.tan(((camera?.fov ?? 62) * Math.PI) / 360);
     let n = 0;
     for (const p of live) {
-      if (!p.solid || n >= solidCapacity) continue;
+      if (!p.solid || n >= solidCapacity || drawnElsewhere.has(p.solid)) continue;
       dir.copy(p.velocity);
       if (dir.lengthSq() < 1e-8) dir.set(1, 0, 0);
       dir.normalize();
@@ -592,7 +594,10 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
     while (live.length) drop(live.length - 1);
   }
 
-  return { live, spawn, fire, update, draw, reset };
+  // A kind of solid shot ("torpedo", "rocket" ...) now drawn by its own model.
+  const drawnBy = (kind) => drawnElsewhere.add(kind);
+
+  return { live, spawn, fire, update, draw, reset, drawnBy };
 }
 
 // ---- Smoke: what darkens the water instead of lighting it up.
