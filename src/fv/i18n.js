@@ -25,14 +25,15 @@ const WORDS = [
   ["Nachladen", "Reloading", "装填中", "リロード中", "Презареждане"],
   ["Leer", "Empty", "燃料耗尽", "燃料切れ", "Празно"],
   // Co-op: the lobby.
-  ["Zu zweit bis zu viert spielen:", "Play with two to four:", "两到四人一起玩：", "2〜4人で遊ぶ：", "Игра за двама до четирима:"],
+  ["Zu zweit bis zu viert spielen", "Play with two to four", "两到四人一起玩", "2〜4人で遊ぶ", "Игра за двама до четирима"],
   ["Koop-Raum eröffnen", "Open a co-op room", "开一个合作房间", "協力ルームを開く", "Отвори стая за кооп"],
   ["Der Raum-Dienst ist gerade nicht erreichbar. Bitte gleich noch einmal versuchen.", "The room service cannot be reached right now. Please try again in a moment.", "房间服务暂时无法连接，请稍后再试。", "ルームサービスに接続できません。少し待ってからもう一度お試しください。", "Услугата за стаи в момента не е достъпна. Опитай отново след малко."],
   ["Koop-Raum", "Co-op room", "合作房间", "協力ルーム", "Кооп стая"],
-  ["Link zum Raum", "Link to the room", "房间链接", "ルームへのリンク", "Връзка към стаята"],
   ["Link kopieren", "Copy link", "复制链接", "リンクをコピー", "Копирай връзката"],
   ["Kopiert", "Copied", "已复制", "コピーしました", "Копирано"],
   ["Dein Name", "Your name", "你的名字", "あなたの名前", "Твоето име"],
+  // (The name a player has until they pick their own.)
+  ["Lachs", "Salmon", "鲑鱼", "サケ", "Сьомга"],
   ["Bereit", "Ready", "准备好了", "準備OK", "Готов"],
   ["Doch nicht", "Not yet", "还没", "やっぱりまだ", "Още не"],
   ["Verbinde mit dem Raum …", "Connecting to the room …", "正在连接房间……", "ルームに接続中……", "Свързване със стаята …"],
@@ -46,9 +47,19 @@ const WORDS = [
   ["andere Version", "other version", "版本不同", "別のバージョン", "друга версия"],
   ["bereit", "ready", "已准备", "準備OK", "готов"],
   ["wartet", "waiting", "等待中", "待機中", "чака"],
-  ["Gleich geht es los!", "Here we go!", "马上开始！", "まもなく開始！", "Започваме!"],
   ["Du spielst in diesem Raum schon in einem anderen Fenster.", "You are already playing in this room in another window.", "你已在另一个窗口中进入这个房间。", "このルームには別のウィンドウですでに参加しています。", "Вече играеш в тази стая в друг прозорец."],
   ["Der Fluss entsteht noch …", "The river is still being built …", "河流还在生成……", "川をまだ作っています……", "Реката още се изгражда …"],
+  // The title card: the settings' labels, the difficulty levels (their lines are the
+  // buttons' tooltips), and the note on the recommended graphics step.
+  ["Schwierigkeit", "Difficulty", "难度", "難易度", "Трудност"],
+  ["Sprache", "Language", "语言", "言語", "Език"],
+  ["Tourist", "Tourist", "游客", "ツーリスト", "Турист"],
+  ["Normal", "Normal", "普通", "ノーマル", "Нормално"],
+  ["Serious", "Serious", "严肃", "シリアス", "Сериозно"],
+  ["Die Gegner treffen kaum, verschluckt wirst du nicht.", "Enemies hardly ever hit you, and nothing swallows you whole.", "敌人几乎打不中你，你也不会被整条吞下。", "敵の攻撃はほとんど当たらず、丸呑みにもされない。", "Враговете почти не те улучват и никой не те поглъща цяла."],
+  ["So, wie es gedacht ist.", "The way it is meant to be.", "游戏本来的样子。", "本来の想定どおり。", "Така, както е замислено."],
+  ["Mehr Gegner, die härter zuschlagen und mehr aushalten.", "More enemies, who hit harder and take more to sink.", "更多敌人，下手更狠，也更耐打。", "敵が増え、攻撃はより激しく、よりしぶとい。", "Повече врагове, които удрят по-силно и издържат повече."],
+  ["Empfohlen für dieses Gerät.", "Recommended for this device.", "推荐用于此设备。", "このデバイスにおすすめ。", "Препоръчано за това устройство."],
   // The weapon cards' places, on a phone.
   ["Rücken", "Back", "背部", "背中", "Гръб"],
   ["Bauch", "Belly", "腹部", "腹", "Корем"],
@@ -59,7 +70,7 @@ const WORDS = [
     "<b>撃て！</b>敵が照準に入って射程内に来ると、武器が自動で撃つ。サケ以外はみんな、きみを食べようとしている。",
     "<b>Огън!</b> Оръжието ти стреля само, щом враг е на мушка и в обсег. Всичко, което не е сьомга, иска да те изяде.",
   ],
-  ["Linke Maustaste: schießen", "Left mouse button: shoot", "鼠标左键：射击", "左クリック：撃つ", "Ляв бутон на мишката: стреляй"],
+  ["Linksklick: schießen", "Left click: shoot", "左键：射击", "左クリック：撃つ", "Ляв клик: стреляй"],
   [
     "<b>Feuer frei!</b> Die linke Maustaste schießt mit deiner Waffe, die Leertaste bleibt Spurt, Biss und Sprung. Alles, was kein Lachs ist, will dich fressen.",
     "<b>Open fire!</b> The left mouse button fires your weapon; Space is still dash, bite and leap. Everything that is not a salmon wants to eat you.",

@@ -79,11 +79,12 @@ export function createCombat(game) {
   const aim = createAim(camera);
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
-  // The weapon on the title card's list of keys, after the lunge.
+  // The weapon on the title card's list of keys, after the lunge. (In as few words as the
+  // mouse's own entry: the list has to fit two short lines, in every language.)
   const keys = habitat.querySelector("#intro .keys:not(.touch-keys)");
   if (keys) {
     const item = document.createElement("li");
-    item.innerHTML = '<span class="mouse" aria-hidden="true"></span> Linke Maustaste: schießen';
+    item.innerHTML = '<span class="mouse" aria-hidden="true"></span> Linksklick: schießen';
     keys.insertBefore(item, keys.children[3] ?? null);
   }
   const local = players[0];

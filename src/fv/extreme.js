@@ -2,6 +2,7 @@
 // hands its parts over once (init), and then calls in each step of the world and each
 // frame (see src/mods.js). Everything of Extreme lives under src/fv/.
 
+import { tidyCard } from "./card.js";
 import { createCombat } from "./combat.js";
 import { createCoop } from "./coop.js";
 
@@ -16,6 +17,8 @@ export const extreme = {
     this.combat = createCombat(game);
     // Co-op: the lobby on the title card, and with ?room the others in the river.
     this.coop = createCoop(game);
+    // The title card laid out afresh, now that both have added their parts to it.
+    tidyCard(game);
     // Development handle, under the same condition as the game's own window.salmon.
     const query = game.query;
     if (query.get("capture") || query.get("diagnostics") === "1" || query.has("shots")) window.extreme = this;
