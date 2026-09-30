@@ -10,12 +10,12 @@
 import * as THREE from "three";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
 import { bed, clamp, current, level, locate, place } from "../course.js";
-import { creatureMaterial, kingfisherGeometry } from "../creatures.js";
+import { creatureMaterial, kingfisherGeometry, merganserGeometry } from "../creatures.js";
 import { KINDS } from "./kinds.js";
 
 // The birds' stand-in bodies: the base game's own models (creatures.js), until the look
 // gives them models of their own. Each is laid along +x, beak first.
-const BIRD_MODELS = { kingfisher: kingfisherGeometry };
+const BIRD_MODELS = { kingfisher: kingfisherGeometry, merganser: merganserGeometry };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
@@ -337,7 +337,16 @@ export function createEnemies(scene, { random }) {
     // then fires. A fish big enough to swallow the salmon still goes for that when it is
     // close enough.
     const gun = spec.weapon?.kind === "ranged" ? spec.weapon : null;
-    if (gun) {
+    // A bird under water (the goosander) holds its breath `air` seconds, then goes up for a
+    // few breaths at the surface -- but not in the middle of a burst.
+    if (spec.air) {
+      e.air = (e.air ?? spec.air) - dt;
+      if (e.air <= 0 && e.mode !== "aim" && e.mode !== "fire" && e.mode !== "breathe") {
+        e.mode = "breathe";
+        e.t = 0;
+      }
+    }
+    if (gun && e.mode !== "breathe") {
       e.reload = Math.max(0, (e.reload ?? 0) - dt);
       const swallowing = spec.swallows && e.size >= 2.2 * L && dist < strikeAt * 1.2;
       const ready = e.mode === "lurk" || e.mode === "approach" || e.mode === "hover";
@@ -391,6 +400,21 @@ export function createEnemies(scene, { random }) {
           e.t = 0;
         } else if (spec.swallows && e.size >= 2.2 * L && dist < strikeAt && striking(p) < 2 && !untouchable) {
           e.mode = "coil";
+          e.t = 0;
+        }
+        break;
+      }
+      case "breathe": {
+        // Up to the surface, a few breaths there, and down again.
+        want.set(to.x * 0.2, 1, to.z * 0.2);
+        steer(e, want, rate, dt, 1.2);
+        locate(e.position.x, e.position.z, e.river.s, e.river);
+        const up = e.position.y > level(e.river.s) - e.size * 0.2;
+        speed = spec.cruise * (up ? 0.3 : 1.2);
+        if (!up) e.t = 0;
+        else if (e.t > 3) {
+          e.air = spec.air;
+          e.mode = "approach";
           e.t = 0;
         }
         break;

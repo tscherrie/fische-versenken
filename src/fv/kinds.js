@@ -147,6 +147,32 @@ export const KINDS = {
     regions: { brook: 1, upper: 0.5 },
     weapon: { id: "pushdagger", title: "Stoßdolch", kind: "melee", damage: 0.12 },
   },
+  // The goosander: a diving duck the size of a big trout, hunting under water, with a
+  // revolver. It comes down from the surface and goes up again for air (`air` seconds).
+  merganser: {
+    title: "Gänsesäger",
+    name: "Von einem Gänsesäger erschossen",
+    render: "bird",
+    model: "merganser",
+    size: [5.5, 6.5],
+    hp: 60,
+    capacity: 2,
+    behaviour: "stalker",
+    blood: "bird",
+    swallows: false,
+    bite: 0.15,
+    air: 20,
+    sight: 11,
+    cruise: 3,
+    chase: 6,
+    strike: 12,
+    range: 1.6,
+    turn: 3.5,
+    coil: 0.4,
+    from: 400,
+    regions: { brook: 0.4, upper: 1, middle: 1 },
+    weapon: { id: "revolver", title: "Revolver", kind: "ranged", range: [2.5, 9], tell: 0.6, burst: 6, interval: 0.28, pellets: 1, spread: 0.03, speed: 15, drag: 1.5, damage: 0.035, reload: 3, cause: "Von einem Gänsesäger erschossen" },
+  },
   // The gravel defence (gravel.js): water-insect larvae crawling through the redd at the
   // alevins. They are drawn by their own models (look/larvae.js), not with a fish body
   // (`render`); until those are in, a stand-in body shows where they are.

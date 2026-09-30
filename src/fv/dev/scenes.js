@@ -24,6 +24,9 @@ export const SCENES = [
   // once taking it (no shooting back), once against the laser.
   { name: "eisvogel", stage: "fry", at: 215, season: "summer", hour: 13, fire: false, spawn: [["kingfisher", 3, 0]] },
   { name: "eisvogel-laser", stage: "fry", at: 215, season: "summer", hour: 13, spawn: [["kingfisher", 3, 0]] },
+  // The goosander under water with its revolver: once taking it, once against the laser.
+  { name: "saeger", stage: "fingerling", at: 400, season: "summer", hour: 13, fire: false, spawn: [["merganser", 8, 0]] },
+  { name: "saeger-laser", stage: "parr", at: 2500, season: "summer", hour: 15, spawn: [["merganser", 8, 0]] },
   // The gravel defence: an alevin in the redd, the larvae coming in waves, the pilot shooting.
   { name: "kiesbett", stage: "alevin", at: null, season: "spring", hour: 11, pilot: 100, still: true },
   // The same without shooting back: do the larvae get to the alevin on its stone?
