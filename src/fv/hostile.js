@@ -42,6 +42,9 @@ function blank(p) {
   p.floor = 0;
   // What it does to the player it strikes (set as it strikes).
   p.hitDamage = 0;
+  // How hard it throws the fish it strikes along its line (x the fish's cruising speed; a
+  // heavy round's, the pike's): combat's hurt() does it, less the slower the round has got.
+  p.shove = 0;
   // Fired from above the water (the heron's harpoon): until it is in, the water neither
   // brakes it nor ends it at the surface.
   p.air = false;
@@ -126,7 +129,8 @@ export function createHostile({ capacity = 160 } = {}) {
 
   // A new round, from `o`: the enemy that fired it (`source`), the gun (`weapon`, an id),
   // `position` and `velocity`, `s` along the river, and the gun's `cause`, `damage`, `drag`,
-  // `radius`, `life`, `size`, `tint` and `stretch` (a field left out keeps its default).
+  // `shove`, `radius`, `life`, `size`, `tint` and `stretch` (a field left out keeps its
+  // default).
   // Nothing of `o` is kept, the round being a record from the pool, so a gun can hand in the
   // same object for every pellet. This is the only way in, so that whoever wraps `fire` (the
   // look's bench counts the rounds there) sees every round.
@@ -137,6 +141,7 @@ export function createHostile({ capacity = 160 } = {}) {
     p.cause = o.cause ?? null;
     p.damage = o.damage ?? p.damage;
     p.drag = o.drag ?? p.drag;
+    p.shove = o.shove ?? p.shove;
     p.radius = o.radius ?? p.radius;
     p.life = o.life ?? p.life;
     p.size = o.size ?? p.size;

@@ -71,6 +71,13 @@ const WORDS = [
   ["Von einer Groppe niedergeschossen", "Shot down by a bullhead", "被一条杜父鱼击倒", "カジカに撃ち倒された", "Застреляна от главоч"],
   ["Von einer Bachforelle erschossen", "Shot dead by a brown trout", "被一条褐鳟射杀", "ブラウントラウトに射殺された", "Застреляна от балканска пъстърва"],
   ["Abgesägte Schrotflinte", "Sawn-off shotgun", "短管猎枪", "ソードオフ・ショットガン", "Рязана пушка"],
+  // The perch, the cod and the pike (their names are the base game's already).
+  ["Pistole", "Pistol", "手枪", "拳銃", "Пистолет"],
+  ["Pumpgun", "Pump-action shotgun", "泵动式霰弹枪", "ポンプアクション・ショットガン", "Помпена пушка"],
+  ["Elefantenbüchse", "Elephant gun", "猎象枪", "エレファントガン", "Пушка за слонове"],
+  ["Von Flussbarschen erschossen", "Shot dead by perch", "被河鲈射杀", "パーチに射殺された", "Застреляна от костури"],
+  ["Von einem Dorsch mit der Pumpgun erlegt", "Brought down by a cod with a pump-action shotgun", "被一条鳕鱼用泵动式霰弹枪击毙", "タラにポンプアクション・ショットガンで仕留められた", "Повалена от треска с помпена пушка"],
+  ["Von einem Hecht aus dem Hinterhalt erschossen", "Shot from ambush by a pike", "被一条埋伏的白斑狗鱼射杀", "待ち伏せていたパイクに射殺された", "Застреляна от засада от щука"],
   ["Libellenlarve", "Dragonfly larva", "蜻蜓幼虫", "ヤゴ", "Ларва на водно конче"],
   ["Gelbrandkäferlarve", "Diving beetle larva", "龙虱幼虫", "ゲンゴロウの幼虫", "Ларва на плавач"],
   ["Von einer Libellenlarve gepackt", "Seized by a dragonfly larva", "被一只蜻蜓幼虫抓住", "ヤゴに捕まった", "Хваната от ларва на водно конче"],

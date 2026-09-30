@@ -37,6 +37,10 @@ export function createDirector({ random }) {
     if (suits("minnow", s) > 0.2) options.push(["minnow", 1.2]);
     // The river's and the sea's own fish, armed (kinds.js), in their waters.
     if (stage >= 3 && suits("grayling", s) > 0.3) options.push(["grayling", 0.9]);
+    // (The perch come often, a whole pack at once; the pike, the sniper, one at a time.)
+    if (stage >= 4 && suits("perch", s) > 0.3) options.push(["perch", 1.3]);
+    if (stage >= 4 && suits("pike", s) > 0.3 && !enemies.list.some((e) => e.kind === "pike" && !e.dead)) options.push(["pike", 0.5]);
+    if (stage >= 6 && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
     if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
@@ -65,6 +69,19 @@ export function createDirector({ random }) {
       return { s, u };
     }
     return null;
+  }
+
+  // Toward the nearer bank from the salmon's line at river place s, 8 to 16 units off it,
+  // but where the water is still deep enough for a fish of `size`.
+  function aside(fish, s, size) {
+    const c = section(s);
+    const side = fish.river.u >= c.thalweg ? 1 : -1;
+    const u = fish.river.u + side * range(8, 16);
+    for (let k = 0; k <= 8; k++) {
+      const v = c.thalweg + (u - c.thalweg) * (1 - k / 8);
+      if (level(s) - bed(s, v) > size * 0.9) return v;
+    }
+    return c.thalweg;
   }
 
   return {
@@ -101,8 +118,14 @@ export function createDirector({ random }) {
         nextSpawn = clock + 1;
         return;
       }
-      // A shoal comes whole, a pack as three; the others alone.
-      const n = spec.school ? Math.round(range(spec.school[0], spec.school[1])) : spec.behaviour === "pack" ? Math.max(1, Math.min(3, Math.floor(cap - alive))) : 1;
+      // A shoal comes whole, a pack as three (or as many as its kind hunts in); the others
+      // alone.
+      const most = spec.pack ? Math.round(range(spec.pack[0], spec.pack[1])) : 3;
+      const n = spec.school ? Math.round(range(spec.school[0], spec.school[1])) : spec.behaviour === "pack" ? Math.max(1, Math.min(most, Math.floor(cap - alive))) : 1;
+      // One of the margins (the pike) lies off to the side of the salmon's way toward the
+      // nearer bank, in the weed there -- a long shot from where the salmon will pass, not out
+      // of its sight on a far bank of a wide river.
+      if (spec.bank && where.s < S.coast) where.u = aside(fish, where.s, spec.size[1]);
       for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-2, 2), where.u + range(-1.5, 1.5));
       nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1));
     },
