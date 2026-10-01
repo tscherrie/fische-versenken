@@ -189,6 +189,10 @@ export const CORPSE_SECONDS = 40;
 const LEFT_BEHIND = 120;
 // How far (u) a bird that has given up flies off before it is gone.
 const GONE = 90;
+// How much farther a school fish counts than a player when an enemy picks whom to go for (on
+// squared distances: a school fish must be about a fifth nearer than the salmon to be taken
+// instead).
+const SCHOOL_FAR = 2.2;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
@@ -460,19 +464,89 @@ export function createEnemies(scene, { random }) {
     e.t = 0;
     locate(e.position.x, e.position.z, e.river.s, e.river);
   }
+  // A body that comes into the list already dead: a fish of the salmon's own school, killed
+  // (fv/school.js), of `kind` (kinds.js: schoolSmolt, schoolSpawner), to float up belly first
+  // and go as the enemies' dead do -- or to burst, as the splatter decides. Null when its
+  // kind's crowd is full (it is simply gone then). (`s`: where along the river it is, to find
+  // its place from.)
+  function fallen(kind, position, heading, size, velocity = null, s = null) {
+    const spec = KINDS[kind];
+    if (!spec || count(kind) >= spec.capacity) return null;
+    const e = {
+      id: nextId++,
+      kind,
+      spec,
+      owner: 0,
+      size,
+      hp: 0,
+      maxHp: 1,
+      position: position.clone(),
+      velocity: velocity ? velocity.clone() : new THREE.Vector3(),
+      heading: heading.clone().normalize(),
+      speed: Math.min(0.5, velocity?.length() ?? 0),
+      river: { s: null, u: 0 },
+      mode: "dead",
+      t: 0,
+      target: null,
+      phase: random() * TAU,
+      finPhase: random() * TAU,
+      gape: 0,
+      strikeDir: new THREE.Vector3(),
+      orbit: 1,
+      nextDart: 0,
+      rest: 0,
+      stagger: 0,
+      dead: true,
+      rolled: 0,
+      corpse: 0,
+      lastHitBy: -1,
+    };
+    locate(e.position.x, e.position.z, s, e.river);
+    list.push(e);
+    return e;
+  }
+  // Room for `n` more of `kind` in its crowd, where its dead are what fill it: that many of its
+  // oldest bodies begin to fade out now instead of floating on for their full time. (For the
+  // director, when an armed school sinks a shoal faster than its dead can drift away: the
+  // next shoal is not kept away for want of room.) How many are fading out now.
+  function makeRoom(kind, n) {
+    const spec = KINDS[kind];
+    if (!spec) return 0;
+    const over = count(kind) + n - spec.capacity;
+    if (over <= 0) return 0;
+    const fading = CORPSE_SECONDS - 1.5;
+    let made = 0;
+    for (let k = 0; k < over; k++) {
+      let oldest = null;
+      for (const e of list) if (e.kind === kind && e.dead && !e.neutral && e.corpse < fading && (!oldest || e.corpse > oldest.corpse)) oldest = e;
+      if (!oldest) break;
+      oldest.corpse = fading;
+      made++;
+    }
+    return made;
+  }
   // Gone from the list without a trace (a stand-in whose shoal fish is gone).
   function forget(e) {
     const i = list.indexOf(e);
     if (i >= 0) list.splice(i, 1);
   }
 
-  // The nearest player an enemy can go for (not dead, not taken, not in the air).
-  function pick(e, players) {
+  // The nearest target an enemy can go for (not dead, not taken, not in the air): a player,
+  // or a fish of a player's armed school (fv/school.js), which a hunter goes for rather than
+  // the salmon only when it is clearly the nearer -- so one coming at the salmon through its
+  // school often takes a school fish, as the base game has it. One that has begun on a target
+  // -- drawing a bead, firing, drawing itself up, striking -- keeps to it while it is there to
+  // be had: a strike does not wander off to whatever swam nearer meanwhile. (`salmon`: only a
+  // player will do -- the bomber high over the sea goes for the salmon's flash, not for the
+  // small fish round it.)
+  function pick(e, players, salmon = false) {
+    const held = e.target;
+    if (held && !held.down && held.fish && (e.mode === "aim" || e.mode === "fire" || e.mode === "coil" || e.mode === "strike") && players.includes(held)) return held;
     let best = null,
       bestD = Infinity;
     for (const p of players) {
-      if (!p.fish || p.down) continue;
-      const d = p.fish.position.distanceToSquared(e.position);
+      if (!p.fish || p.down || (salmon && p.school)) continue;
+      const d = p.fish.position.distanceToSquared(e.position) * (p.school ? SCHOOL_FAR : 1);
       if (d < bestD) {
         bestD = d;
         best = p;
@@ -844,7 +918,7 @@ export function createEnemies(scene, { random }) {
   function bomber(e, dt, time, players, hooks) {
     const spec = e.spec;
     const gun = spec.weapon;
-    const p = pick(e, players);
+    const p = pick(e, players, true);
     e.target = p;
     e.t += dt;
     e.reload = Math.max(0, (e.reload ?? 0) - dt);
@@ -1701,6 +1775,8 @@ export function createEnemies(scene, { random }) {
     pose,
     adopt,
     convert,
+    fallen,
+    makeRoom,
     forget,
     count,
     count,

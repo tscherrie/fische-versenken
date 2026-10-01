@@ -1,7 +1,10 @@
 // Who comes, when, and from where. The director keeps a number of enemies about the salmon
 // that grows with its stage of life, sends them in from ahead (the way it is swimming), and
 // works in waves: a while of pressure, then a breather, so there are still quiet moments in
-// the river. More players in the room bring more enemies (plan, part 4).
+// the river. More players in the room bring more enemies (plan, part 4), and so does an armed
+// school round the salmon (school.js): the more of its fish are about with their guns, the
+// more enemies at a time and the sooner the next, and more of the heavy kinds among them --
+// the school takes much of the fight, and the salmon should still have one.
 
 import { S, frame, level, bed, regionWeights, section } from "../course.js";
 import { KINDS } from "./kinds.js";
@@ -16,6 +19,16 @@ const PRESSURE = 26,
 // high over the deep sea bed would never reach it, and would only hold a place in the count
 // until it was left behind.
 const LOW = 12;
+// With an armed school: `cap` more enemies at a time and `rate` more often, per armed fish
+// (sixteen: over four times as many at a time, sent three and a half times as often); and the
+// heavy kinds (below) weighted up to `heavy` times as much once the school is whole.
+const SCHOOL = { cap: 0.2, rate: 0.15, heavy: 3, whole: 16 };
+// The heavy kinds: those a school fish's gun takes a while over. (Not the gannet nor the pike:
+// the school cannot answer them -- the gannet circles out of every gun's reach, the pike lies
+// in wait by the bank and swallows a smolt whole -- so they come as often as they would
+// without it: see UNANSWERED.)
+const HEAVY = new Set(["trout", "grayling", "perch", "cod", "eel", "otter", "mackerel"]);
+const UNANSWERED = new Set(["gannet", "pike"]);
 
 export function createDirector({ random }) {
   let clock = 0,
@@ -36,8 +49,9 @@ export function createDirector({ random }) {
     return w;
   }
 
-  // (`above`: how high the salmon swims over the bed.)
-  function choose(stage, s, enemies, above) {
+  // (`above`: how high the salmon swims over the bed; `armed`: the school fish about with
+  // their guns.)
+  function choose(stage, s, enemies, above, armed = 0) {
     const options = [];
     if (suits("troutParr", s) > 0.2) options.push(["troutParr", 3]);
     if (suits("bullhead", s) > 0.2) options.push(["bullhead", 2]);
@@ -50,17 +64,24 @@ export function createDirector({ random }) {
     if (stage >= 4 && suits("perch", s) > 0.3) options.push(["perch", 1.3]);
     // (The two heavy hunters of the lower river, the pike and the otter, never come together:
     // with a perch pack and an eel about as well, a parr at night had no chance.)
-    const heavy = enemies.list.some((e) => (e.kind === "pike" || e.kind === "otter") && !e.dead);
-    if (stage >= 4 && suits("pike", s) > 0.3 && !heavy) options.push(["pike", 0.5]);
+    // (With an armed school about, they may come together, one of each: the pike's long shot
+    // from beyond the school's guard is the salmon's own to answer. Two pikes lurking by the
+    // bank for a smolt were one too many: its gape takes a smolt whole.)
+    const alive = (kind) => enemies.list.reduce((n, e) => n + (e.kind === kind && !e.dead && !e.neutral ? 1 : 0), 0);
+    const pikes = alive("pike"),
+      otters = alive("otter");
+    const pikeMay = armed >= 8 ? pikes === 0 : pikes + otters === 0,
+      otterMay = armed >= 8 ? otters === 0 : pikes + otters === 0;
+    if (stage >= 4 && suits("pike", s) > 0.3 && pikeMay) options.push(["pike", 0.5]);
     if (stage >= 6 && above < LOW && suits("cod", s) > 0.3) options.push(["cod", 0.8]);
     if (stage >= 4 && suits("eel", s) > 0.3) options.push(["eel", 0.6]);
     // (The otter comes one at a time, more often the further down the river, and far more
     // often at night: see below.)
-    if (stage >= 4 && suits("otter", s) > 0.2 && !heavy) options.push(["otter", 1.6 * suits("otter", s)]);
+    if (stage >= 4 && suits("otter", s) > 0.2 && otterMay) options.push(["otter", 1.6 * suits("otter", s)]);
     if (stage >= 5 && suits("stickleback", s) > 0.3) options.push(["stickleback", 1]);
     // (The jellyfish come as a field, the gannet one at a time.)
     if (stage >= 5 && suits("jellyfish", s) > 0.3) options.push(["jellyfish", 0.7]);
-    if (stage >= 6 && suits("gannet", s) > 0.25 && !enemies.list.some((e) => e.kind === "gannet" && !e.dead)) options.push(["gannet", 0.6]);
+    if (stage >= 6 && suits("gannet", s) > 0.25 && alive("gannet") < 1) options.push(["gannet", 0.6]);
     if (stage >= 6 && suits("herring", s) > 0.3) options.push(["herring", 1.2]);
     if (stage >= 6 && suits("mackerel", s) > 0.3) options.push(["mackerel", 0.8]);
     // (The kingfisher goes for small fish only, as it does in the base game, and one at a
@@ -71,6 +92,14 @@ export function createDirector({ random }) {
     // The kinds that hunt by night (`nocturnal`) come in the dark as often as their weight
     // says, and by day a fifth as often.
     for (const option of options) if (KINDS[option[0]].nocturnal) option[1] *= 0.2 + 0.8 * night;
+    // The heavy kinds come the more often, the more of the school is about with its guns; the
+    // ones the school cannot answer no more often than they would without it (the director
+    // sends more often: their share is made smaller by as much).
+    const heavier = 1 + (SCHOOL.heavy - 1) * Math.min(1, armed / SCHOOL.whole);
+    for (const option of options) {
+      if (HEAVY.has(option[0])) option[1] *= heavier;
+      if (UNANSWERED.has(option[0])) option[1] /= 1 + SCHOOL.rate * armed;
+    }
     if (!options.length) return null;
     let total = 0;
     for (const [, w] of options) total += w;
@@ -120,9 +149,10 @@ export function createDirector({ random }) {
     hold(seconds) {
       nextSpawn = Math.max(nextSpawn, clock + seconds);
     },
-    // players: in the room (for the numbers); the local player's fish is the anchor; dark:
-    // how dark it is (0 by day, 1 at night).
-    update(dt, { fish, stage, enemies, players = 1, count = 1, dark = 0 }) {
+    // players: in the room (for the numbers); the local player's fish is the anchor; armed:
+    // the fish of its school about with their guns; dark: how dark it is (0 by day, 1 at
+    // night).
+    update(dt, { fish, stage, enemies, players = 1, armed = 0, count = 1, dark = 0 }) {
       clock += dt;
       night = dark;
       // Which way the fish is going along the river, held a while.
@@ -131,13 +161,13 @@ export function createDirector({ random }) {
       if (Math.abs(along) > 0.4 * Math.max(0.3, fish.length)) travel = Math.sign(along);
       const cycle = clock % (PRESSURE + BREATHER);
       const calm = cycle > PRESSURE;
-      const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * count);
+      const cap = Math.round((CAP[stage] ?? 6) * Math.min(3.1, 1 + 0.7 * (players - 1)) * (1 + SCHOOL.cap * armed) * count);
       // (A shoal counts as a few enemies, not as every fish in it; so does a field of
       // jellyfish.)
       let alive = 0;
       for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school || e.spec.field ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
-      const kind = choose(stage, fish.river.s, enemies, fish.position.y - bed(fish.river.s, fish.river.u));
+      const kind = choose(stage, fish.river.s, enemies, fish.position.y - bed(fish.river.s, fish.river.u), armed);
       if (!kind) {
         nextSpawn = clock + 3;
         return;
@@ -168,9 +198,12 @@ export function createDirector({ random }) {
         }
         where.u = u;
       }
+      // (With an armed school about, a kind whose crowd is full of its dead makes room: the
+      // oldest bodies fade out, and the next time the kind comes, it comes.)
+      if (armed > 0) enemies.makeRoom(kind, n);
       const [lengthwise, crosswise] = spec.field ? [8, 6] : [2, 1.5];
       for (let i = 0; i < n; i++) enemies.spawn(kind, where.s + range(-lengthwise, lengthwise), where.u + range(-crosswise, crosswise));
-      nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1));
+      nextSpawn = clock + range(3.5, 6.5) / Math.min(2, 1 + 0.25 * (players - 1)) / (1 + SCHOOL.rate * armed);
     },
   };
 }

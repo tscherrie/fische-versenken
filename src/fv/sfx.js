@@ -16,6 +16,13 @@
 // and beam held never leave the shoal unheard. Neither side ever has more than ALONE voices
 // of its own, blasts and all; the two together never more than CAP.
 //
+// The salmon's own school fires the salmon's weapons too (school.js): those shots are made
+// with the very same makings, but heard from where the school fish is -- quieter and duller
+// the farther off, as the enemies' guns are (sfx-enemies.js: nearness, cutoff) -- a little
+// under the salmon's own gun, each kind at most once in its shortest interval (a school
+// firing together is one sound), and within a few voices of their own on top of the others'
+// (SCHOOL_VOICES), so the school never takes a voice from the salmon or the enemies (from()).
+//
 // The player's own weapons (the laser and its beam, the minigun, the chainsaw, the arc, the
 // nodachi, the cannon, the torpedoes, rockets, mines, the harpoon, the anti-tank rifle, a
 // capsule taken) are in src/fv/sfx-spieler.js, made from the helpers here. The enemies'
@@ -23,7 +30,7 @@
 // (enemyShot, enemyAim, enemyStrike, enemyEntry, enemyBlast).
 
 import { createPlayerSounds } from "./sfx-spieler.js";
-import { createEnemySfx } from "./sfx-enemies.js";
+import { createEnemySfx, cutoff, nearness } from "./sfx-enemies.js";
 
 const CAP = 36;
 const RESERVE = 10;
@@ -33,6 +40,11 @@ const ALONE = 26;
 const OURS = 0;
 const THEIRS = 1;
 const SHARE = [16, 10];
+// The school's voices (its own, beside the cap), and how loud its guns are against the
+// salmon's own at the same distance.
+const SCHOOL = 2;
+const SCHOOL_VOICES = 10;
+const SCHOOL_LEVEL = 0.55;
 
 export function createSfx(sound) {
   const last = new Map();
@@ -49,9 +61,10 @@ export function createSfx(sound) {
   // (One curve for each drive: a boom driven harder clips harder.)
   const curves = new Map();
 
-  // How many voices sound at `now` (only `who`'s, if given).
+  // How many voices sound at `now` (only `who`'s, if given; all of the salmon's and the
+  // enemies' without, the school's left out).
   function sounding(now, who) {
-    let n = who === undefined ? looping[OURS] + looping[THEIRS] : looping[who];
+    let n = who === undefined ? looping[OURS] + looping[THEIRS] : who === SCHOOL ? 0 : looping[who];
     for (let i = ends.length - 1; i >= 0; i--) {
       if (ends[i] <= now) {
         const j = ends.length - 1;
@@ -63,13 +76,14 @@ export function createSfx(sound) {
         whose.pop();
         continue;
       }
-      if (starts[i] <= now + 0.02 && (who === undefined || whose[i] === who)) n++;
+      if (starts[i] <= now + 0.02 && (who === undefined ? whose[i] !== SCHOOL : whose[i] === who)) n++;
     }
     return n;
   }
   // Whether `cost` more voices of `who`'s may sound at `now`: within that side's share and
   // under the reserve, or -- `vital` -- anywhere under the cap (and that side's ALONE).
   function room(now, cost, vital = false, who = OURS) {
+    if (who === SCHOOL) return sounding(now, SCHOOL) + cost <= SCHOOL_VOICES;
     const all = sounding(now) + cost,
       mine = sounding(now, who) + cost;
     return vital ? all <= CAP && mine <= ALONE : all <= CAP - RESERVE && mine <= SHARE[who];
@@ -80,9 +94,31 @@ export function createSfx(sound) {
     const buses = sound.buses?.();
     if (!buses) return null;
     const now = buses.context.currentTime;
+    // (A school fish's shot: its own intervals and voices, and its way in from where it is.)
+    if (away) {
+      if (now - (away.last.get(kind) ?? -1) < interval || !room(now, cost, false, SCHOOL)) return null;
+      away.last.set(kind, now);
+      return heardFrom(buses, away.k);
+    }
     if (now - (last.get(kind) ?? -1) < interval || !room(now, cost, vital)) return null;
     last.set(kind, now);
     return buses;
+  }
+  // While a school fish's shot is made: how near it is, and the school's own last times.
+  let away = null;
+  const schoolLast = new Map();
+  // The groups as a sound from `k` near hears them: its level, then the lowpass of the
+  // distance; its dry crack (the ui group, five times as loud) goes the same way, taken by
+  // the distance a second time -- heard sharp only near by, and on the water's side.
+  function heardFrom(buses, k) {
+    const c = buses.context;
+    const out = c.createGain();
+    out.gain.value = SCHOOL_LEVEL * k;
+    out.connect(filter(c, "lowpass", cutoff(k), 0.5)).connect(buses.water);
+    const crack = c.createGain();
+    crack.gain.value = 5 * Math.sqrt(k);
+    crack.connect(out);
+    return { context: c, water: out, ui: crack, air: out };
   }
   function whiteBuffer(c) {
     if (white && white.sampleRate === c.sampleRate) return white;
@@ -245,6 +281,21 @@ export function createSfx(sound) {
   return {
     ...enemies,
     ...weapons,
+    // A shot of the school's: `make` (a call of one of the salmon's own shot sounds) heard from
+    // `distance` units away (school.js).
+    from(distance, make) {
+      const k = nearness(distance);
+      if (k <= 0 || away) return;
+      const was = side;
+      away = { k, last: schoolLast };
+      side = SCHOOL;
+      try {
+        make();
+      } finally {
+        away = null;
+        side = was;
+      }
+    },
     // The laser locks: a relay clack, a steam-vent hiss, a small fan spinning up.
     overheat(id = "piu") {
       const buses = ready("overheat", 0.6, 5);
