@@ -1679,6 +1679,7 @@ export async function runLook(ctx) {
   if (ctx.scene.gear) return (await import("../look/dev/gear-scenes.js")).runGearScene(ctx);
   if (ctx.scene.shots) return (await import("../look/dev/shot-scenes.js")).runShotScene(ctx);
   if (ctx.scene.gore) return (await import("../look/dev/gore-scenes.js")).runGoreScene(ctx);
+  if (ctx.scene.birds) return (await import("../look/dev/bird-scenes.js")).runBirdScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1806,4 +1807,37 @@ LOOK_SCENES.push(
   // Blood in the water by day and at night.
   { name: "blut", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   { name: "blut-nacht", look: true, gore: true, run: "blut", stage: "parr", at: 2500, season: "summer", hour: 23 },
+);
+
+// ---- The birds (look/birds.js): each posed in every state its plan has, close up from the side,
+// from above and from under the water; the wingbeat frame by frame; and what they cost (run
+// in src/fv/look/dev/bird-scenes.js).
+LOOK_SCENES.push(
+  // The kingfisher over the brook: flying, hovering, plunging, under the water, dead.
+  { name: "vogel-eisvogel", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  // The goosander: swimming, lunging, up on the water for air, dead.
+  { name: "vogel-saeger", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The heron in the shallows: standing, the tell, the lunge with the shot, toppled dead.
+  { name: "vogel-reiher", look: true, birds: true, stage: "parr", at: 12500, season: "summer", hour: 14 },
+  // The gannet over the sea: gliding, beating, the tell, the plunge, pulling out, dead.
+  { name: "vogel-toelpel", look: true, birds: true, stage: "postsmolt", at: 17000, season: "summer", hour: 13 },
+  // The kingfisher's wingbeat, a picture every sixtieth of a second.
+  { name: "vogel-schlag", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  // Each bird as the game runs it, the camera tracking it through its plan, then shot dead.
+  { name: "vogel-live-eisvogel", look: true, birds: true, stage: "fry", at: 215, season: "summer", hour: 13 },
+  { name: "vogel-live-saeger", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "vogel-live-reiher", look: true, birds: true, stage: "parr", at: 12500, season: "summer", hour: 14 },
+  { name: "vogel-live-toelpel", look: true, birds: true, stage: "postsmolt", at: 17000, season: "summer", hour: 13 },
+  // Six birds in view: the frame with and without them, the posing on the processor.
+  { name: "vogel-kosten", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // Every bird where the salmon meets it: from under the water, dead afloat from below, and
+  // close from the side and above; by day and at night.
+  { name: "vogel-pruef", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "vogel-pruef-nacht", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 23 },
+  // The heron's scene again where the air is clear (its own place lies in the haze of a bank).
+  { name: "vogel-reiher-klar", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 11 },
+  // The goosander all round and close, swimming, on the water and dead.
+  { name: "vogel-saeger-rund", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // A goosander filling half the picture: what the birds' shading costs at its worst.
+  { name: "vogel-kosten-nah", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
 );

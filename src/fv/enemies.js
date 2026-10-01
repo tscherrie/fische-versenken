@@ -11,10 +11,10 @@ import * as THREE from "three";
 import { attribute, uniform, vec3 } from "three/tsl";
 import { MODEL_LENGTH, createFishMesh } from "../anatomy.js";
 import { bed, clamp, current, level, locate, place, regionWeights, section } from "../course.js";
-import { creatureMaterial, gannetGeometry, heronHeadGeometry, heronLegsGeometry, kingfisherGeometry, merganserGeometry } from "../creatures.js";
 import { SolidBatch } from "../flora.js";
 import { waterLit } from "../render/water.js";
 import { KINDS } from "./kinds.js";
+import { createBirds } from "./look/birds.js";
 
 // The pieces the stand-in bodies below are put together from (as creatures.js builds its).
 const PART = {
@@ -26,39 +26,6 @@ function put(batch, geometry, [x, y, z], [sx, sy, sz], color, rotation = null) {
   const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), rotation ? new THREE.Quaternion().setFromEuler(rotation) : new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz));
   batch.add(geometry, m, new THREE.Color(...color));
 }
-
-// The gannet gliding, its wings spread: white, the wings long, narrow and pointed, with
-// black hands; the head washed buff-yellow, the dark bare skin round the eye, the long
-// pale dagger of a bill. Beak first along +x, as long as the base game's plunging gannet
-// (9 units, 90 cm), twice that across the wings.
-function gannetGlideGeometry() {
-  const b = new SolidBatch();
-  const white = [0.93, 0.93, 0.9];
-  const black = [0.06, 0.06, 0.07];
-  put(b, PART.sphere, [0, 0, 0], [3.1, 0.72, 0.8], white);
-  put(b, PART.sphere, [2.7, 0.1, 0], [1.1, 0.5, 0.48], white);
-  put(b, PART.sphere, [3.3, 0.18, 0], [0.62, 0.44, 0.42], [0.9, 0.78, 0.45]);
-  for (const z of [-0.3, 0.3]) put(b, PART.sphere, [3.55, 0.27, z], [0.13, 0.07, 0.05], [0.08, 0.08, 0.1]);
-  put(b, PART.cone, [3.8, 0.12, 0], [0.2, 1.4, 0.16], [0.62, 0.66, 0.72], new THREE.Euler(0, 0, -Math.PI / 2));
-  put(b, PART.cone, [-2.6, 0.05, 0], [0.45, 1.7, 0.16], white, new THREE.Euler(0, 0, Math.PI / 2));
-  // Each wing: the arm out from the shoulder, the hand swept a little back from the wrist,
-  // its long black primaries to a point (each piece well into the next, so that the wing
-  // reads as one).
-  for (const side of [-1, 1]) {
-    put(b, PART.sphere, [0.25, 0.25, side * 2.3], [1.05, 0.1, 2.6], white, new THREE.Euler(0, -side * 0.05, 0));
-    put(b, PART.sphere, [-0.1, 0.28, side * 5.2], [0.8, 0.09, 2.7], white, new THREE.Euler(0, -side * 0.14, 0));
-    put(b, PART.sphere, [-0.7, 0.3, side * 7.4], [0.48, 0.08, 1.6], black, new THREE.Euler(0, -side * 0.22, 0));
-  }
-  return b.geometry();
-}
-
-// The birds' stand-in bodies: the base game's own models (creatures.js), until the look
-// gives them models of their own. Each is laid along +x, beak first.
-// (The heron's are its legs with the body high above them, standing on the bed, and its
-// neck and head apart, which move. The gannet has its own, spread for the glide, and the
-// base game's, the wings swept back, for the plunge.)
-const BIRD_MODELS = { kingfisher: kingfisherGeometry, merganser: merganserGeometry, heron: heronLegsGeometry, gannet: gannetGlideGeometry };
-const PLUNGE_MODELS = { gannet: gannetGeometry };
 
 // The jellyfish's stand-in, one unit tall (scaled to its size), its bell up along +y: a
 // glassy bell, milky, with the brown marks of a compass jellyfish, its tentacles hanging
@@ -192,47 +159,8 @@ const GONE = 90;
 
 export function createEnemies(scene, { random }) {
   const crowds = {};
-  // The birds: one instanced mesh a kind (what the look will replace), and how long the
-  // model is at scale 1 and how far its beak reaches ahead of its origin.
-  const birds = {};
-  const birdMaterial = creatureMaterial();
-  for (const [kind, spec] of Object.entries(KINDS)) {
-    if (spec.render !== "bird") continue;
-    const geometry = BIRD_MODELS[spec.model]();
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    const mesh = new THREE.InstancedMesh(geometry, birdMaterial, spec.capacity);
-    mesh.name = `Combat ${kind}`;
-    mesh.count = 0;
-    mesh.frustumCulled = false;
-    // (On the ordinary layer, as the base game's kingfisher: over the water it is seen from
-    // below only through the window in the surface, and that draws layer 0 alone.)
-    mesh.visible = false;
-    scene.add(mesh);
-    birds[kind] = { mesh, length: box.max.x - box.min.x, beak: box.max.x, middle: 0.5 * (box.max.x + box.min.x) };
-    // (A second model for the plunge, drawn instead of the first while it dives.)
-    if (PLUNGE_MODELS[spec.model]) {
-      const plunging = PLUNGE_MODELS[spec.model]();
-      plunging.computeBoundingBox();
-      const edge = plunging.boundingBox;
-      const plunge = new THREE.InstancedMesh(plunging, birdMaterial, spec.capacity);
-      plunge.name = `Combat ${kind} plunge`;
-      plunge.count = 0;
-      plunge.frustumCulled = false;
-      plunge.visible = false;
-      scene.add(plunge);
-      birds[kind].plunge = { mesh: plunge, length: edge.max.x - edge.min.x, beak: edge.max.x, middle: 0.5 * (edge.max.x + edge.min.x) };
-    }
-    if (spec.wades) {
-      const head = new THREE.InstancedMesh(heronHeadGeometry(), birdMaterial, spec.capacity);
-      head.name = `Combat ${kind} head`;
-      head.count = 0;
-      head.frustumCulled = false;
-      head.visible = false;
-      scene.add(head);
-      birds[kind].head = head;
-    }
-  }
+  // The birds, drawn by their own models (look/birds.js), as many of each as may be about.
+  const flock = createBirds(scene, { capacity: Object.fromEntries(Object.values(KINDS).filter((spec) => spec.render === "bird").map((spec) => [spec.model, spec.capacity])), corpseSeconds: CORPSE_SECONDS });
   // The jellyfish: the beating bell with what hangs from it, glassy and drawn after what is
   // behind it, and the mine under it, one instanced mesh each (until the look gives them
   // models of their own), under the water with the fish on layer 1. The bell glows faintly,
@@ -279,7 +207,6 @@ export function createEnemies(scene, { random }) {
   });
   // (The meshes of their own, shown only while they have something to draw.)
   const ownMeshes = [...bombMeshes];
-  for (const kind in birds) ownMeshes.push(...[birds[kind].mesh, birds[kind].head, birds[kind].plunge?.mesh].filter(Boolean));
   for (const kind in jellies) ownMeshes.push(jellies[kind].bell, jellies[kind].mine);
   for (const [kind, spec] of Object.entries(KINDS)) {
     // (The birds and the jellyfish have no fish body.)
@@ -1504,7 +1431,7 @@ export function createEnemies(scene, { random }) {
     }
     fall(dt, players, hooks);
     separate(dt);
-    draw();
+    draw(dt);
   }
 
   // Enemies of a kind keep a little apart instead of swimming through one another.
@@ -1552,13 +1479,9 @@ export function createEnemies(scene, { random }) {
   // Kinds with models of their own (`render`) are drawn by those, once they are in; the
   // stand-in body shows them meanwhile.
   const drawnElsewhere = new Set();
-  function draw() {
+  function draw(dt = 0) {
     const slots = {};
-    for (const kind in birds) {
-      birds[kind].mesh.count = 0;
-      if (birds[kind].head) birds[kind].head.count = 0;
-      if (birds[kind].plunge) birds[kind].plunge.mesh.count = 0;
-    }
+    flock.begin(dt);
     for (const kind in jellies) jellies[kind].bell.count = jellies[kind].mine.count = 0;
     for (const e of list) {
       if (e.neutral || drawnElsewhere.has(e.kind)) continue;
@@ -1577,21 +1500,8 @@ export function createEnemies(scene, { random }) {
         jelly.mine.setMatrixAt(jelly.mine.count++, matrix);
         continue;
       }
-      const bird = birds[e.kind];
-      if (bird && e.spec.wades) {
-        heronPose(e, bird);
-        continue;
-      }
-      if (bird) {
-        // (Its model is laid along +x from its own origin: moved so the middle of the body
-        // is where the enemy is, scaled to its size. In the plunge, the plunging model.)
-        const model = bird.plunge && e.mode === "strike" && !e.dead ? bird.plunge : bird;
-        pose(e, matrix);
-        const s = MODEL_LENGTH / model.length;
-        matrix.multiply(basis.makeScale(s, s, s).setPosition(-model.middle * s, 0, 0));
-        model.mesh.setMatrixAt(model.mesh.count++, matrix);
-        // (Where its beak is, ahead of its middle, for its strike.)
-        e.beak = ((model.beak - model.middle) * e.size) / model.length;
+      if (e.spec.render === "bird") {
+        flock.add(e);
         continue;
       }
       const crowd = crowds[e.kind];
@@ -1607,6 +1517,7 @@ export function createEnemies(scene, { random }) {
       crowd.mouth.setX(slot, e.gape);
     }
     for (const crowd of Object.values(crowds)) crowd.finish();
+    flock.end();
     // The bombs, nose first along their way, 14 cm long (unless the look draws them).
     bombMeshes[0].count = bombMeshes[1].count = 0;
     for (const b of bombs) {
@@ -1621,32 +1532,6 @@ export function createEnemies(scene, { random }) {
       mesh.visible = mesh.count > 0;
       if (mesh.count > 0) mesh.instanceMatrix.needsUpdate = true;
     }
-  }
-
-  // The heron as the base game draws its own: the legs standing on the bed with the body
-  // high over the water, the neck and head where its gun is, the bill along its aim. Shot,
-  // it falls over into the water and floats there on its side, legs out, and goes with the
-  // current.
-  const DOWN = new THREE.Vector3(0, -1, 0);
-  const tip = new THREE.Matrix4();
-  function heronPose(e, bird) {
-    const yaw = Math.atan2(-e.facing.z, e.facing.x);
-    const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
-    if (fade <= 0) return;
-    if (!e.dead) {
-      quaternion.setFromAxisAngle(UP, yaw);
-      matrix.compose(e.stand, quaternion, scale.set(1, 1, 1));
-      bird.mesh.setMatrixAt(bird.mesh.count++, matrix);
-      quaternion.setFromUnitVectors(DOWN, e.aimDir);
-      matrix.compose(e.muzzle, quaternion, scale.set(1, 1, 1));
-      bird.head.setMatrixAt(bird.head.count++, matrix);
-      return;
-    }
-    // (The body -- 34 units up the legs -- lies at the surface, the legs pointing away.)
-    quaternion.setFromAxisAngle(UP, yaw);
-    matrix.compose(e.position, quaternion, scale.set(fade, fade, fade));
-    matrix.multiply(tip.makeRotationZ(-Math.PI / 2)).multiply(basis.makeTranslation(0, -34, 0));
-    bird.mesh.setMatrixAt(bird.mesh.count++, matrix);
   }
 
   // A hit for `damage` from direction `dir` (a unit vector, the way the shot flew). Returns
@@ -1718,6 +1603,12 @@ export function createEnemies(scene, { random }) {
     night(k) {
       glow.value = 0.03 + 0.1 * clamp(k, 0, 1);
     },
+    // Where a bird's weapon is strapped (look/birds.js: the kingfisher's "beak", the
+    // goosander's "shoulder", the heron's "head", the gannet's "left" and "right"), as a
+    // world matrix without scale, +x along the weapon's line; null before it is drawn.
+    mount: (e, name, out) => flock.mount(e, name, out),
+    // The birds' models (for the look's scenes).
+    birds: flock,
     // A kind now drawn by its own models: its stand-in body is no longer drawn. ("bombs": the
     // bombs' stand-ins.)
     drawnBy(kind) {
