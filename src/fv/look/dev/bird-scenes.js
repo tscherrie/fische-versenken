@@ -5,8 +5,12 @@
 // above and from under the water, as the salmon sees them. `vogel-kosten` times what they
 // cost. Pictures: shots/<set>/<scene>-<picture>.jpg.
 
+import { CORPSE_SECONDS } from "../../enemies.js";
 import { KINDS } from "../../kinds.js";
-import { createBirds } from "../birds.js";
+import { createBirds as makeBirds } from "../birds.js";
+
+// (A flock as the enemy system makes its own.)
+const createBirds = (scene) => makeBirds(scene, { corpseSeconds: CORPSE_SECONDS });
 
 const nextTask = () => new Promise((r) => setTimeout(r, 0));
 
@@ -652,7 +656,199 @@ const SCENES = {
   },
 };
 
+// The review's pictures: each bird in the states the salmon meets it in, from where the salmon
+// sees it (under the water, looking up and across at it) and close from the side and above
+// for what a closer look finds wrong (the legs in flight, the feather lines on a spread wing,
+// the goosander's breast with its neck raised, the dead afloat from below); by day, or at
+// night (`night`, the scene's hour says which).
+async function review(ctx, record) {
+  const { salmon } = ctx;
+  const { fish, THREE, scene, course } = salmon;
+  const flock = createBirds(scene);
+  const { ahead, up, at } = stage(salmon);
+  await salmon.run(0.2);
+  const look = looker(salmon, 0.01);
+  const c = fish.position.clone().addScaledVector(ahead, 6);
+  const here = at(c);
+  const river = { s: here.s, u: here.u };
+  const top = here.top;
+  // Under the water at `below` under the surface, `back` behind the point and `aside` off it,
+  // looking at `target`.
+  const fromBelow = (target, below, back, aside = 0) => {
+    const eye = target.clone().addScaledVector(ahead, -back);
+    eye.x += aside * -ahead.z;
+    eye.z += aside * ahead.x;
+    eye.y = top - below;
+    salmon.view(eye.toArray(), target.toArray(), 0.01);
+  };
+  const shot = (name, e, settle = 0.5) => picture(ctx, name, flock, [e], settle);
+
+  // The kingfisher.
+  const air = c.clone().setY(top + 1.6);
+  const k = bird(THREE, "kingfisher", air, ahead, { mode: "circle", river, speed: 4 });
+  look(air, ahead, [0.2, -0.3, 1.3]);
+  await shot("eis-flug-seite", k, 0.6);
+  look(air, ahead, [-0.3, 1.6, 0.2]);
+  await shot("eis-flug-oben", k, 0.45);
+  Object.assign(k, { mode: "coil", t: 0.8, heading: ahead.clone().multiplyScalar(0.3).setY(-1).normalize() });
+  fromBelow(air, 1.0, 1.8, 0.4);
+  await shot("eis-ruettelt-unten", k, 0.6);
+  Object.assign(k, { mode: "strike", t: 0.3, heading: ahead.clone().multiplyScalar(0.35).setY(-1).normalize() });
+  k.position.y = top + 0.5;
+  look(k.position, ahead, [0.3, 0, 1.2]);
+  await shot("eis-stoss-nah", k, 0.3);
+  k.position.y = top - 0.6;
+  fromBelow(k.position, 1.4, 1.6, 0.8);
+  await shot("eis-stoss-unten", k, 0.1);
+  Object.assign(k, { dead: true, mode: "dead", corpse: 4, rolled: 0.8, heading: ahead.clone() });
+  k.position.copy(c).setY(top - k.size * 0.07);
+  fromBelow(k.position, 0.9, 1.4, 0.5);
+  await shot("eis-tot-unten", k, 1.5);
+
+  // The goosander.
+  const mid = c.clone().setY(Math.max(here.floor + 1.2, Math.min(top - 1.2, (top + here.floor) / 2)));
+  const g = bird(THREE, "merganser", mid, ahead, { mode: "approach", river, speed: 4 });
+  look(mid, ahead, [2.8, -0.7, 1.4]);
+  await shot("saeger-vorn-unten", g, 0.5);
+  look(mid, ahead, [-4.5, 0.4, 0.8]);
+  await shot("saeger-hinten", g, 0.3);
+  Object.assign(g, { mode: "breathe", t: 1, speed: 1, heading: ahead.clone().setY(0.15).normalize() });
+  g.position.y = top - g.size * 0.06;
+  look(g.position.clone().addScaledVector(ahead, 1.6), ahead, [2.2, 0.35, 0.9], g.position.clone().addScaledVector(ahead, 1.6).setY(top + 0.2));
+  await shot("saeger-atmet-brust", g, 1.6);
+  fromBelow(g.position, 1.2, -2.2, 0.8);
+  await shot("saeger-atmet-unten-vorn", g, 0.2);
+  Object.assign(g, { dead: true, mode: "dead", corpse: 5, rolled: Math.PI, heading: ahead.clone() });
+  g.position.y = top - g.size * 0.07;
+  fromBelow(g.position, 1.5, 2.5, 1.0);
+  await shot("saeger-tot-unten", g, 2.5);
+
+  // The gannet.
+  const high = c.clone().setY(top + 6);
+  const t = bird(THREE, "gannet", high, ahead, { mode: "circle", t: 0.5, river, speed: 9, bank: 0.2 });
+  look(high, ahead, [-1.5, 7, 1]);
+  await shot("toelpel-oben-nah", t, 0.5);
+  const steep = ahead.clone().multiplyScalar(0.45).setY(-1).normalize();
+  Object.assign(t, { mode: "strike", t: 0.5, bank: 0, heading: steep });
+  t.position.y = top + 3;
+  look(t.position, ahead, [0.5, -1, 7]);
+  await shot("toelpel-sturz-nah", t, 0.5);
+  fromBelow(t.position, 1.5, -6, 2);
+  await shot("toelpel-sturz-unten", t, 0.1);
+  Object.assign(t, { dead: true, mode: "dead", corpse: 5, rolled: Math.PI, heading: ahead.clone() });
+  t.position.copy(c).setY(top - t.size * 0.07);
+  fromBelow(t.position, 2.0, 5, 1.5);
+  await shot("toelpel-tot-unten", t, 2.5);
+
+  // The heron, in the shallows off to one side, as the enemy system stands it.
+  const sec = course.section(here.s + 4);
+  let v = null;
+  for (const side of [1, -1]) {
+    for (let a = 0.6; a < 1.05 && v === null; a += 0.05) {
+      const u = sec.thalweg + side * a * sec.half;
+      const depth = course.level(here.s + 4) - course.bed(here.s + 4, u);
+      if (depth > 1.5 && depth < 4.5) v = u;
+    }
+    if (v !== null) break;
+  }
+  if (v === null) throw new Error("no shallows here");
+  const spot = course.place(here.s + 4, v, {});
+  const floor = course.bed(here.s + 4, v),
+    level = course.level(here.s + 4);
+  const stand = new THREE.Vector3(spot.x, floor, spot.z);
+  const facing = c.clone().sub(stand).setY(0).normalize();
+  const muzzle = stand.clone().addScaledVector(facing, 2).setY(level + 16);
+  const prey = stand.clone().addScaledVector(facing, 8).setY(level - 1.5);
+  const h = bird(THREE, "heron", stand.clone().setY(floor + 1.5), up, { mode: "aim", t: 1, river: { s: here.s + 4, u: v }, stand, facing, muzzle, aimDir: prey.clone().sub(muzzle).normalize(), speed: 0 });
+  // (From where it aims: under the water, looking up at the head through the surface.)
+  const low = prey.clone();
+  salmon.view(low.toArray(), muzzle.toArray(), 0.05);
+  await shot("reiher-zielt-unten", h, 0.9);
+  Object.assign(h, { dead: true, mode: "dead", corpse: 4, rolled: Math.PI });
+  h.position.copy(stand).addScaledVector(facing, 1.5).setY(level);
+  look(stand.clone().setY(level), facing, [3, 14, 2]);
+  await shot("reiher-tot-oben", h, 2.5);
+  const drift = stand.clone().addScaledVector(facing, 4).setY(level - Math.min(1.2, level - floor - 0.3));
+  salmon.view(drift.toArray(), stand.clone().setY(level).toArray(), 0.05);
+  await shot("reiher-tot-unten", h, 0.1);
+  record.push({ label: "review", night: ctx.scene.hour >= 21 || ctx.scene.hour < 5 });
+}
+
+// The worst the birds' shading can cost: a goosander swimming right in front of the camera,
+// filling half the picture (as one that goes for the salmon does); the frame timed with and
+// without it.
+async function closeCost(ctx, record) {
+  const { salmon } = ctx;
+  const { fish, THREE, scene, renderer } = salmon;
+  const flock = createBirds(scene);
+  const { ahead, at } = stage(salmon);
+  await salmon.run(0.2);
+  const c = fish.position.clone().addScaledVector(ahead, 6);
+  const here = at(c);
+  const river = { s: here.s, u: here.u };
+  const mid = c.clone().setY(Math.max(here.floor + 1.2, Math.min(here.top - 1.2, (here.top + here.floor) / 2)));
+  const g = bird(THREE, "merganser", mid, ahead, { mode: "approach", river, speed: 4 });
+  const look = looker(salmon, 0.02);
+  look(mid, ahead, [0.3, 0.1, 2.6]);
+  await picture(ctx, "nah", flock, [g], 0.5);
+  const sync = async () => {
+    const device = renderer.backend?.device;
+    if (device) return device.queue.onSubmittedWorkDone();
+    const gl = renderer.backend?.gl ?? renderer.getContext?.();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  };
+  const frame = async (n = 30) => {
+    await sync();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) salmon.draw(0);
+    await sync();
+    return (performance.now() - t0) / n;
+  };
+  const show = (on) => {
+    for (const m of flock.meshes) m.visible = on && m.count > 0;
+  };
+  // (The bird alone, on a layer of its own with nothing in front of it or behind: what its
+  // shading costs, which the whole frame hides, the bird covering water that costs as much.)
+  const { camera } = salmon;
+  const alone = async (on, n = 60) => {
+    const mask = camera.layers.mask;
+    for (const m of flock.meshes) {
+      m.layers.set(7);
+      m.visible = on && m.count > 0;
+    }
+    camera.layers.set(7);
+    renderer.setRenderTarget(null);
+    await sync();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) renderer.render(scene, camera);
+    await sync();
+    camera.layers.mask = mask;
+    for (const m of flock.meshes) m.layers.set(0);
+    return (performance.now() - t0) / n;
+  };
+  renderer.setSize(1280, 720, false);
+  for (let i = 0; i < 20; i++) salmon.draw(0);
+  const times = { without: [], with: [], aloneWithout: [], aloneWith: [] };
+  for (let round = 0; round < 24; round++) {
+    show(false);
+    times.without.push(await frame());
+    show(true);
+    times.with.push(await frame());
+    times.aloneWithout.push(await alone(false));
+    times.aloneWith.push(await alone(true));
+    await nextTask();
+  }
+  show(true);
+  const sorted = (a) => [...a].sort((x, y) => x - y);
+  const median = (a) => +sorted(a)[Math.floor(a.length / 2)].toFixed(3);
+  const added = (a, b) => median(times[a].map((v, i) => v - times[b][i]));
+  record.push({ label: "close cost", backend: renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2", without: median(times.without), with: median(times.with), added: added("with", "without"), alone: { without: median(times.aloneWithout), with: median(times.aloneWith), added: added("aloneWith", "aloneWithout") } });
+}
+
 Object.assign(SCENES, {
+  "vogel-kosten-nah": closeCost,
+  "vogel-pruef": review,
+  "vogel-pruef-nacht": review,
   "vogel-live-eisvogel": (ctx, record) => live(ctx, record, "kingfisher", { ahead: 3, distance: 4.5, seconds: 14 }),
   "vogel-live-saeger": (ctx, record) => live(ctx, record, "merganser", { ahead: 8, distance: 11, under: true, seconds: 26 }),
   "vogel-live-reiher": (ctx, record) => live(ctx, record, "heron", { ahead: 6, across: 1, distance: 30, seconds: 14 }),

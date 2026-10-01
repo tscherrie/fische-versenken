@@ -160,7 +160,7 @@ const GONE = 90;
 export function createEnemies(scene, { random }) {
   const crowds = {};
   // The birds, drawn by their own models (look/birds.js), as many of each as may be about.
-  const flock = createBirds(scene, { capacity: Object.fromEntries(Object.values(KINDS).filter((spec) => spec.render === "bird").map((spec) => [spec.model, spec.capacity])) });
+  const flock = createBirds(scene, { capacity: Object.fromEntries(Object.values(KINDS).filter((spec) => spec.render === "bird").map((spec) => [spec.model, spec.capacity])), corpseSeconds: CORPSE_SECONDS });
   // The jellyfish: the beating bell with what hangs from it, glassy and drawn after what is
   // behind it, and the mine under it, one instanced mesh each (until the look gives them
   // models of their own), under the water with the fish on layer 1. The bell glows faintly,

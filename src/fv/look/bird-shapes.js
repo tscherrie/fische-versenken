@@ -9,14 +9,25 @@
 //          bill, 1 an eye) that sets how rough it is
 //   rig    the part (PART) and the pivot it turns about: the shoulder for a wing, the hip
 //          for a leg, the root of the tail, the base of the neck, the joint of the head
+//          (a wing's part number carries, above the whole number, 0.4 times how much the lines
+//          between its flight feathers show there: the shader rounds the part number, so the
+//          fraction is free to use, and it goes smoothly from vertex to vertex across a face)
 //   joint  a second point further along -- the wrist of a wing, the heel of a leg, the head's
 //          end of the neck -- and how far the vertex follows it (a neck vertex: how far along
 //          the neck it lies)
 //   fold   where a wing's vertex lies with the wing folded against the body, and its feather
-//          line (whole numbers between two flight feathers, below 0 for none)
+//          line (whole numbers between two flight feathers, running on unbroken over the whole
+//          wing: a line number that jumped between two vertices, to -1 where no lines are
+//          drawn or back to 0 at the wrist, swept through every whole number in between across
+//          the face and drew a fan of false lines there; below 0 for none on other parts)
 //   folded the folded normal, and how many feathers a unit the plumage shows there (the
 //          shader lays a fine pattern of feather edges over it: 0 for bare skin, a bill, an
 //          eye; below 0 with pale spots in it)
+//   foldPaint  the colour and the feathers a unit the vertex shows with the wing folded (the
+//          same as paint and folded.w but on a wing's underside, which shows the upper
+//          side's: a folded wing lies against the flank turned over, its underside outward --
+//          see folder() -- and without this it showed the underwing's buff and grey where
+//          the upper wing's colours belong)
 // A wing is built twice with the same vertices, spread and folded; the shader goes from one
 // to the other, so a folded wing lies along the flank as a real one does (the hand over the
 // arm, the primaries back over the tail) instead of being a spread wing turned about.
@@ -34,7 +45,7 @@ const DOWN = 0,
   SHEEN = 0.3,
   BARE = 0.6,
   EYE = 1;
-const STRIDE = 20;
+const STRIDE = 24;
 const ZERO = [0, 0, 0];
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -86,9 +97,11 @@ class Plumage {
     return this.position.length / 3;
   }
   // `paint(p, n, i)` gives [r, g, b, surface] for each vertex; `weight(p, i)` how far it follows
-  // the joint; `folded` the wing's folded positions and normals, `line(i)` its feather lines.
-  // `feathers(p, n, i)` may say otherwise per vertex; bare parts (a bill, an eye) show none.
-  add(geometry, { part = PART.body, pivot = ZERO, joint = ZERO, weight = null, paint, folded = null, line = null, feathers = null, ruffle = true } = {}) {
+  // the joint; `folded` the wing's folded positions and normals, `line(i)` its feather lines
+  // and `share(i)` how much they show (0..1), `foldPaint(i)` its colour and feathers a unit
+  // folded. `feathers(p, n, i)` may say otherwise per vertex; bare parts (a bill, an eye) show
+  // none.
+  add(geometry, { part = PART.body, pivot = ZERO, joint = ZERO, weight = null, paint, folded = null, line = null, share = null, foldPaint = null, feathers = null, ruffle = true } = {}) {
     const pos = geometry.attributes.position,
       nor = geometry.attributes.normal;
     const offset = this.vertices;
@@ -109,7 +122,8 @@ class Plumage {
       const w = weight ? weight(p, i) : 0;
       const fp = folded ? [folded.position[i * 3], folded.position[i * 3 + 1], folded.position[i * 3 + 2]] : [p.x, p.y, p.z];
       const fn = folded ? [folded.normal[i * 3], folded.normal[i * 3 + 1], folded.normal[i * 3 + 2]] : [n.x, n.y, n.z];
-      this.data.push(c[0], c[1], c[2], c[3] ?? DOWN, part, pivot[0], pivot[1], pivot[2], joint[0], joint[1], joint[2], w, fp[0], fp[1], fp[2], line ? line(i) : -1, fn[0], fn[1], fn[2], plume);
+      const f = foldPaint ? foldPaint(i) : [c[0], c[1], c[2], plume];
+      this.data.push(c[0], c[1], c[2], c[3] ?? DOWN, part + (share ? 0.4 * share(i) : 0), pivot[0], pivot[1], pivot[2], joint[0], joint[1], joint[2], w, fp[0], fp[1], fp[2], line ? line(i) : -1, fn[0], fn[1], fn[2], plume, f[0], f[1], f[2], f[3]);
     }
     if (geometry.index) for (let i = 0; i < geometry.index.count; i++) this.index.push(geometry.index.getX(i) + offset);
     else for (let i = 0; i < pos.count; i++) this.index.push(i + offset);
@@ -126,6 +140,7 @@ class Plumage {
     geometry.setAttribute("joint", new THREE.InterleavedBufferAttribute(data, 4, 8));
     geometry.setAttribute("fold", new THREE.InterleavedBufferAttribute(data, 4, 12));
     geometry.setAttribute("folded", new THREE.InterleavedBufferAttribute(data, 4, 16));
+    geometry.setAttribute("foldPaint", new THREE.InterleavedBufferAttribute(data, 4, 20));
     geometry.setIndex(this.vertices > 65535 ? new THREE.Uint32BufferAttribute(this.index, 1) : new THREE.Uint16BufferAttribute(this.index, 1));
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
@@ -247,6 +262,7 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
   const positions = [],
     folded = [],
     lines = [],
+    shares = [],
     spans = [],
     chords = [],
     tops = [];
@@ -282,9 +298,11 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
       tops.push(top);
       const fp = fold(s, c, top, top ? bulge : -0.35 * bulge);
       folded.push(fp[0], fp[1], fp[2]);
-      // The feather lines: between the flight feathers (the back part of the chord), one
-      // whole number apart.
-      lines.push(c > 0.42 ? (inHand ? hand * ((s - sW) / (1 - sW)) : arm * (s / sW)) : -1);
+      // The feather lines: between the flight feathers, one whole number apart, the hand's
+      // numbered on from the arm's; shown over the back part of the chord only, where the
+      // flight feathers lie bare of their coverts.
+      lines.push(inHand ? arm + hand * ((s - sW) / (1 - sW)) : arm * (s / sW));
+      shares.push(smooth(0.34, 0.48, c));
     }
   }
   const index = [];
@@ -313,6 +331,7 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
     geometry,
     folded: { position: new Float32Array(folded), normal: new Float32Array(foldedGeometry.attributes.normal.array) },
     lines,
+    shares,
     spans,
     chords,
     tops,
@@ -333,6 +352,9 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
 // feathers, its upper edge under the scapulars, its lower edge under the flank -- as a real
 // folded wing's are: laid on top of the body whole, its square outline read as a panel stuck
 // on the side. Only the hand lies free over the rump, where the primaries' tips show.
+// (Laid so -- the span running back, the chord from the leading edge down the flank -- the
+// wing lies turned over: its upper side faces the body and its underside faces out, which is
+// why a folded wing takes its colours from foldPaint.)
 function folder(stations, { shoulder, sW, length, top, bottom, reach = 0.32, rise = 0, gap = 0.015 }) {
   const size = sizeAlong(stations);
   return (s, c, isTop, lift) => {
@@ -380,8 +402,14 @@ function addWings(plumage, w, paint, matrix = null, feathers = null) {
   const left = mirrored(right);
   const foldedRight = place(w.folded);
   const plume = feathers ? (p, n, i) => feathers(w.spans[i], w.chords[i], w.tops[i]) : null;
-  plumage.add(right, { part: PART.wing, pivot, joint, weight, paint: (p, n, i) => colour(i), folded: foldedRight, line: (i) => w.lines[i], feathers: plume });
-  plumage.add(left, { part: PART.wing, pivot: [pivot[0], pivot[1], -pivot[2]], joint: [joint[0], joint[1], -joint[2]], weight, paint: (p, n, i) => colour(i), folded: mirroredArrays(foldedRight), line: (i) => w.lines[i], feathers: plume });
+  // (Folded, every vertex shows the upper side's colour and feathers at its place on the wing:
+  // the underside is what faces out then.)
+  const foldPaint = (i) => {
+    const c = paint(w.spans[i], w.chords[i], true);
+    return [c[0], c[1], c[2], feathers ? feathers(w.spans[i], w.chords[i], true) : plumage.feathers];
+  };
+  plumage.add(right, { part: PART.wing, pivot, joint, weight, paint: (p, n, i) => colour(i), folded: foldedRight, line: (i) => w.lines[i], share: (i) => w.shares[i], foldPaint, feathers: plume });
+  plumage.add(left, { part: PART.wing, pivot: [pivot[0], pivot[1], -pivot[2]], joint: [joint[0], joint[1], -joint[2]], weight, paint: (p, n, i) => colour(i), folded: mirroredArrays(foldedRight), line: (i) => w.lines[i], share: (i) => w.shares[i], foldPaint, feathers: plume });
 }
 
 // A ribbon: a flattened tube along a curve (a plume, a toe, a tooth), closed so it shows from
@@ -441,8 +469,11 @@ export function kingfisherShape() {
     { x: -0.06, w: 0.2, h: 0.23, y: 0 },
     { x: 0.1, w: 0.2, h: 0.235, y: 0.01 },
     { x: 0.22, w: 0.175, h: 0.21, y: 0.035 },
-    { x: 0.31, w: 0.13, h: 0.16, y: 0.07 },
-    { x: 0.36, w: 0, h: 0, y: 0.085 },
+    // (The breast running on forward under the head, low: closed off behind the head, it left
+    // the throat hanging over a dark notch, a head set on a body.)
+    { x: 0.31, w: 0.14, h: 0.175, y: 0.05 },
+    { x: 0.39, w: 0.095, h: 0.115, y: 0.035 },
+    { x: 0.43, w: 0, h: 0, y: 0.035 },
   ], 22);
   const size = sizeAlong(body);
   const BLUE = hex(0x17627a),
@@ -621,7 +652,9 @@ export function merganserShape() {
     paint: (p) => {
       const { phi } = around(size, p);
       // The black back from the mantle down to the rump, grey behind it; white-salmon below.
-      const back = 1 - smooth(0.55, 0.72, phi);
+      // (The mantle begins behind the base of the neck: carried on to the front of the body,
+      // it showed as a black wedge on the breast under the raised neck.)
+      const back = (1 - smooth(0.55, 0.72, phi)) * (1 - smooth(0.95, 1.25, p.x));
       let c = SALMON;
       const upper = p.x > -1.3 ? BLACK : GREY;
       c = mix3(c, mix3(GREY, BLACK, smooth(-1.5, -1.1, p.x)), back);
@@ -631,7 +664,9 @@ export function merganserShape() {
       return [...tint(c, k), DOWN];
     },
   });
-  const B = [1.5, 0.24, 0],
+  // (The neck's base deep in the breast: from nearer the front, its end ring came out of the
+  // breast as a black disc when the neck was raised floating.)
+  const B = [1.3, 0.2, 0],
     J0 = [2.42, 0.44, 0];
   b.add(neckTube(B, J0, (t) => 0.34 - 0.06 * t, { radial: 18 }), {
     part: PART.neck,
@@ -641,7 +676,7 @@ export function merganserShape() {
     paint: (p, n, i) => {
       const t = along(p, i);
       // The green hood ends in a sharp line round the lower neck.
-      return t > 0.4 ? [...GREEN, SHEEN] : [...SALMON, DOWN];
+      return t > 0.5 ? [...GREEN, SHEEN] : [...SALMON, DOWN];
     },
   });
   const head = { part: PART.head, pivot: J0 };
@@ -1027,11 +1062,16 @@ export function gannetShape() {
     { x: -0.2, w: 0.86, h: 0.76, y: 0 },
     { x: 0.8, w: 0.82, h: 0.72, y: 0.02 },
     { x: 1.6, w: 0.66, h: 0.6, y: 0.07 },
-    { x: 2.2, w: 0.5, h: 0.5, y: 0.13 },
-    { x: 2.35, w: 0, h: 0, y: 0.15 },
+    // (The front tapering on into the neck, thinner than it, so the neck leaves the body at a
+    // shallow angle: rounded off short in front of it, the two crossed square and drew a dark
+    // ring round the neck.)
+    { x: 2.2, w: 0.48, h: 0.48, y: 0.14 },
+    { x: 2.45, w: 0.34, h: 0.34, y: 0.17 },
+    { x: 2.62, w: 0, h: 0, y: 0.19 },
   ], 32);
   const WHITE = hex(0xf3f2ee),
-    BUFF = hex(0xf0bf52),
+    // (A pale straw wash, not a yellow: saturated, the head read as a yellow ball.)
+    BUFF = hex(0xecd08c),
     BLACK = hex(0x141416);
   b.add(loft(body, { radial: 26, belly: 0.92 }), { paint: (p) => [...tint(WHITE, 0.95 + 0.07 * hash(p.x * 8, p.y * 8, p.z * 8)), DOWN] });
   const B = [2.0, 0.12, 0],

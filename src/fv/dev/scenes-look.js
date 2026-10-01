@@ -1731,4 +1731,10 @@ LOOK_SCENES.push(
   { name: "vogel-live-toelpel", look: true, birds: true, stage: "postsmolt", at: 17000, season: "summer", hour: 13 },
   // Six birds in view: the frame with and without them, the posing on the processor.
   { name: "vogel-kosten", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // Every bird where the salmon meets it: from under the water, dead afloat from below, and
+  // close from the side and above; by day and at night.
+  { name: "vogel-pruef", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "vogel-pruef-nacht", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 23 },
+  // A goosander filling half the picture: what the birds' shading costs at its worst.
+  { name: "vogel-kosten-nah", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
 );

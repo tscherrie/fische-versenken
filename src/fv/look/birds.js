@@ -6,7 +6,7 @@
 // and posed. On the ordinary layer, as the base game's birds: over the water a bird is seen
 // from below only through the window in the surface, and that draws layer 0 alone.
 //
-//   const flock = createBirds(scene);
+//   const flock = createBirds(scene, { corpseSeconds: CORPSE_SECONDS });
 //   flock.begin(dt);            // every step, dt the game's seconds since the last
 //   flock.add(e);               // each record with spec.render === "bird"
 //   flock.end();
@@ -32,7 +32,6 @@ import * as THREE from "three";
 import { Fn, abs, attribute, cos, cross, dot, float, fract, fwidth, mix, mx_noise_float, mx_worley_noise_float, normalGeometry, normalLocal, normalize, positionGeometry, positionWorld, select, sin, smoothstep, step, varying, vec3, vec4 } from "three/tsl";
 import { level } from "../../course.js";
 import { surfaceLevelAt, waterLit } from "../../render/water.js";
-import { CORPSE_SECONDS } from "../enemies.js";
 import { HERON, PART, SHAPES } from "./bird-shapes.js";
 
 const TAU = Math.PI * 2;
@@ -81,6 +80,7 @@ function birdMaterial() {
   const joint = attribute("joint", "vec4");
   const fold = attribute("fold", "vec4");
   const folded = attribute("folded", "vec4");
+  const foldPaint = attribute("foldPaint", "vec4");
   const row0 = attribute("birdRow0", "vec4"),
     row1 = attribute("birdRow1", "vec4"),
     row2 = attribute("birdRow2", "vec4");
@@ -180,7 +180,11 @@ function birdMaterial() {
   // darker and glossier.
   const local = varying(positionGeometry);
   const lines = varying(fold.w);
-  const plume = varying(folded.w);
+  // (How much the lines show: what a wing's part number carries above the whole number,
+  // bird-shapes.js.)
+  const lineShare = varying(rig.x.sub(rig.x.round()).mul(2.5).clamp(0, 1));
+  // (A folded wing shows its upper side's feathers, bird-shapes.js: foldPaint.)
+  const plume = varying(select(W.w.greaterThan(0.5), foldPaint.w, folded.w));
   const density = abs(plume);
   const size = fwidth(local).length();
   const shows = (frequency) => smoothstep(0.55, 0.2, size.mul(frequency));
@@ -192,15 +196,17 @@ function birdMaterial() {
   const gap = abs(fract(lines.add(0.5)).sub(0.5));
   const width = fwidth(lines);
   // (Faint on a folded wing, where the feathers lie close over one another.)
-  const seam = smoothstep(width.mul(1.2).add(0.05), float(0), gap).mul(step(0, lines)).mul(smoothstep(0.45, 0.15, width)).mul(varying(W.w).mul(-0.6).add(1));
+  const seam = smoothstep(width.mul(1.2).add(0.05), float(0), gap).mul(lineShare).mul(smoothstep(0.45, 0.15, width)).mul(varying(W.w).mul(-0.6).add(1));
   const surface = paint.w;
   const feathered = smoothstep(0.45, 0.2, surface);
   const depth = surfaceLevelAt(positionWorld).sub(positionWorld.y);
   const wet = smoothstep(0, 0.4, depth);
-  const colour = mix(paint.rgb, paint.rgb.mul(2.2).add(vec3(0.05, 0.12, 0.16)), spots.mul(0.8));
+  // (A wing's colour goes over to its upper side's as it folds, bird-shapes.js: foldPaint.)
+  const painted = mix(paint.rgb, foldPaint.rgb, varying(W.w));
+  const colour = mix(painted, painted.mul(2.2).add(vec3(0.05, 0.12, 0.16)), spots.mul(0.8));
   // (The shadows between feathers show more on a pale plumage than on a dark one, and less
   // than a line drawn: kept soft on white.)
-  const pale = dot(paint.rgb, vec3(0.3, 0.55, 0.15)).clamp(0, 1);
+  const pale = dot(painted, vec3(0.3, 0.55, 0.15)).clamp(0, 1);
   const shade = pale.mul(-0.5).add(1);
   const plumage = colour
     .mul(streak.mul(0.12).mul(feathered).add(1))
@@ -243,24 +249,40 @@ function minTail(shape) {
 // up; st.roll about its length).
 
 // The wings' beat: `phase` runs on at `rate` beats a second; the arm swings `amplitude`
-// about `lift`, the hand lags behind it.
+// about `lift`, the hand lags behind it. The swing and its middle are eased in (st.swing,
+// st.lift): a beat taken up from a glide, where the phase had stood still, jumped the wings
+// by up to half a radian in one frame -- the gannet does so every few seconds.
 function beat(st, dt, rate, amplitude, lift, handLag = 0.9) {
   st.phase = (st.phase + dt * rate * TAU) % TAU;
+  st.swing = toward(st.swing, amplitude, 8, dt);
+  st.lift = toward(st.lift, lift, 8, dt);
   const s = Math.sin(st.phase);
   // (Down fast, up slower: the downstroke is the stroke.)
   const down = s - 0.18 * Math.sin(2 * st.phase);
-  st.pose.armFlap = lift + amplitude * down;
-  st.pose.handFlap = 0.45 * amplitude * Math.sin(st.phase - handLag);
+  st.pose.armFlap = st.lift + st.swing * down;
+  st.pose.handFlap = 0.45 * st.swing * Math.sin(st.phase - handLag);
 }
 function glide(st, dt, lift = 0.07, hand = -0.04) {
   st.pose.armFlap = toward(st.pose.armFlap, lift, 6, dt);
   st.pose.handFlap = toward(st.pose.handFlap, hand, 6, dt);
+  // (So the next beat starts from where the wings are, with no swing yet.)
+  st.swing = toward(st.swing, 0, 8, dt);
+  st.lift = st.pose.armFlap;
+}
+// The legs drawn up in flight: swung back at the hip and folded at the heel, so the feet lie
+// back along the belly, toes to the tail. (Swung back alone, the toes still pointed down and
+// the red feet hung below the kingfisher's belly and stuck out of it in the plunge.)
+function tuck(p, dt, rate, hip = -1.4, heel = -1.6) {
+  p.hipL = p.hipR = toward(p.hipL, hip, rate, dt);
+  p.heel = toward(p.heel, heel, rate, dt);
 }
 // The limp, crumpled wings of a bird shot dead: a flutter in the first moment as it falls,
 // half open and hanging; once it lies on the water (`floating`) spread flat on it, swept back
 // and drooping onto it. (Opened all the way: between spread and folded a wing is twisted
 // half round, and on the water that showed as a wing standing on its edge.)
-function limp(st, e, dt, { fold = 0.45, droop = -0.45, floating }) {
+// (Its settings are plain arguments: an object of them made anew for every dead bird on
+// every step was garbage for nothing.)
+function limp(st, e, dt, fold, droop, floating) {
   const p = st.pose;
   const spasm = Math.max(0, 1 - (e.corpse ?? 0) / 0.5);
   st.phase = (st.phase + dt * 9 * TAU) % TAU;
@@ -298,11 +320,14 @@ const POSES = {
     const mode = e.mode;
     if (e.dead) {
       const floating = e.position.y <= st.top + 0.05;
-      limp(st, e, dt, { fold: 0.4, floating });
+      limp(st, e, dt, 0.4, -0.45, floating);
       lying(st, e, dt, floating, 0.8);
       return;
     }
     const wet = e.position.y < st.top;
+    // (How far into the hover: its fore-and-aft swing of the wings is taken up over a few
+    // beats, not all at once.)
+    st.hover = toward(st.hover, mode === "coil" && !wet ? 1 : 0, 8, dt);
     if (mode === "strike") {
       // Folding as it goes: wings swept back, then shut before the water.
       const k = ease(0, 0.14, e.t ?? 0);
@@ -313,7 +338,7 @@ const POSES = {
       st.pitch = toward(st.pitch, 0, 12, dt);
       p.tailSpread = toward(p.tailSpread, 0, 10, dt);
       p.tailPitch = toward(p.tailPitch, 0, 10, dt);
-      p.hipL = p.hipR = toward(p.hipL, -1.3, 10, dt);
+      tuck(p, dt, 10);
       return;
     }
     if (wet) {
@@ -321,6 +346,7 @@ const POSES = {
       p.fold = toward(p.fold, 1, 10, dt);
       glide(st, dt, 0, 0);
       p.headPitch = toward(p.headPitch, 0.2, 6, dt);
+      tuck(p, dt, 10);
       return;
     }
     p.fold = toward(p.fold, 0, 9, dt);
@@ -332,10 +358,11 @@ const POSES = {
       st.pitch = toward(st.pitch, body - down, 8, dt);
       p.headPitch = toward(p.headPitch, Math.max(-1.3, down - body), 8, dt);
       beat(st, dt, 12, 0.85, 0.25);
-      p.sweep = -0.28 * Math.cos(st.phase);
+      p.sweep = -0.28 * st.hover * Math.cos(st.phase) + (1 - st.hover) * p.sweep;
       p.tailSpread = toward(p.tailSpread, 0.7, 6, dt);
       p.tailPitch = toward(p.tailPitch, 0.45, 6, dt);
       p.hipL = p.hipR = toward(p.hipL, -0.2, 6, dt);
+      p.heel = toward(p.heel, 0, 6, dt);
       return;
     }
     // Flight: fast whirring beats, harder climbing out of the water.
@@ -346,7 +373,7 @@ const POSES = {
     st.pitch = toward(st.pitch, 0, 5, dt);
     p.tailSpread = toward(p.tailSpread, climbing ? 0.4 : 0.05, 5, dt);
     p.tailPitch = toward(p.tailPitch, 0.1, 5, dt);
-    p.hipL = p.hipR = toward(p.hipL, -1.3, 6, dt);
+    tuck(p, dt, 6);
   },
 
   // The goosander: under water it swims by its feet alone, both together, the wings shut
@@ -430,7 +457,7 @@ const POSES = {
     const p = st.pose;
     if (e.dead) {
       const floating = (e.corpse ?? 0) > 1.2;
-      limp(st, e, dt, { fold: 0.55, droop: -0.3, floating });
+      limp(st, e, dt, 0.55, -0.3, floating);
       // (Afloat it lies toppled forward, so its wings' turns are the standing bird's: about
       // its upright, which now lies along the water, a sweep lifts both wings into a V and a
       // sweep forward lowers them; about its length, which now points down, a flap sweeps
@@ -480,13 +507,12 @@ const POSES = {
     const p = st.pose;
     if (e.dead) {
       const floating = e.position.y <= st.top + 0.05;
-      limp(st, e, dt, { fold: 0.3, droop: -0.5, floating });
+      limp(st, e, dt, 0.3, -0.5, floating);
       lying(st, e, dt, floating, 0.6);
       return;
     }
     const mode = e.mode;
-    p.hipL = p.hipR = toward(p.hipL, -1.45, 4, dt);
-    p.heel = toward(p.heel, 0.5, 4, dt);
+    tuck(p, dt, 4, -1.45, -1.5);
     if (mode === "strike") {
       const k = ease(0, 0.4, e.t ?? 0);
       p.fold = toward(p.fold, 0.4 + 0.6 * k, 10, dt);
@@ -518,7 +544,9 @@ const POSES = {
 
 // ---- The flock.
 
-export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, heron: 1, gannet: 1 } } = {}) {
+// `corpseSeconds`: how long a corpse lies before it is gone (enemies.js, which passes it: this
+// file is imported by enemies.js, and importing the number back from there made a cycle).
+export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, heron: 1, gannet: 1 }, corpseSeconds = 40 } = {}) {
   const material = birdMaterial();
   const kinds = {};
   let triangles = 0;
@@ -552,6 +580,10 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     phase: ((e.id ?? 1) * 2.39996) % TAU,
     pitch: 0,
     roll: 0,
+    bank: 0,
+    swing: 0,
+    lift: 0,
+    hover: 0,
     float: 0,
     top: 0,
     pose: { armFlap: 0, handFlap: 0, sweep: 0, fold: 0, headX: 0, headY: 0, headZ: 0, headPitch: 0, headYaw: 0, basePitch: 0, tailPitch: 0, tailSpread: 0, hipL: -1.3, hipR: -1.3, heel: 0, curl: 1 / 3 },
@@ -560,13 +592,15 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     frame: -1,
   });
   let frame = 0,
-    dt = 0;
+    dt = 0,
+    time = 0;
 
   // Scratch.
   const X = new THREE.Vector3(),
     Y = new THREE.Vector3(),
     Z = new THREE.Vector3(),
-    UP = new THREE.Vector3(0, 1, 0);
+    UP = new THREE.Vector3(0, 1, 0),
+    column = new THREE.Vector3();
   const v = new THREE.Vector3(),
     w = new THREE.Vector3(),
     aim = new THREE.Vector3();
@@ -591,7 +625,7 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
   function placeHeron(e, st, entry, out) {
     const { shape } = entry;
     const pose = st.pose;
-    const fade = e.dead ? clamp((CORPSE_SECONDS - (e.corpse ?? 0)) / 1.5, 0, 1) : 1;
+    const fade = e.dead ? clamp((corpseSeconds - (e.corpse ?? 0)) / 1.5, 0, 1) : 1;
     const S = HERON.scale * fade * (e.shown ?? 1);
     const yaw = Math.atan2(-e.facing.z, e.facing.x);
     if (!e.dead) {
@@ -648,12 +682,16 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     Z.normalize();
     Y.crossVectors(Z, X).normalize();
     basis.makeBasis(X, Y, Z);
-    if (e.bank && !e.dead) basis.multiply(turn.makeRotationX(e.bank));
-    // A hit jolts it.
+    // (Its bank eased out once it is dead: dropped at once, a gannet shot in its steep tell
+    // snapped level in one frame.)
+    st.bank = e.dead ? toward(st.bank, 0, 3, dt) : (e.bank ?? 0);
+    if (st.bank) basis.multiply(turn.makeRotationX(st.bank));
+    // A hit jolts it, shaking at 16 a second of the game's time (by frames, it shook faster
+    // on a faster screen).
     const jolt = st.jolt ?? 0;
-    const roll = st.roll + jolt * 0.35 * Math.sin(frame * 1.7);
+    const roll = st.roll + jolt * 0.35 * Math.sin(time * 100);
     if (roll) basis.multiply(turn.makeRotationX(roll));
-    const fade = e.dead ? clamp((CORPSE_SECONDS - (e.corpse ?? 0)) / 1.5, 0, 1) : 1;
+    const fade = e.dead ? clamp((corpseSeconds - (e.corpse ?? 0)) / 1.5, 0, 1) : 1;
     const k = (e.size / length) * fade * (e.shown ?? 1);
     out.copy(basis).scale(v.set(k, k, k)).setPosition(e.position);
     out.multiply(shift.makeTranslation(-middle, 0, 0));
@@ -710,6 +748,7 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     // Every step, before the birds: dt the game's seconds since the last (0 holds them).
     begin(seconds = 0) {
       dt = Math.max(0, seconds);
+      time += dt;
       frame++;
       for (const kind in kinds) kinds[kind].n = 0;
     },
@@ -783,7 +822,7 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     // World units a model unit, as a bird is drawn now.
     scaleOf(e) {
       const st = kept.get(e);
-      return st ? new THREE.Vector3().setFromMatrixColumn(st.matrix, 0).length() : 0;
+      return st ? column.setFromMatrixColumn(st.matrix, 0).length() : 0;
     },
   };
   return api;
