@@ -1716,6 +1716,8 @@ LOOK_SCENES.push(
   // Enemies held broadside, hit after hit: healthy, hurt, badly hurt, close up, the far side,
   // and let go to swim off bleeding.
   { name: "wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The same from right beside two of them, and the worse hurt let go to swim off bleeding.
+  { name: "wunden-nah", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // The salmon's own wounds as its strength goes down and comes back.
   { name: "lachs-wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // The flamethrower's char on the living and a burnt one floating up.

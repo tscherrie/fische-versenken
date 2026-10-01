@@ -19,7 +19,8 @@
 // What it leaves on the enemy record: `burst` (the fish came apart: nothing is left to
 // sink, the chunks are its remains), `wound` (0..1, how badly the fish that sinks whole is
 // torn; its bleeding follows it), `burnt` (the wound was burnt), and where the last shot went
-// in (`woundAlong`, `woundUp`, in body lengths). A burst fish is also marked `eaten`, which is
+// in (`woundAlong`, `woundUp`, in body lengths); `seared`, the flame or the arc killed it and
+// it bleeds no more. A burst fish is also marked `eaten`, which is
 // how enemies.js drops a body at its next step. The marks on its skin are kept in `marks`
 // (look/wounds.js), and a wounded fish's bleeding carries what is left over of its next puff
 // from step to step in `bleedRun`.
@@ -197,7 +198,13 @@ export function createGore(scene, camera, { light = false } = {}) {
     top = new Float32Array(PUFFS),
     riverS = new Float32Array(PUFFS),
     carry = new Float32Array(PUFFS),
-    depth = new Float32Array(PUFFS);
+    depth = new Float32Array(PUFFS),
+    // A living fish's thread of blood: how much a puff of it is drawn out along the way the
+    // fish swam (0: an ordinary puff), and that way, in the world.
+    trail = new Float32Array(PUFFS),
+    trailX = new Float32Array(PUFFS),
+    trailY = new Float32Array(PUFFS),
+    trailZ = new Float32Array(PUFFS);
   const kind = new Uint8Array(PUFFS),
     stuff = new Uint8Array(PUFFS),
     spills = new Uint8Array(PUFFS),
@@ -395,6 +402,7 @@ export function createGore(scene, camera, { light = false } = {}) {
       spills[i] = next.spills;
       bulk[i] = next.bulk;
       gone[i] = 0;
+      trail[i] = 0;
       flowX[i] = site.fx;
       flowZ[i] = site.fz;
       floor[i] = site.floor;
@@ -779,6 +787,7 @@ export function createGore(scene, camera, { light = false } = {}) {
     wounds.kill(e, dirKill, weapon, info);
     if (fire || arc) {
       e.wound = 0.05;
+      e.seared = true;
       e.burnt = fire ? 2 : 0;
       steam(wx, wy, wz, fire ? 8 : 4, k);
       return;
@@ -877,23 +886,37 @@ export function createGore(scene, camera, { light = false } = {}) {
       next.drag = 1.8;
       next.stuff = what;
       if (thread) {
-        // (Dragged along a little by the water the fish carries with it, so a fresh puff
-        // is drawn out along the way the fish went before it comes to rest.)
+        // A fish on the move leaves its thread from its tail: what runs out of the wound is
+        // swept back along the flank and shed there (puffs laid on the flank itself would
+        // lie over it as a red band). One holding still bleeds round puffs at the wound.
+        // The puffs lie closer together than they are wide and a little off the line, of
+        // uneven size, and are drawn out along the way the fish went: spaced as wide as
+        // they are, they read from afar as a dotted line, not as blood.
         const v = e.velocity;
+        const vl = v ? Math.hypot(v.x, v.y, v.z) : 0;
+        const going = Math.min(1, vl / (0.8 * k));
+        const h = e.heading;
+        const back = going > 0.3 && h ? (wound.x - e.position.x) * h.x + (wound.y - e.position.y) * h.y + (wound.z - e.position.z) * h.z + 0.48 * k : 0;
         next.rate = 1;
         next.pop = 0.5;
-        puff(
-          wound.x + dir.x * 0.02 * k,
-          wound.y + dir.y * 0.02 * k,
-          wound.z + dir.z * 0.02 * k,
-          dir.x * 0.05 * kc + (v?.x ?? 0) * 0.3,
-          dir.y * 0.03 * kc + (v?.y ?? 0) * 0.3,
-          dir.z * 0.05 * kc + (v?.z ?? 0) * 0.3,
-          (0.08 + 0.03 * random()) * kc,
-          (0.17 + 0.1 * random()) * kc * strength,
-          3.5 + 1.5 * random(),
-          (0.8 + 0.15 * random()) * Math.min(1, 0.4 + strength),
+        const j = puff(
+          wound.x - (h?.x ?? 0) * back + dir.x * 0.03 * k,
+          wound.y - (h?.y ?? 0) * back + dir.y * 0.03 * k,
+          wound.z - (h?.z ?? 0) * back + dir.z * 0.03 * k,
+          dir.x * 0.05 * kc + (v?.x ?? 0) * 0.15,
+          dir.y * 0.03 * kc + (v?.y ?? 0) * 0.15,
+          dir.z * 0.05 * kc + (v?.z ?? 0) * 0.15,
+          (0.05 + 0.03 * random()) * kc,
+          (0.15 + 0.1 * random()) * kc * strength,
+          2.6 + 1.4 * random(),
+          (0.6 + 0.2 * random()) * Math.min(1, 0.4 + strength),
         );
+        if (j >= 0 && vl > 1e-3) {
+          trail[j] = 1.3 * going;
+          trailX[j] = v.x / vl;
+          trailY[j] = v.y / vl;
+          trailZ[j] = v.z / vl;
+        }
         continue;
       }
       next.rate = 1.2;
@@ -952,7 +975,8 @@ export function createGore(scene, camera, { light = false } = {}) {
           if (e.corpse > BLEED_SECONDS) continue;
           const w = e.wound ?? 0.5;
           const rate = (7 + 9 * w) * Math.sqrt(e.size) * plenty;
-          count = spilt(rate, offset, e.corpse) - spilt(rate, offset, e.corpse - dt);
+          // (One the flame or the arc killed is seared shut: it bleeds nothing.)
+          count = e.seared ? 0 : spilt(rate, offset, e.corpse) - spilt(rate, offset, e.corpse - dt);
           strength = (0.45 + 0.75 * w) * (0.8 + 0.4 * Math.exp(-e.corpse / BLEED_EASE));
           // A burnt wound smokes a while as the fish goes down; a charred body boils the
           // water off its skin instead.
@@ -975,7 +999,7 @@ export function createGore(scene, camera, { light = false } = {}) {
           const hurt = 1 - e.hp / e.maxHp;
           const kc = e.size > 1 ? Math.pow(e.size, 0.75) : e.size;
           const drip = 3 * hurt * Math.sqrt(e.size);
-          const swum = hurt > 0.35 ? (((e.speed ?? 0) * dt) / (0.11 * kc)) * Math.min(1, (hurt - 0.35) / 0.25) : 0;
+          const swum = hurt > 0.35 ? (((e.speed ?? 0) * dt) / (0.05 * kc)) * Math.min(1, (hurt - 0.35) / 0.25) : 0;
           const run = (e.bleedRun ?? offset) + (drip * dt + swum) * plenty;
           count = Math.floor(run);
           e.bleedRun = run - count;
@@ -1310,7 +1334,8 @@ export function createGore(scene, camera, { light = false } = {}) {
       // fish swims through would otherwise cost whole screens of shading for nothing.
       if (d < 0.5 * width) continue;
       const t = a / life[i];
-      let opacity = alpha[i] * Math.min(1, a / 0.1) * Math.pow(1 - t, 1.4);
+      // (A thread's puff comes in a little more slowly, off the fish's tail.)
+      let opacity = alpha[i] * Math.min(1, a / (trail[i] > 0 ? 0.25 : 0.1)) * Math.pow(1 - t, 1.4);
       // An old, big cloud thins out, so a hunter behind it still shows.
       opacity *= 1 + (thin[i] - 1) * clamp((a - 0.8) / 1, 0, 1);
       // Thinned out toward the lens.
@@ -1335,7 +1360,18 @@ export function createGore(scene, camera, { light = false } = {}) {
       const fling = Math.hypot(ex, ey) / size[i];
       // (The way it points is kept once it has slowed down, so its lumps do not jump.)
       if (fling > 0.25) spin[i] = Math.atan2(ey, ex);
-      const sx = 1 + Math.min(1.1, fling * 0.35);
+      let sx = 1 + Math.min(1.1, fling * 0.35);
+      // A thread's puff lies drawn out along the fish's way, as much as that way lies across
+      // the view, so the puffs run together into one thread instead of a row of beads.
+      if (trail[i] > 0) {
+        const tx = view[0] * trailX[i] + view[4] * trailY[i] + view[8] * trailZ[i];
+        const ty = view[1] * trailX[i] + view[5] * trailY[i] + view[9] * trailZ[i];
+        const across = Math.hypot(tx, ty);
+        if (across > 0.05) {
+          spin[i] = Math.atan2(ty, tx);
+          sx = Math.max(sx, 1 + trail[i] * across);
+        }
+      }
       shownOpacity[i] = opacity;
       shownWidth[i] = width;
       shownStretch[i] = sx;

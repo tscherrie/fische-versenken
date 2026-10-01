@@ -14,7 +14,10 @@
 // the colliders are only near the pebbles' true shapes), so it is drawn pulled toward the
 // eye along the line of sight, by about a pebble's height: it covers the same place on the
 // screen, whatever lies within that of the ground is drawn over, and a fish swimming above
-// the mark is not. All marks are one mesh and one draw, drawn over the ground
+// the mark is not. That only holds where the eye looks onto the ground: seen along the bed
+// or at the far side of a rise, a grid a little off the ground shows its own straight edges,
+// so a mark fades out with how squarely the ground under it faces the eye (each point of the
+// grid knows its slope). All marks are one mesh and one draw, drawn over the ground
 // by multiplying what is already there: the bed keeps its own light, its caustics and its
 // colour and is only darkened (or, on the pale ring, lightened), and the water between it
 // and the eye is left as it was. A fixed number of marks (half on light settings); a new one
@@ -22,7 +25,7 @@
 // the oldest goes. Time is the game's (waterTime), so a mark does not fade in the pause.
 
 import * as THREE from "three";
-import { Fn, abs, atan, attribute, cameraPosition, exp, length, max, min, mix, normalize, positionGeometry, positionWorld, sin, smoothstep, texture, vec3, vec4 } from "three/tsl";
+import { Fn, abs, atan, attribute, cameraPosition, cos, exp, length, max, min, mix, normalize, positionGeometry, positionWorld, sin, smoothstep, texture, vec2, vec3, vec4 } from "three/tsl";
 import { bed, locate } from "../../course.js";
 import { waterTime } from "../../render/water.js";
 import { extinction, fogNodes } from "../../render/fog.js";
@@ -52,9 +55,13 @@ export function createScorch(scene, { light = false } = {}) {
   // steep ground and at the grid's edge) and its radius (u).
   const marks = new THREE.BufferAttribute(new Float32Array(MARKS * per * 4), 4).setUsage(THREE.DynamicDrawUsage);
   const looks = new THREE.BufferAttribute(new Float32Array(MARKS * per * 4), 4).setUsage(THREE.DynamicDrawUsage);
+  // And which way the ground faces there (the grid's own slope): a mark is shown only where
+  // the eye looks onto the ground, not along it or at its far side.
+  const normals = new THREE.BufferAttribute(new Float32Array(MARKS * per * 3), 3).setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute("position", positions);
   geometry.setAttribute("aMark", marks);
   geometry.setAttribute("aLook", looks);
+  geometry.setAttribute("aFacing", normals);
   const index = new Uint16Array(MARKS * quads * 6);
   for (let m = 0, o = 0; m < MARKS; m++)
     for (let j = 0; j < SIDE - 1; j++)
@@ -86,7 +93,11 @@ export function createScorch(scene, { light = false } = {}) {
     radius = new Float32Array(MARKS),
     born = new Float32Array(MARKS).fill(-Infinity),
     power = new Float32Array(MARKS),
-    kinds = new Uint8Array(MARKS);
+    kinds = new Uint8Array(MARKS),
+    // (How each lies and its noise, kept: a blast on a fresh mark deepens it, and the mark
+    // must not turn or change its pattern as it does.)
+    turns = new Float32Array(MARKS),
+    seeds = new Float32Array(MARKS);
   const heights = new Float32Array(per),
     raised = new Float32Array(per);
   const where = { s: 0, u: 0 };
@@ -183,6 +194,16 @@ export function createScorch(scene, { light = false } = {}) {
         if (j > 0) rise = Math.max(rise, Math.abs(h - raised[k - SIDE]));
         if (j < last) rise = Math.max(rise, Math.abs(h - raised[k + SIDE]));
         const shows = 1 - THREE.MathUtils.smoothstep(rise, step + 0.3, 2.5 * step + 0.6);
+        // The slope along the grid's two ways (across the neighbours, one-sided at its
+        // edges), turned into the world: the ground's normal here.
+        const du = (raised[k + (i < last ? 1 : 0)] - raised[k - (i > 0 ? 1 : 0)]) / (((i < last ? 1 : 0) + (i > 0 ? 1 : 0)) * ((2 * long) / last));
+        const dv = (raised[k + (j < last ? SIDE : 0)] - raised[k - (j > 0 ? SIDE : 0)]) / (((j < last ? 1 : 0) + (j > 0 ? 1 : 0)) * ((2 * wide) / last));
+        const gx = du * cs - dv * sn,
+          gz = du * sn + dv * cs;
+        const g = 1 / Math.hypot(gx, 1, gz);
+        normals.array[o * 3] = -gx * g;
+        normals.array[o * 3 + 1] = g;
+        normals.array[o * 3 + 2] = -gz * g;
         marks.array[o * 4] = (i / last) * 2 - 1;
         marks.array[o * 4 + 1] = (j / last) * 2 - 1;
         marks.array[o * 4 + 2] = now;
@@ -192,7 +213,7 @@ export function createScorch(scene, { light = false } = {}) {
         looks.array[o * 4 + 2] = shows;
         looks.array[o * 4 + 3] = reach;
       }
-    for (const attribute of [positions, marks, looks]) {
+    for (const attribute of [positions, marks, looks, normals]) {
       const size = attribute.itemSize;
       attribute.addUpdateRange(m * per * size, per * size);
       attribute.needsUpdate = true;
@@ -251,10 +272,13 @@ export function createScorch(scene, { light = false } = {}) {
         radius[m] = r;
         cx[m] = at.x;
         cz[m] = at.z;
+        turns[m] = random() * Math.PI * 2;
+        seeds[m] = random();
       }
       born[m] = now;
       kinds[m] = BLAST;
-      lay(m, cx[m], cz[m], hint, radius[m], radius[m], random() * Math.PI * 2, random(), BLAST, power[m], now);
+      // (A mark deepened shows at once, without the fade-in of a new one.)
+      lay(m, cx[m], cz[m], hint, radius[m], radius[m], turns[m], seeds[m], BLAST, power[m], slot.merge ? now - 0.2 : now);
       geometry.setDrawRange(0, used * quads * 6);
       return true;
     },
@@ -298,6 +322,7 @@ export function createScorch(scene, { light = false } = {}) {
 function markMaterial() {
   const mark = attribute("aMark", "vec4");
   const look = attribute("aLook", "vec4");
+  const facing = attribute("aFacing", "vec3");
   const map = woundNoise();
   const material = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, fog: false });
   material.blending = THREE.CustomBlending;
@@ -325,21 +350,39 @@ function markMaterial() {
     // Full a while, then fading out; fresh soot at first, greying as silt settles on it.
     const alive = fade(age, HOLD, LIFE).mul(min(age.mul(8), 1));
     const settled = exp(age.mul(-1 / 18)).oneMinus();
-    const strength = mark.w.mul(alive).mul(shows);
+    // Only where the eye looks onto the ground: seen along it, from low over the bed, the
+    // eye sees the sides of the stones more than the mud between them (and the grid, lying
+    // a little over the ground, would show its straight edges where the ground dips away
+    // from it); on the far side of a rise, the grid pulled toward the eye would darken what
+    // lies beyond the rise in a band along its top. Both fade out with how squarely the
+    // ground faces the eye.
+    const onto = smoothstep(0, 0.12, normalize(cameraPosition.sub(positionWorld)).dot(normalize(facing)));
+    const strength = mark.w.mul(alive).mul(shows).mul(onto);
     const world = positionWorld.xz;
     // (Read once, here: not inside a choice between the blast and the furrow, where the
     // texture's derivatives would be undefined.)
-    const n = vec4(0).toVar();
+    const n = vec4(0).toVar(),
+      m = vec4(0).toVar(),
+      l = vec4(0).toVar();
     n.assign(texture(map, world.div(size.mul(1.6)).add(seed.mul(7.3))));
+    // (And at the scale of the gravel itself, a few stones to a span: the churned ground is
+    // blotched, dark where the mud lies and lighter where a stone shows through it.)
+    m.assign(texture(map, world.mul(2.2).add(seed.mul(3.1))));
     const r = length(q);
-    const torn = r.mul(n.r.sub(0.5).mul(0.55).add(1));
+    const angle = atan(q.y, q.x);
+    // The outline in lobes, read from the noise along a ring round the middle (so it closes
+    // on itself): a blast throws the gravel further one way than another. Seen from low over
+    // the bed, a round edge is squeezed into a line across the view; lobes keep it ragged.
+    l.assign(texture(map, vec2(cos(angle), sin(angle)).mul(0.23).add(seed.mul(5.3))));
+    const lobe = l.g.mul(0.4).add(0.8);
+    const torn = r.mul(n.r.sub(0.5).mul(0.55).add(1)).div(lobe);
     const edge = fade(r, 0.88, 1);
     // A blast: a dark stain over most of the blast's reach thinning out to its ragged edge,
-    // the pit darker still, rays of flung grit, a few dark specks further out, and a faint
-    // pale ring of turned stones.
-    const stain = fade(torn, 0.58, 0.95);
+    // blotched, the pit darker still, rays of flung grit, a few dark specks further out, and
+    // a faint pale ring of turned stones.
+    const blotch = smoothstep(0.3, 0.72, m.r).mul(0.18).add(0.82);
+    const stain = fade(torn, 0.6, 1).mul(blotch);
     const pit = fade(torn, 0.2, 0.55);
-    const angle = atan(q.y, q.x);
     const rays = sin(angle.mul(9).add(seed.mul(40)).add(n.g.mul(6))).max(0).pow(2).mul(smoothstep(0.3, 0.55, torn)).mul(fade(torn, 0.85, 1.08));
     const ring = smoothstep(0.7, 0.79, torn).mul(fade(torn, 0.81, 0.93));
     const grit = smoothstep(0.6, 0.66, n.g).mul(smoothstep(0.55, 0.75, torn)).mul(fade(torn, 0.98, 1.15));

@@ -199,10 +199,18 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
   const gCoat = property("float", "fishCoat");
   const gCoatEnv = property("float", "fishCoatEnv");
   const gThrough = property("vec3", "fishThrough");
+  // (The scales' relief and each scale's own tilt, which the base shader's normal reads
+  // after the colour: where the skin is torn open there are no scales left to catch the
+  // light, and a hole must not show their rims across it.)
+  const gScale = property("vec2", "fishScaleNormal");
+  const gTilt = property("vec2", "fishTilt");
   const fishUV = uv();
   // (Which part of the fish: 7 is the eye.)
   const part = attribute("aPart", "vec2").x;
-  material.colorNode = Fn(() => {
+  // (The sun's shadow pass takes only the colour's alpha: it gets the skin as it was, not
+  // the wounds' texture reads and sums for every texel of the fish's shadow.)
+  material.colorNode = Fn((builder) => {
+    if (builder.material?.isShadowPassMaterial) return base;
     const skin = vec3(0).toVar();
     skin.assign(base);
     const index = float(0).toVar();
@@ -299,12 +307,15 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
         cooked.assign(max(cooked, fade(torn, 1.1, 2.3).mul(smoothstep(0.55, 0.9, torn)).mul(isBurn).mul(skinOnly)));
         // And a streak the water draws back toward the tail, longer the worse the fish is
         // hurt, narrowing and running out ragged.
-        const reach = r.mul(hurt.mul(5).add(2.5));
+        // (Thin and broken: the water washes most of it away, and several wounds' streaks
+        // side by side must not run together into one red band down the flank.)
+        const reach = r.mul(hurt.mul(3.2).add(2.2));
         const back = dx.negate().div(reach);
-        const width = r.mul(back.clamp(0, 1).mul(-0.35).add(0.62)).mul(sy);
+        const width = r.mul(back.clamp(0, 1).mul(-0.3).add(0.5)).mul(sy);
         const trail = smoothstep(0.05, 0.3, back)
           .mul(fade(back, near.g.mul(0.6).add(0.3), 1))
-          .mul(fade(abs(ds.add(fine.b.sub(0.5).mul(r))).div(width), 0.45, 1));
+          .mul(fade(abs(ds.add(fine.b.sub(0.5).mul(r))).div(width), 0.45, 1))
+          .mul(smoothstep(0.32, 0.55, fine.g.mul(0.7).add(near.r.mul(0.3))));
         streak.assign(max(streak, trail.mul(open)));
       };
       [holesA.x, holesA.y, holesA.z, holesA.w, holesB.x, holesB.y, holesB.z, holesB.w].forEach((code, i) => {
@@ -320,7 +331,7 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
       // of light and dark cells read as a skin disease, not as a wound).
       const meat = mix(vec3(0.19, 0.018, 0.014), vec3(0.4, 0.06, 0.045), smoothstep(0.35, 0.7, fine.r));
       skin.assign(mix(skin, skin.mul(vec3(0.5, 0.26, 0.24)).add(vec3(0.05, 0.004, 0.003)), smear.mul(0.75)));
-      skin.assign(mix(skin, vec3(0.2, 0.014, 0.01), streak.mul(0.75)));
+      skin.assign(mix(skin, vec3(0.15, 0.012, 0.008), streak.mul(0.65)));
       skin.assign(mix(skin, skin.mul(0.45).add(vec3(0.22, 0.2, 0.17)), cooked.mul(0.7)));
       skin.assign(mix(skin, vec3(0.1, 0.009, 0.007), clot));
       skin.assign(mix(skin, meat, flesh));
@@ -373,6 +384,12 @@ function markSkin(material, slot, data, { scale = 1 } = {}) {
       gCoat.assign(gCoat.mul(charred.oneMinus()));
       gCoatEnv.assign(gCoatEnv.mul(charred.mul(-0.8).add(1)));
       gThrough.assign(gThrough.mul(max(charred, burn).oneMinus()));
+      // In the hole, the torn flesh and the crust the scales' relief is gone (and mostly
+      // gone under the char, its plates curled and fused): the torn flesh has a lumpy
+      // relief of its own instead.
+      const scaleless = max(opened, charred.mul(0.7));
+      gScale.assign(gScale.mul(scaleless.oneMinus()));
+      gTilt.assign(mix(gTilt.mul(scaleless.oneMinus()), vec2(fine.r.sub(0.5), fine.g.sub(0.5)).mul(0.5), flesh.mul(0.8)));
     });
     return skin;
   })();
@@ -411,6 +428,9 @@ export function createWounds() {
   // The salmon's (the local player's) marks: slot 0, told to its skin by a uniform.
   const salmonMarks = { slot: 0, holes: new Array(HOLES).fill(0), n: 0, char: 0, singe: 0, fresh: false };
   const salmonSlot = uniform(-1);
+  // How big the salmon's wounds are drawn: small, and closing to nothing as it gets its
+  // strength back, so they shrink away instead of vanishing all at once when it is whole.
+  const salmonScale = uniform(0.8);
   const wrapped = new WeakSet();
   const axisY = new THREE.Vector3(),
     axisZ = new THREE.Vector3(),
@@ -538,11 +558,12 @@ export function createWounds() {
     if (info?.mode === "arc" || weapon === "blitz") marksOf(e).singe = Math.max(marksOf(e).singe, 0.75);
   }
 
-  // A fish's marks into its slot of the array.
-  function write(marks, hurt) {
+  // A fish's marks into its slot of the array (`fade`: how much of its char and scorch lines
+  // still show).
+  function write(marks, hurt, fade = 1) {
     const o = marks.slot * 3;
     const h = marks.holes;
-    data[o].set(hurt, marks.char, marks.singe, marks.n);
+    data[o].set(hurt, marks.char * fade, marks.singe * fade, marks.n);
     data[o + 1].set(h[0], h[1], h[2], h[3]);
     data[o + 2].set(h[4], h[5], h[6], h[7]);
   }
@@ -585,7 +606,7 @@ export function createWounds() {
     const skin = salmon?.materials?.skin;
     if (!skin || wrapped.has(skin)) return;
     wrapped.add(skin);
-    markSkin(skin, salmonSlot, dataNode, { scale: 0.8 });
+    markSkin(skin, salmonSlot, dataNode, { scale: salmonScale });
   }
 
   // Each step, the salmon's: its wounds shown as much as its strength is down (they widen
@@ -602,8 +623,9 @@ export function createWounds() {
     // (A sudden gain is a new fish taking over, not healing.)
     if (energy > 0.97 || energy - lastEnergy > 0.25) clearSalmon();
     // Strength lost to a blow no shot made (a bite, a blade): a bite on the flank where it
-    // came, if nothing else marked it this step.
-    if (lastEnergy - energy > 0.035 && !salmonMarks.fresh && fish?.heading) {
+    // came, if nothing else marked it this step. (Not in the air: a leap at a fall costs a
+    // spawner as much strength as a bite, and tears nothing.)
+    if (lastEnergy - energy > 0.035 && !salmonMarks.fresh && fish?.heading && !fish.airborne) {
       bitten.position = fish.position;
       bitten.heading = fish.heading;
       bitten.size = fish.length;
@@ -614,8 +636,10 @@ export function createWounds() {
     salmonMarks.fresh = false;
     lastEnergy = energy;
     const marked = salmonMarks.n > 0 || salmonMarks.char > 0 || salmonMarks.singe > 0;
-    write(salmonMarks, Math.min(1, Math.max(0, (1 - energy) * 1.3)));
-    salmonSlot.value = marked ? 0 : -1;
+    const open = 1 - THREE.MathUtils.smoothstep(energy, 0.8, 0.97);
+    write(salmonMarks, Math.min(1, Math.max(0, (1 - energy) * 1.3)), open);
+    salmonScale.value = 0.8 * open;
+    salmonSlot.value = marked && open > 0.02 ? 0 : -1;
   }
   function clearSalmon() {
     salmonMarks.holes.fill(0);

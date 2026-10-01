@@ -240,7 +240,15 @@ const SCENES = {
     await view("schwer", 0.9, 0.3, 0.2);
     await view("schwer-oben", 0.35, 0.9, -0.2);
     await view("schwer-hinten", 0.5, 0.35, -1.2);
-    // Back to full strength: the wounds close.
+    // Getting its strength back: the wounds close up, small before they are gone.
+    fish.energy = 0.9;
+    await salmon.run(0.2, () => {
+      still();
+      fish.energy = 0.9;
+    });
+    record.push({ label: "heilt", holes: gore.wounds.salmon.n });
+    await view("heilt", 0.9, 0.3, 0.2);
+    // Back to full strength: the wounds are gone.
     fish.energy = 1;
     await salmon.run(0.2, () => {
       still();
@@ -248,6 +256,54 @@ const SCENES = {
     });
     record.push({ label: "geheilt", holes: gore.wounds.salmon.n });
     await view("geheilt", 0.9, 0.3, 0.2);
+    salmon.view(null);
+  },
+
+  // Wounds from very close, as a fight in a narrow pool brings them: a trout and a perch held
+  // broadside, shot with a mix of guns from the side and a little behind, seen from right
+  // beside each; then the trout, badly hurt, let go to swim off with its thread of blood.
+  async "wunden-nah"(ctx, record) {
+    const { salmon } = ctx;
+    const { fish, THREE } = salmon;
+    const { ahead, left } = frameOf(salmon);
+    const { list, hold, state } = place(
+      ctx,
+      [
+        ["trout", 2.2, 0.0, 0.05],
+        ["perch", 2.0, 1.0, -0.1],
+      ],
+      left,
+    );
+    const [trout, perch] = list;
+    await salmon.run(0.3, hold);
+    const from = left.clone().negate().addScaledVector(ahead, -0.6).normalize();
+    const hits = [
+      [trout, "minigun", { along: 0.12, up: 0.02 }],
+      [trout, "minigun", { along: -0.1, up: -0.01 }],
+      [trout, "piu", { along: 0.25, up: 0.03 }],
+      [trout, "panzerbuechse", { along: -0.02 }],
+      [perch, "flinte", { along: 0.02, pellets: 6 }],
+      [perch, "minigun", { along: -0.15 }],
+      [perch, "piu", { along: 0.15 }],
+    ];
+    for (const [e, w, o] of hits) if (e) shoot(ctx, e, w, from, { ...o, damage: e.maxHp * 0.12 });
+    await salmon.run(0.6, hold);
+    record.push({ label: "getroffen", enemies: list.map(marksOf) });
+    const beside = (e, d) => e.position.clone().addScaledVector(from, d * e.size).add(new THREE.Vector3(0, 0.04 * e.size, 0));
+    if (trout) await picture(ctx, "forelle", hold, beside(trout, 0.32).addScaledVector(trout.heading, 0.05 * trout.size), trout.position.clone().addScaledVector(trout.heading, 0.05 * trout.size));
+    if (perch) await picture(ctx, "barsch", hold, beside(perch, 0.38), perch.position.clone());
+    if (!trout) return;
+    trout.hp = trout.maxHp * 0.25;
+    state.free = true;
+    for (const e of list) {
+      e.mode = "flee";
+      e.t = 0;
+    }
+    await salmon.run(1.5);
+    if (trout.dead) return;
+    const at = trout.position.clone();
+    const side = new THREE.Vector3(0, 1, 0).cross(trout.heading).normalize();
+    await picture(ctx, "schwimmt", null, at.clone().addScaledVector(side, 1.4 * trout.size).addScaledVector(trout.heading, -0.9 * trout.size).add(new THREE.Vector3(0, 0.2 * trout.size, 0)), at.clone().addScaledVector(trout.heading, -0.8 * trout.size));
     salmon.view(null);
   },
 

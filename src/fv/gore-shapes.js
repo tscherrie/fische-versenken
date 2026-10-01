@@ -96,13 +96,13 @@ export function createCloudMaterial(geometry) {
     // and no two puffs are quite the same red. Smoke is a sooty grey, ichor a sickly
     // yellow-green, goo nearly clear, silt the grey-brown of the bed.
     const tint = seed.mul(0.4).add(0.8);
-    const blood = mix(vec3(0.085, 0.024, 0.014), vec3(0.17, 0.009, 0.006), fresh);
+    const blood = mix(vec3(0.095, 0.019, 0.011), vec3(0.18, 0.008, 0.005), fresh);
     const smoke = mix(vec3(0.07, 0.066, 0.06), vec3(0.03, 0.028, 0.026), fresh);
     const ichor = mix(vec3(0.16, 0.17, 0.035), vec3(0.3, 0.36, 0.03), fresh);
     const goo = vec3(0.34, 0.42, 0.44);
     const silt = vec3(0.24, 0.22, 0.17);
     const albedo = select(stuff.lessThan(0.5), blood, select(stuff.lessThan(1.5), smoke, select(stuff.lessThan(2.5), ichor, select(stuff.lessThan(3.5), goo, silt)))).mul(tint);
-    const color = albedo.mul(mix(float(1.05), float(0.3), density)).mul(lit.mul(0.9).add(0.3));
+    const color = albedo.mul(mix(float(1.1), float(0.36), density)).mul(lit.mul(0.9).add(0.32));
     // Where the bed runs through the sprite, its lower part fades out instead of being cut
     // off hard by the gravel. The height of each pixel is worked out in the world (from the
     // camera's own right and up), so a camera that looks down on a cloud still fades it
