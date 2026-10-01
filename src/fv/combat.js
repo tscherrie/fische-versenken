@@ -50,7 +50,7 @@ export function createCombat(game) {
   const fx = createFx(scene, camera, { capacity: light ? 400 : 768, bubbleCapacity: light ? 240 : 480 });
   const sfx = createSfx(sound);
   const gore = createGore(scene, camera, { random: look, light });
-  const models = createWeaponModels(scene, { mirror: game.mirror });
+  const models = createWeaponModels(scene, { mirror: game.mirror, enemies, camera });
   // The larvae and the weapon capsules have models of their own (the look's): made here,
   // before the first frame, so the warm-up render compiles them with everything else. The
   // larvae's stand-in bodies in the enemies' crowds are then no longer drawn.
@@ -260,6 +260,7 @@ export function createCombat(game) {
     flash.size = 0.12 + 0.05 * e.size;
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, flash);
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
+    models.enemyShot?.(e);
   }
   // The enemies' weapons heard beyond their shots (sfx-enemies.js), each from where it is: the
   // wind-up of an aim (and of a bomber tipping into its dive), `seconds` before it fires, and a
@@ -538,8 +539,6 @@ export function createCombat(game) {
     hud.bars(enemies.list, camera, game.now.time);
     fx.begin();
     models.update(players);
-    // (The enemies' own weapons, strapped on the same way, once the models draw them.)
-    models.enemies?.(enemies.list);
     // The shots in flight, the grenades' bodies, the weapons' own lights.
     firing.draw(local);
     nightSigns();
@@ -556,6 +555,9 @@ export function createCombat(game) {
     // The larvae and the capsules (held still in the pause), and the weapons inside the
     // capsules once the weapon models dock there (capsules.anchor).
     larvae.draw(enemies.list, shown ? dt : 0);
+    // The enemies' own weapons, strapped on the same way (after the larvae: theirs ride on the
+    // larvae's matrices of this frame).
+    models.enemies?.(enemies.list, larvae);
     capsules.draw(pickups.items, game.now.time);
     models.capsules?.(pickups.items, capsules);
     smoke.frame();
