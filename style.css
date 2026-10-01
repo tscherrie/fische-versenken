@@ -644,6 +644,13 @@
 #hint kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
 #hint .glow { color: #ffd98a; font-weight: 800; text-shadow: 0 0 8px rgba(255, 190, 90, 0.7); }
 
+/* The loading number, on the loading line and on the title card's button (intro.js): its
+   figures all equally wide, and room kept after it for "100 %", so the words before it stand
+   still while it counts. */
+.percent { display: inline-grid; font-variant-numeric: tabular-nums; }
+.percent > * { grid-area: 1 / 1; text-align: left; }
+.percent .room { visibility: hidden; }
+
 /* The title card, which is also the pause (intro.js): the title; the start, with the saved
    stage and "new game" in one quiet line under it; the settings, each row a label and its
    control; the keys, small; GitHub and the version at the foot. At the start as in the
@@ -704,8 +711,16 @@
 /* The start, as wide as the card; under it the saved stage and the way to start afresh, one
    quiet line (two only while "new game" asks to be sure). */
 #intro .primary { margin-top: 24px; }
-#intro #intro-start { width: 100%; min-width: 0; height: 52px; padding: 0 24px; }
+#intro #intro-start { position: relative; width: 100%; min-width: 0; height: 52px; padding: 0 24px; }
+/* (Its size fixed, the button is laid out on its own: a new number costs the page no layout
+   beyond it, while the load pauses to show it.) */
+#intro-start.loading { contain: strict; }
 #intro #intro-start:hover:not(:disabled) { transform: translateY(-1px); }
+/* While the river is built (intro.js): how far it has come, and a thin line along the foot of
+   the button filling up with it. The line glides from one number to the next on its own, as
+   the page may be busy in between. */
+#intro-start .rail { position: absolute; left: 30px; right: 30px; bottom: 8px; height: 3px; border-radius: 2px; background: rgba(6, 35, 42, 0.18); overflow: hidden; }
+#intro-start .rail i { display: block; height: 100%; border-radius: inherit; background: rgba(6, 35, 42, 0.62); transform: scaleX(0); transform-origin: left; transition: transform 400ms linear; }
 #intro-start kbd { margin-left: 4px; vertical-align: 2px; background: rgba(6, 35, 42, 0.14); box-shadow: inset 0 -2px 0 rgba(6, 35, 42, 0.2); }
 #intro .sub { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 16px; margin: 0; font-size: 12.5px; font-weight: 600; }
 #intro .sub > * { margin: 8px 0 0; }
