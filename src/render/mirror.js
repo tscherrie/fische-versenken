@@ -84,6 +84,14 @@ export function createMirror(renderer, { scale = 0.5 } = {}) {
 // down) -- what is above changes slowly, and each drawing of the scene costs a millisecond.
 export const windowTarget = new THREE.CubeRenderTarget(256, { type: THREE.HalfFloatType });
 windowTarget.texture.name = "Window";
+// (A cube's picture is the list of its six faces, and the list has no width or height of
+// its own until three resizes the target. Three's count of texture memory asks for them all
+// the same and writes undefined into a Vector3, and after a single undefined V8 keeps x and
+// y of every Vector3 in the game as boxed numbers: each write into one then makes a new
+// heap number, in all of the maths. The faces' size on the list, where setSize would put
+// it, keeps them plain numbers, and three's count now has the cube at its real size; what
+// is drawn reads the faces themselves and is the same.)
+windowTarget.texture.image.width = windowTarget.texture.image.height = windowTarget.width;
 export const windowMap = cubeTexture(windowTarget.texture);
 export const windowOn = uniform(0);
 const ROUND = [2, 0, 2, 1, 2, 4, 2, 5];

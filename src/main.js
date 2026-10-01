@@ -51,6 +51,8 @@ import { mode } from "./vegan.js";
 import { TRAITS, STEP, earned, heritage, inherit, loadHeritage, resetHeritage, traits as heritageTraits } from "./heritage.js";
 import { dither } from "./render/dither.js";
 import { mods } from "./mods.js";
+import { breathe, leaveLoad, loadReady, loadStep } from "./progress.js";
+import { warmUp } from "./render/warmup.js";
 
 // English over the German, unless the player chose German.
 startTranslation();
@@ -91,10 +93,72 @@ function savedStageName() {
   return stageLabel(saved.stage, saved.generation);
 }
 
+// The photographs (materials.js) come while the river is built; what the load may still
+// have to wait for them, as a step of the loading number. Each is one file, a gravel's shape
+// two (its normals and its heights, one DataTexture). What is left to come is guessed from
+// the files not in yet, at the size of those that are (of a typical one before three are
+// in), at the speed the line has shown: the modules' (`lineSpeed`, bytes per ms, all in
+// before the game started) or the photographs' own so far, whichever is faster. Then each
+// is unpacked and handed to its texture (whose version counts up when it is).
+const PICTURE_BYTES = 7e5;
+const PICTURE_MS = 25;
+const PICTURE_FILE = /\/assets\/[^/?]+\.jpg(\?|$)/;
+function picturesLeft(lineSpeed) {
+  const files = photoTextures.length + photoTextures.reduce((n, texture) => n + (texture.isDataTexture ? 1 : 0), 0);
+  let bytes = 0,
+    count = 0,
+    from = Infinity;
+  for (const entry of performance.getEntriesByType("resource"))
+    if (PICTURE_FILE.test(entry.name)) {
+      count++;
+      bytes += entry.encodedBodySize || entry.transferSize || 0;
+      from = Math.min(from, entry.startTime);
+    }
+  const speed = Math.max(lineSpeed, count ? bytes / Math.max(1, performance.now() - from) : 0);
+  const coming = Math.max(0, files - count) * (count >= 3 ? bytes / count : PICTURE_BYTES);
+  const unpacked = photoTextures.reduce((n, texture) => n + (texture.version > 0 ? 1 : 0), 0);
+  return { download: coming > 0 && speed > 0 ? coming / speed : 0, unpack: (photoTextures.length - unpacked) * PICTURE_MS };
+}
+// The wait itself: how far it has come by that guess, made afresh every tenth of a second. A
+// picture that fails fails the load, as it did.
+async function picturesIn(step, lineSpeed) {
+  const all = photosLoaded();
+  let settled = false;
+  all.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  const from = performance.now();
+  while (!settled) {
+    const left = picturesLeft(lineSpeed);
+    const ms = Math.max(1, left.download + left.unpack);
+    const gone = performance.now() - from;
+    step.progress(gone / (gone + ms));
+    step.expect(ms);
+    await Promise.race([all.catch(() => {}), new Promise((resolve) => setTimeout(resolve, 100))]);
+  }
+  return all;
+}
+
 async function start() {
   // How long the way to the title card's button takes, step by step (performance marks,
   // read back with performance.getEntriesByType("mark")).
   performance.mark("salmon:start");
+  // The way to the title card's button as the steps of its loading number (progress.js),
+  // each with the time it took here, in ms (a MacBook Pro M1 Pro; cold and warm alike: the
+  // shaders are built afresh at every load, only the files are kept). The warm-up and the
+  // wait for the photographs measure what is left of them as they go; the world moves on by
+  // its marks. (index.html's REST is their sum.)
+  const STEPS = { renderer: 150, world: 1150, warmup: 10500, photos: 450, upload: 250, first: 160 };
+  const WORLD = { terrain: 85, salmon: 85, life: 330, hud: 50, events: 35, built: 80, "prime-features": 440, primed: 45 };
+  const startup = Object.fromEntries(Object.entries(STEPS).map(([name, ms]) => [name, loadStep(name, ms)]));
+  const worldAt = {};
+  {
+    let sum = 0;
+    const whole = Object.values(WORLD).reduce((a, b) => a + b, 0);
+    for (const [name, ms] of Object.entries(WORLD)) worldAt[name] = (sum += ms) / whole;
+  }
+  startup.renderer.progress(0);
   // The graphics quality: ?quality= in the address, else what the player chose (on the card
   // or at the graphics button, G -- setQuality below), else Detail on a computer and
   // Balanced on a phone.
@@ -128,6 +192,14 @@ async function start() {
   // WebGPU where the browser has it, WebGL 2 where it has not (or with ?webgl).
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance", forceWebGL: query.has("webgl"), trackTimestamp: query.has("shots") });
   await renderer.init();
+  // The screen's depth buffer (on WebGPU) is a texture three makes without a size and sizes
+  // on the first frame, after asking the texture what size it has. The undefined it gets
+  // back goes into a Vector3, and after a single undefined V8 keeps x and y of every Vector3
+  // in the game as boxed numbers: each write into one makes a new heap number, in all of
+  // the maths (render/mirror.js has the other case). A size of nothing until the real one
+  // keeps them plain numbers; the buffer is made on the first frame as before.
+  const screenDepth = renderer.getCanvasTarget().depthTexture;
+  screenDepth.image.width = screenDepth.image.height = 0;
   renderer.setPixelRatio(1);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -136,7 +208,11 @@ async function start() {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   // A startup mark with what the graphics card holds so far.
-  const mark = (name) => performance.mark(`salmon:${name}`, { detail: { programs: renderer.info.programs?.length ?? 0, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries } });
+  // (And how far the world has come, for the loading number.)
+  const mark = (name) => {
+    performance.mark(`salmon:${name}`, { detail: { programs: renderer.info.programs?.length ?? 0, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries } });
+    if (name in worldAt) startup.world.progress(worldAt[name]);
+  };
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.05, 0.14, 0.14);
@@ -198,6 +274,15 @@ async function start() {
   const ripples = createRipples();
   const skyDome = createSky(scene);
   mark("setup");
+  startup.renderer.done();
+  startup.world.progress(0);
+  // (How fast the line is, from the modules, all in by now: bytes per ms.)
+  const lineSpeed = (() => {
+    const modules = performance.getEntriesByType("resource").filter((entry) => /\.js(\?|$)/.test(entry.name));
+    const bytes = modules.reduce((sum, entry) => sum + (entry.encodedBodySize || 0), 0);
+    const span = Math.max(0, ...modules.map((entry) => entry.responseEnd)) - Math.min(Infinity, ...modules.map((entry) => entry.startTime));
+    return span > 0 ? bytes / span : 0;
+  })();
   const [bedMaterial, rocks] = await Promise.all([createBedMaterial({ relief: settings.detail && settings.taa }), createRockMaterials()]);
   mark("textures");
   const surfaceMaterial = createSurfaceMaterial({ clear: settings.clearWater });
@@ -214,6 +299,7 @@ async function start() {
   const features = createFeatures(scene, { rocks, locate, surfaceMaterial });
   terrain.extras.push(features);
   mark("terrain");
+  await breathe();
   const featureEvents = [];
   let liceExposure = 0,
     liceUntil = -1,
@@ -229,6 +315,7 @@ async function start() {
   const salmon = createSalmon(scene, { pace });
   const fish = salmon.fish;
   mark("salmon");
+  await breathe();
   const save = createSave();
   const at = {};
   let cameraReady = false;
@@ -309,6 +396,7 @@ async function start() {
   const life = createLife(scene, { detail: settings.detail, terrain, salmon });
   mirror(life.meshes);
   mark("life");
+  await breathe();
   const falls = createFalls(scene);
   // Brothers and sisters of the same brood, each on its own, somewhere near.
   const siblings = createSiblings(scene);
@@ -383,6 +471,7 @@ async function start() {
   // Storms, anglers, otters, ice going out, northern lights.
   const events = createEvents(scene, { rocks, sound, daylight, life, query });
   mark("events");
+  await breathe();
 
   // ------------------------------------------------------------------------------------
   // Input. Click the river and the pointer is captured; the mouse turns the fish. W swims,
@@ -548,7 +637,12 @@ async function start() {
     }
     const url = new URL(location.href);
     url.searchParams.delete("quality");
-    setTimeout(() => location.replace(url.toString()), 350);
+    // (While the river is being built: at once, as a timer would wait for the building to
+    // end.)
+    if (!built) {
+      leaveLoad();
+      location.replace(url.toString());
+    } else setTimeout(() => location.replace(url.toString()), 350);
   }
 
   const held = new Set();
@@ -2820,18 +2914,22 @@ async function start() {
   // ------------------------------------------------------------------------------------
   // First frame: build what is round the fish, then run.
   mark("built");
+  await breathe();
   placeCamera(0, true);
   cameraReady = true;
   mark("camera");
   terrain.prime({ x: camera.position.x, z: camera.position.z, s: fish.river.s, u: fish.river.u }, { radius: 90, near: clamp(0.28 + fish.length * 0.1, 0.35, 1), land: 60 });
   features.prime(fish.river.s);
   mark("prime-features");
+  await breathe();
   life.reset(fish);
   mark("prime-life");
   pebbles.prime(fish.position, fish.length, fish.river.s);
   resize();
   hud.update({ energy: fish.energy, progress: fish.progress, ...salmon.appetite(), yolk: !!STAGES[fish.stage].yolk, stage: fish.stage, reserve: !!STAGES[fish.stage].fasting });
   mark("primed");
+  startup.world.done();
+  startup.warmup.progress(0);
   // Every material the river can show is compiled now, behind the loading card, and not
   // the first time a hunter or a new kind of food turns up mid-swim (a stall of a second).
   {
@@ -2851,7 +2949,20 @@ async function start() {
     // WebGPU. The renderer's compileAsync cannot yet build them for a target of our own.)
     // (The caustic net first, so that its pass is built here too and the draw below sees a
     // real net.)
+    // The draw of everything comes after the same built part by part (render/warmup.js),
+    // so that the loading number moves meanwhile; it then finds every pipeline built.
     caustics.render();
+    // (While it goes on, what the wait for the photographs after it will take: those still
+    // to come keep coming meanwhile.)
+    const warming = {
+      progress: (f) => startup.warmup.progress(f),
+      expect(ms) {
+        startup.warmup.expect(ms);
+        const left = picturesLeft(lineSpeed);
+        startup.photos.expect(Math.max(0, left.download - ms) + left.unpack);
+      },
+    };
+    await warmUp({ renderer, scene, camera, target: post.main, step: warming });
     renderer.setRenderTarget(post.main);
     renderer.shadowMap.needsUpdate = true;
     renderer.render(scene, camera);
@@ -2865,10 +2976,17 @@ async function start() {
       waterWindow.off();
     }
     mark("compiled");
-    await photosLoaded();
+    startup.warmup.done();
+    await picturesIn(startup.photos, lineSpeed);
     mark("photos");
-    for (const texture of photoTextures) renderer.initTexture(texture);
+    startup.photos.done();
+    for (let i = 0; i < photoTextures.length; i++) {
+      renderer.initTexture(photoTextures[i]);
+      startup.upload.progress((i + 1) / photoTextures.length);
+      await breathe();
+    }
     mark("uploaded");
+    startup.upload.done();
     renderer.shadowMap.needsUpdate = true;
     renderer.setRenderTarget(post.main);
     renderer.render(scene, camera);
@@ -2884,6 +3002,7 @@ async function start() {
   mark("first-step");
   draw(1 / 60);
   mark("first-draw");
+  startup.first.done();
   loading.style.opacity = 0;
   setTimeout(() => (loading.hidden = true), 900);
   const begin = () => {
@@ -2896,6 +3015,7 @@ async function start() {
     track("mode", { vegan: mode.vegan });
   };
   mark("ready");
+  loadReady();
   built = true;
   habitat.classList.remove("building");
   if (title) {

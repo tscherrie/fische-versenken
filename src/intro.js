@@ -27,8 +27,11 @@ import { clearSave } from "./save.js";
 import { LANGS, lang, setLang, t } from "./i18n.js";
 import { track } from "./track.js";
 import { mode, setVegan } from "./vegan.js";
+import { leaveLoad, loadReady, onLoadProgress } from "./progress.js";
 
 const box = () => document.querySelector("#intro");
+// The river still being built behind the card (showIntro, until ready).
+let building = false;
 
 // Graphics quality: the four steps side by side, each with a word on what it is for, the
 // one in use marked and the one this kind of device starts with marked "empfohlen"; below,
@@ -193,7 +196,12 @@ function languages(intro, leaving = () => {}) {
       if (code === lang) return;
       track("language", { to: code });
       leaving();
-      setTimeout(() => setLang(code), 150);
+      // (While the river is being built there is nothing to keep, and a timer would wait
+      // for the building to end: at once.)
+      if (building) {
+        leaveLoad();
+        setLang(code);
+      } else setTimeout(() => setLang(code), 150);
     });
     picker.append(button);
   }
@@ -228,6 +236,22 @@ export function settingsRow(label, control, { first = false } = {}) {
   if (first) settings.prepend(row);
   else settings.append(row);
   return row;
+}
+
+// How far the river has come, as the language writes a share ("42 %" in German, "42%" in
+// English), in a box as wide as "100 %" whose figures are all equally wide: the words before
+// it stand still while it counts. The loading line's box is index.html's, made before the
+// modules came; the button's is made here.
+const percent = new Intl.NumberFormat(lang === "zh" ? "zh-Hans" : lang, { style: "percent", maximumFractionDigits: 0 });
+function percentBox(box = document.createElement("span")) {
+  box.className = "percent";
+  const now = box.querySelector(".now") ?? box.appendChild(document.createElement("span"));
+  now.className = "now";
+  const room = box.querySelector(".room") ?? box.appendChild(document.createElement("span"));
+  room.className = "room";
+  room.setAttribute("aria-hidden", "true");
+  room.textContent = percent.format(1);
+  return { box, set: (n) => (now.textContent = percent.format(n / 100)) };
 }
 
 export function showPhoneNotice() {
@@ -286,7 +310,34 @@ export function showIntro({ resume = null, title = true, quality = null, onResum
     if (asApp()) track("app");
   }
   button.disabled = true;
-  button.textContent = "Der Fluss entsteht …";
+  // Until the river is built: the words, how far it has come, and a thin line along the
+  // foot of the button filling up with it (progress.js); the same number on the loading line
+  // behind the card, which is what shows when there is no card.
+  const words = document.createElement("span");
+  words.textContent = "Der Fluss entsteht …";
+  const count = percentBox();
+  const rail = document.createElement("span");
+  rail.className = "rail";
+  rail.setAttribute("aria-hidden", "true");
+  const fill = document.createElement("i");
+  rail.append(fill);
+  button.replaceChildren(words, " ", count.box, rail);
+  button.classList.add("loading");
+  building = true;
+  const loadingLine = document.querySelector("#loading .percent");
+  const behind = loadingLine ? percentBox(loadingLine) : null;
+  let percentShown = -1;
+  const unwatch = onLoadProgress((f) => {
+    const n = Math.floor(f * 100);
+    if (n === percentShown) return;
+    percentShown = n;
+    // (The loading line only where the card is not over it.)
+    if (intro.hidden) behind?.set(n);
+    else {
+      count.set(n);
+      fill.style.transform = `scaleX(${n / 100})`;
+    }
+  });
   if (resume) status.textContent = `Gespeichert: ${resume}`;
   // Vegan mode (vegan.js): nobody is eaten; kept for next time. What it means is its row's
   // tooltip (index.html), and the switch's own, so that a screen reader says it too.
@@ -323,10 +374,18 @@ export function showIntro({ resume = null, title = true, quality = null, onResum
   }
   return {
     started,
+    // The game is ready: the button turns on at 100 %, when an extension's steps have ended
+    // too (progress.js).
     ready() {
-      button.disabled = false;
-      button.textContent = resume ? "Weiterschwimmen" : "Losschwimmen";
-      button.focus({ preventScroll: true });
+      loadReady().then(() => {
+        unwatch();
+        building = false;
+        if (paused) return;
+        button.classList.remove("loading");
+        button.disabled = false;
+        button.textContent = resume ? "Weiterschwimmen" : "Losschwimmen";
+        button.focus({ preventScroll: true });
+      });
     },
     // Paused: the card over the river as it is, with the fish's stage as saved; the
     // button, P or a click beside the card swims on.
