@@ -77,6 +77,7 @@
     <link rel="modulepreload" href="/src/nets.js" />
     <link rel="modulepreload" href="/src/netting.js" />
     <link rel="modulepreload" href="/src/intro.js" />
+    <link rel="modulepreload" href="/src/progress.js" />
     <link rel="modulepreload" href="/src/track.js" />
     <link rel="modulepreload" href="/src/version.js" />
     <link rel="modulepreload" href="/src/pebbles.js" />
@@ -114,6 +115,7 @@
     <link rel="modulepreload" href="/src/render/geometry.js" />
     <link rel="modulepreload" href="/src/render/ripples.js" />
     <link rel="modulepreload" href="/src/render/policy.js" />
+    <link rel="modulepreload" href="/src/render/warmup.js" />
     <link rel="modulepreload" href="/src/daylight.js" />
     <link rel="modulepreload" href="/src/terrain.js" />
     <link rel="modulepreload" href="/src/clearings.js" />
@@ -131,7 +133,9 @@
     <link rel="modulepreload" href="/vendor/three.core.js" />
   </head>
   <body>
-    <main id="habitat" aria-label="Salmon Survival">
+    <!-- (.building: the HUD and the buttons in the corner wait until the river is built,
+         main.js; from the first frame, so that they do not show while the modules come.) -->
+    <main id="habitat" class="building" aria-label="Salmon Survival">
       <canvas
         id="scene"
         aria-label="Du bist ein Lachs. Klicke ins Bild, um mit der Maus zu lenken. W schwimmt, S bremst, A und D gleiten zur Seite, die Leertaste spurtet, schnappt und springt. M zeigt die Karte, L das Logbuch, T schaltet den Ton, F den Vollbildmodus."
@@ -269,7 +273,7 @@
       <div id="winded"></div>
       <div id="glow"></div>
       <div id="veil"></div>
-      <div id="loading" role="status"><p>Der Fluss entsteht…</p></div>
+      <div id="loading" role="status"><p>Der Fluss entsteht… <span class="percent"><span class="now"></span><span class="room" aria-hidden="true">100&nbsp;%</span></span></p></div>
       <!-- The title card, which is also the pause (intro.js): the title, the start with the
            saved stage under it, the settings, the keys, and GitHub with the version at the
            foot. What a graphics step does and what vegan mode means are in the tooltips, so
@@ -334,6 +338,59 @@
       </div>
       <div id="error" role="alert" hidden></div>
     </main>
+    <script>
+      // The start of the loading number (src/progress.js takes it over once the modules have
+      // come): while they come in, the share of the whole way to the title card's button that
+      // has passed -- the time so far, over the time the modules will take at the pace they
+      // came so far and the time after them. That is REST, what the rest took on the machine
+      // the game's times were taken on (the sum of STEPS in src/main.js), or on a slow line
+      // what the photographs (PICTURES, the bytes of those it loads from assets/) will take
+      // to come at the speed the modules came, if longer: they come meanwhile. On a fast line
+      // that is a few per cent of the bar, on a slow one a good part of it.
+      (() => {
+        const REST = 12700;
+        const PICTURES = 14e6;
+        const now = document.querySelector("#loading .percent .now");
+        const expected = document.querySelectorAll('link[rel="modulepreload"]').length || 1;
+        let files = 0,
+          bytes = 0,
+          last = 0,
+          value = 0,
+          stopped = false;
+        const show = () => {
+          if (stopped) return;
+          // (The speed as of the last module in: a big one on its way does not slow it. And
+          // the time goes on counting only a little while after the last came: a line that
+          // has stopped does not look as if it were loading.)
+          const t = Math.min(performance.now(), last + 2000);
+          const f = Math.min(1, files / expected);
+          const rest = Math.max(REST, bytes > 0 ? (PICTURES * last) / bytes : 0);
+          if (f > 0) value = Math.max(value, t / (t / f + rest));
+          if (now) now.textContent = Math.floor(value * 100) + "\u00a0%";
+        };
+        const watch = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries())
+            if (/\.js(\?|$)/.test(entry.name)) {
+              files++;
+              bytes += entry.encodedBodySize || 0;
+              last = Math.max(last, entry.responseEnd);
+            }
+          show();
+        });
+        watch.observe({ type: "resource", buffered: true });
+        const timer = setInterval(show, 200);
+        const stop = () => {
+          stopped = true;
+          clearInterval(timer);
+          watch.disconnect();
+          return value;
+        };
+        // (A module that cannot be loaded: the number stops where it is.)
+        addEventListener("error", (event) => (event.target?.type === "module" || event.target?.rel === "modulepreload") && stop(), true);
+        show();
+        window.salmonLoading = { stop: () => (show(), stop()) };
+      })();
+    </script>
     <!-- Vercel Web Analytics: page views, and a few events from the game (src/track.js). -->
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
