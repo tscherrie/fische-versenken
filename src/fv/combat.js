@@ -480,8 +480,10 @@ export function createCombat(game) {
           player.kills++;
           if (owners && e.shared) owners.sunk(e, player.id, UP, "bite");
         }
-        // (A body the others see as well goes on their pages too.)
-        if (owners && e.shared === false && e.id > 0) owners.eaten(e);
+        // (A body the others see as well goes on their pages too: one this page ran, and one
+        // another page ran that became this page's own body when it sank. Only this page's
+        // own -- the larvae, the shoal fish -- have no id the others know.)
+        if (owners && e.id > 0) owners.eaten(e);
         e.eaten = true;
         player.salmon.eat(35 * e.size, e.kind);
         fx.fizz(e.position.x, e.position.y, e.position.z, { count: 5, size: 0.015 + 0.01 * e.size, spread: e.size * 0.3, random: look });

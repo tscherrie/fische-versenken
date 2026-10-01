@@ -190,6 +190,8 @@ export function createMates(game, net) {
   // ---- Our own fish, out to the others (with what the fight adds: owners.js). `force`: now,
   // whenever the last one went (the tab is being hidden).
   let lastSent = -1e9;
+  // (Whether a state is due: what the fight adds to it is only gathered then.)
+  const due = () => net.now() - lastSent >= EVERY * 0.8;
   function send(local, extra = null, force = false) {
     const now = net.now();
     if (!force && now - lastSent < EVERY * 0.8) return false;
@@ -408,5 +410,5 @@ export function createMates(game, net) {
     return onMap;
   }
 
-  return { mates, send, update, frame, others, EVERY };
+  return { mates, send, due, update, frame, others, EVERY };
 }

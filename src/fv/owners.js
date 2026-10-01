@@ -174,7 +174,7 @@ export function createOwners(game, combat, coop) {
     lastCheck = 0;
   const origin = [0, 0, 0];
   // What went out, for the tests.
-  const counts = { batches: 0, records: 0, claims: 0, hitsOut: 0, hitsIn: 0, sunkOut: 0, sunkIn: 0, promoted: 0, demoted: 0, orphans: 0, vanished: 0, proxies: 0, shotsOut: 0, strikesOut: 0, strikesIn: 0, strikesLanded: 0, bombsOut: 0, bombsIn: 0, touches: 0 };
+  const counts = { batches: 0, records: 0, claims: 0, hitsOut: 0, hitsIn: 0, sunkOut: 0, sunkIn: 0, promoted: 0, demoted: 0, orphans: 0, vanished: 0, proxies: 0, shotsOut: 0, strikesOut: 0, strikesIn: 0, strikesLanded: 0, bombsOut: 0, bombsIn: 0, touches: 0, lateHits: 0, lateOwn: 0 };
   // (For tests: the last changes of hand, why and when.)
   const log = [];
   const logged = (...what) => {
@@ -192,6 +192,9 @@ export function createOwners(game, combat, coop) {
     if (introsOut.length) m.n = introsOut;
     if (eventsOut.length) m.x = eventsOut;
     net.send(m);
+    // (This page's reports in it, by the batch's time: a claim's watermark counts in those.)
+    for (const entry of ownSent) entry.r = m.r;
+    ownSent.length = 0;
     counts.batches++;
     records.clear();
     introsOut = [];
@@ -242,6 +245,13 @@ export function createOwners(game, combat, coop) {
     enemies.clock0 = m.clock0 || enemies.clock0;
   });
   net.on("left", (m) => {
+    // (Its shots are counted afresh by a page loaded again: its replay starts from the next
+    // count heard, or it would fire here what the old count was ahead of the new.)
+    const shooter = shooters.get(m.seat);
+    if (shooter) {
+      shooter.replay.lastR = -Infinity;
+      shooter.replay.owed[0] = shooter.replay.owed[1] = 0;
+    }
     // Its enemies are orphans at once; it gets the intros again when it comes back.
     for (const e of enemies.list) {
       if (e.remote && e.owner === m.seat && e.net && !e.net.orphanAt) e.net.orphanAt = performance.now();
@@ -338,8 +348,11 @@ export function createOwners(game, combat, coop) {
     if (e.owner !== from) {
       // From a page that is not its owner here: only a newer version says it is that page's
       // now (a claim missed, the line having dropped) -- or the same version from a lower
-      // place, as a claim of the same version from it would have won.
-      const same = (mf.version & 15) === (e.claim.v & 15) && from < e.owner;
+      // place, as a claim of the same version from it would have won. (That only while the
+      // owner here holds it by a claim of its own: a page given it by another holds it by
+      // the giver's place, and a record does not say who gave it to its sender -- a claim
+      // that lost to the gift would else win back with its sender's last records.)
+      const same = (mf.version & 15) === (e.claim.v & 15) && from < e.owner && e.claim.by === e.owner;
       if (!same && !newer(mf.version, e.claim.v)) return;
       e.claim = { v: e.claim.v + ((mf.version - e.claim.v) & 15), by: same ? Math.min(from, e.claim.by) : from };
       e.owner = from;
@@ -684,15 +697,45 @@ export function createOwners(game, combat, coop) {
     }
   }
   api.report = report;
+  // This page's own reports are kept a second on the proxy, as the others' are (hitIn): if
+  // it becomes this page's own while they are on their way, its old owner has not applied
+  // them (it applies only what reached it while it ran the enemy, and its claim says up to
+  // which of this page's batches that was), so this page applies them itself -- else the
+  // shots fired at an enemy in the moment it is handed to the shooter would do nothing.
+  const ownSent = [];
+  function keepHit(e, entry) {
+    const list = e.net.hits;
+    list.push(entry);
+    while (list.length && performance.now() - list[0].at > 1000) list.shift();
+  }
+  // (A report as firing.apply takes it.)
+  function hitOf(h, weapon) {
+    const shove = h.shove.length();
+    return { amount: h.amount, dir: h.dir.clone(), point: null, weapon, force: !!(h.flags & 1), belly: !!(h.flags & 2), konter: !!(h.flags & 4), shove, shoveDir: shove > 1e-9 ? h.shove.clone().normalize() : null, stun: h.stun, panic: h.panic, ignite: h.ignite };
+  }
+  // (Become this page's own before its reports went: they are applied here, not sent.)
+  function hitsHere(e) {
+    for (const [key, h] of hitsOut)
+      if (h.e === e) {
+        hitsOut.delete(key);
+        if (!(h.flags & 8) && !e.dead) firing.apply(h.by, e, hitOf(h, h.weapon ?? local.arsenal.back ?? "piu"));
+      }
+  }
   function hitsToBatch() {
     for (const h of hitsOut.values()) {
-      const w = T.weaponIndex.get(h.weapon ?? local.arsenal.back ?? "piu") ?? 0;
+      const weapon = h.weapon ?? local.arsenal.back ?? "piu";
+      const w = T.weaponIndex.get(weapon) ?? 0;
       const ev = ["h", h.id, h.by, Math.round(h.amount * 100), w, dir100(h.dir.x), dir100(h.dir.y), dir100(h.dir.z), h.flags, Math.round(h.along * 100), h.hits, Math.round(h.shove.x * 100), Math.round(h.shove.y * 100), Math.round(h.shove.z * 100), Math.round(h.stun * 10), Math.round(h.panic * 10), Math.round(h.ignite * 10)];
       // (Trailing noughts left off.)
       while (ev.length > 9 && ev[ev.length - 1] === 0) ev.pop();
       eventsOut.push(ev);
       counts.hitsOut++;
       if (h.e.net) h.e.net.pending = 0;
+      if (h.e.remote && h.e.net?.hits && !(h.flags & 8)) {
+        const entry = { from: mySeat(), r: 0, by: h.by, at: performance.now(), hit: hitOf(h, weapon) };
+        keepHit(h.e, entry);
+        ownSent.push(entry);
+      }
     }
     hitsOut.clear();
   }
@@ -728,8 +771,7 @@ export function createOwners(game, combat, coop) {
       firing.apply(by, e, hit);
       return;
     }
-    e.net.hits.push({ from, r, by, hit, at: performance.now() });
-    while (e.net.hits.length && performance.now() - e.net.hits[0].at > 1000) e.net.hits.shift();
+    keepHit(e, { from, r, by, hit, at: performance.now() });
   }
 
   // ---- Deaths.
@@ -831,7 +873,12 @@ export function createOwners(game, combat, coop) {
           continue;
         }
         e = enemies.proxy({ id, kind: T.kinds[ki], size: size100 / 100, maxHp: maxHp10 / 10, owner: issuer, version: -1 });
-        if (!e) continue;
+        if (!e) {
+          // (Given to this page, whose crowd of that kind is full of living ones: it cannot
+          // run it, so it says it is gone rather than leave the others a fish nobody runs.)
+          if (owner === mySeat()) event(["g", id], true);
+          continue;
+        }
         e.net = proxyNet();
         byId.set(id, e);
         e.claim = { v: -1, by: 99 };
@@ -891,6 +938,9 @@ export function createOwners(game, combat, coop) {
     (e.drawOffset ??= new THREE.Vector3()).set(drawnX - e.position.x, drawnY - e.position.y, drawnZ - e.position.z);
     if (e.drawOffset.lengthSq() > 25) e.drawOffset.set(0, 0, 0);
     enemies.promote(e, item ? { reload: item[12] / 10, orbit: item[13], air: item[14] / 10 } : {});
+    // (The flames it was only shown in here are not a fire of this page's: that one burns
+    // on only as the claim says, for whom it says.)
+    if (firing.burning.get(e)?.owner === -1) firing.burning.delete(e);
     if (item && item[15] > 0) firing.burning.set(e, { left: item[15] / 10, owner: item[16] });
     const pending = n.hits;
     const lastR = n.lastR;
@@ -899,8 +949,12 @@ export function createOwners(game, combat, coop) {
     counts.promoted++;
     for (const h of pending) {
       const applied = wm ? h.r <= (wm[h.from] ?? -Infinity) : h.r <= lastR;
-      if (!applied && !e.dead) firing.apply(h.by, e, h.hit);
+      if (applied || e.dead) continue;
+      firing.apply(h.by, e, h.hit);
+      if (h.from === mySeat()) counts.lateOwn++;
+      else counts.lateHits++;
     }
+    hitsHere(e);
   }
   // Another page runs it now: shown here from the records this page last sent, so it goes on
   // moving through the moment until the new owner's come.
@@ -1053,6 +1107,7 @@ export function createOwners(game, combat, coop) {
       }
       if (waited > VANISH && !nearestAble(e, e.owner)) {
         counts.vanished++;
+        logged("vanish", e.id, e.owner, Math.round(dMe));
         removeProxy(e);
       }
     }
@@ -1199,6 +1254,12 @@ export function createOwners(game, combat, coop) {
       }
     }
     seen[from] = m.r;
+    // (A death the hits just caused, or a jellyfish set off, goes out now: no step will send
+    // it while the tab is away, and meanwhile a mate near it would claim a fish already sunk.)
+    if (urgent) {
+      claimsToBatch();
+      flush();
+    }
   }
   // A blow or a round at this fish while the tab is away: its strength goes as it would have;
   // with none left the fish dies as the tab comes back.
@@ -1312,7 +1373,8 @@ export function createOwners(game, combat, coop) {
     local.id = mySeat();
     enemies.now = net.now;
     index();
-    for (const m of inbox.splice(0)) take(m);
+    for (let i = 0; i < inbox.length; i++) take(inbox[i]);
+    inbox.length = 0;
     mates.update(dt);
     players.length = 1;
     targets.length = 1;
@@ -1371,7 +1433,9 @@ export function createOwners(game, combat, coop) {
       hitsToBatch();
       flush();
     }
-    if (mates.send(local, stateExtra(game.now.paused ? 1 : 0))) local.pulled = 0;
+    // (A stage's celebration is said as a pause: this page hands its enemies on while it
+    // lasts, and a mate handing them back meanwhile would only have them handed on again.)
+    if (mates.due() && mates.send(local, stateExtra(game.now.paused || game.celebration?.active ? 1 : 0))) local.pulled = 0;
   };
 
   // ---- What combat and the director ask.
