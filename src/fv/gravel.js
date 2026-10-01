@@ -4,6 +4,10 @@
 // of salmon eggs and alevins, come crawling through the gravel in a few waves, and the
 // alevin holds them off with the laser strapped to its back. Every larva killed brings the
 // day it leaves the gravel a little nearer, and the whole stage takes about two minutes.
+//
+// In co-op each alevin fights its own larvae: they are this page's alone (never sent to the
+// others, never counted by anyone's director), for the few minutes the brood lies in the
+// gravel side by side; the waves come for one player each.
 
 import { S, bed, level, section } from "../course.js";
 import { STAGES } from "../salmon.js";
@@ -51,7 +55,7 @@ export function createGravel({ random, hud }) {
             const u = Math.max(c.thalweg - c.half * 0.8, Math.min(c.thalweg + c.half * 0.8, fish.river.u + Math.sin(angle) * reach));
             const floor = bed(s, u);
             if (level(s) - floor < 0.3 || floor > fish.position.y + 0.6 || floor < fish.position.y - 4) continue;
-            enemies.spawn(kind, s, u);
+            enemies.spawn(kind, s, u, null, { own: true });
           }
         }
         wave++;

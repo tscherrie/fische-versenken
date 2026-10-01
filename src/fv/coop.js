@@ -61,6 +61,8 @@ const CSS = `
 #intro .fv-coop .me button { flex: none; height: 36px; padding: 0 20px; border-radius: 999px; font-size: 14px; font-weight: 800; }
 #intro .fv-coop .me button.on { color: inherit; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
 #intro .fv-coop .fv-note { margin: 0; font-size: 12px; line-height: 1.4; opacity: 0.7; }
+#intro .fv-coop .fv-pause-note { display: none; }
+#intro .fv-coop.hatched .fv-pause-note { display: block; }
 #intro .fv-coop .warn { color: #ffb08a; opacity: 1; }
 #intro .fv-coop.hatched .me, #intro .fv-coop.hatched #fv-status, #intro .fv-coop.hatched li .state.lobby { display: none; }
 #fv-countdown { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; pointer-events: none; font: 800 clamp(64px, 14vw, 160px)/1 var(--hud-font, var(--font-body)); color: #fff4ea; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
@@ -116,6 +118,7 @@ export function coopPanel() {
       <ul id="fv-seats"></ul>
       <div class="me"><input id="fv-name" type="text" maxlength="16" autocomplete="nickname" aria-label="${t("Dein Name")}" placeholder="${t("Dein Name")}"><button type="button" id="fv-ready" disabled>${t("Bereit")}</button></div>
       <p class="fv-note" id="fv-status">${t("Verbinde mit dem Raum …")}</p>
+      <p class="fv-note fv-pause-note">${t("Im Koop läuft die Welt weiter: dein Fisch hält still, ist aber nicht geschützt.")}</p>
     </div>`;
     panel.querySelector("#fv-name").value = savedName() || `${t("Lachs")} ${Math.floor(10 + Math.random() * 90)}`;
   }
@@ -155,7 +158,8 @@ export function createCoop(game) {
   // ---- In a room.
   // A game swum together never writes the solo save.
   if (game.save) game.save.store = () => {};
-  const net = createNet({ base, version: VERSION, player: query.get("player") ?? "" });
+  // (?lag, ?jitter and ?skew: a far room, for tests; net.js.)
+  const net = createNet({ base, version: VERSION, player: query.get("player") ?? "", lag: Number(query.get("lag")) || 0, jitter: Number(query.get("jitter")) || 0, skew: Number(query.get("skew")) || 0 });
   const mates = createMates(game, net);
   const link = `${location.origin}${location.pathname}?room=${code}&new`;
   // The link to send: copied by the button beside the code, or by the code itself. (Where
@@ -278,11 +282,13 @@ export function createCoop(game) {
       if (left > 0) {
         countdown.hidden = false;
         countdown.textContent = String(Math.ceil(left));
-      } else if (worldReady) {
+      } else if (worldReady || (!habitat.classList.contains("building") && !game.now.paused)) {
+        // (A page started for a test -- ?diagnostics, ?stage -- has no title card to start
+        // from: its river is already running, and it hatches with the others all the same.)
         countdown.hidden = true;
         hatched = true;
         panel.classList.add("hatched");
-        start.click();
+        if (worldReady) start.click();
       } else {
         countdown.hidden = true;
         say(t("Der Fluss entsteht noch …"));
@@ -309,7 +315,13 @@ export function createCoop(game) {
     active: true,
     net,
     mates,
-    // Each step of the world: our fish out to the others, and the hour if we are the host.
+    // Whether this page has hatched with the others (from then on the world goes on behind
+    // the pause card).
+    get hatched() {
+      return hatched;
+    },
+    // Each step of the world: our fish out to the others (owners.js sends it, with what the
+    // fight adds), and the hour if we are the host.
     step(dt, local) {
       if (!hatched) return;
       // (All hatch side by side: each place a little across the gravel from the next.)
@@ -321,7 +333,7 @@ export function createCoop(game) {
         f.position.x += -along.tz * across;
         f.position.z += along.tx * across;
       }
-      mates.send(local);
+      if (!this.byOwners) mates.send(local);
       hourClock += dt;
       if (net.seat === net.host && hourClock > HOUR_EVERY) {
         hourClock = 0;

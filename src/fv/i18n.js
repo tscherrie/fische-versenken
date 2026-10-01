@@ -49,6 +49,7 @@ const WORDS = [
   ["wartet", "waiting", "等待中", "待機中", "чака"],
   ["Du spielst in diesem Raum schon in einem anderen Fenster.", "You are already playing in this room in another window.", "你已在另一个窗口中进入这个房间。", "このルームには別のウィンドウですでに参加しています。", "Вече играеш в тази стая в друг прозорец."],
   ["Der Fluss entsteht noch …", "The river is still being built …", "河流还在生成……", "川をまだ作っています……", "Реката още се изгражда …"],
+  ["Im Koop läuft die Welt weiter: dein Fisch hält still, ist aber nicht geschützt.", "In co-op the world keeps going: your fish holds still, but it is not protected.", "合作模式下世界不会停下：你的鱼会原地不动，但不受保护。", "協力プレイでは世界は止まりません：あなたの魚はその場に留まりますが、守られてはいません。", "В кооп светът продължава: рибата ти стои на място, но не е защитена."],
   // The title card: the difficulty's label and its levels (their lines are the buttons'
   // tooltips).
   ["Schwierigkeit", "Difficulty", "难度", "難易度", "Трудност"],

@@ -146,6 +146,12 @@ function blank(p) {
   p.cool = null;
   p.fade = 0;
   p.fuse = false;
+  // A mate's shot replayed here for the eye (weapons.js): it hurts nothing, and passes
+  // through the fish that are this page's own alone (the larvae, the shoal fish).
+  p.echo = false;
+  // A shot of a fish of the salmon's school (weapons.js): this page's own, but what it does
+  // stays on this page, so it goes through an enemy another page runs (`remote`).
+  p.kept = false;
   p.spin = Math.random() * Math.PI * 2;
   return p;
 }
@@ -333,8 +339,12 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
   // what it needs (damage, radius, life, size, tint, core, stretch; gravity, bounce and
   // maxBounces, fuse, drag, ghost, pierce, sky, solid, scale; volley, falloff, shove, grow,
   // cool, fade, shooter). When the pool is dry the oldest glow goes first; a grenade is
-  // kept if anything else can go.
-  function spawn(owner, weapon, position, velocity, s = null) {
+  // kept if anything else can go. `echo`: a mate's shot replayed for the eye (weapons.js);
+  // when the pool is nearly full such a shot gets a record that is never put in the water,
+  // so the mates' miniguns never push the player's own rounds out.
+  const scratch = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), last: new THREE.Vector3(), river: { s: null, u: 0 }, passed: new Set(), born: 0 };
+  function spawn(owner, weapon, position, velocity, s = null, echo = false) {
+    if (echo && live.length > capacity * 0.85) return blank(scratch);
     let p = free.pop();
     if (!p) {
       let oldest = -1;
@@ -353,6 +363,7 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
     p.river.s = s;
     p.river.u = 0;
     p.born = ++born;
+    p.echo = echo;
     live.push(p);
     return p;
   }
@@ -429,6 +440,10 @@ export function createProjectiles({ capacity = 300, scene = null, camera = null,
           if (Math.abs(enemyX[j] - fromX) > reach + stepX + size || Math.abs(enemyZ[j] - fromZ) > reach + stepZ + size) continue;
           const e = enemyOf[j];
           if (p.pierce && p.passed.has(e)) continue;
+          // (A mate's shot, replayed, goes through what only this page has: shared false.)
+          if (p.echo && e.shared === false) continue;
+          // (A school fish's shot goes through what another page runs: its hits stay here.)
+          if (p.kept && e.remote) continue;
           // (Along its body as it is drawn: one reared for a blow lies pitched, enemies.js.)
           const at = e.position,
             heading = e.along ?? e.heading;

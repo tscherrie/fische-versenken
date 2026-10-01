@@ -23,9 +23,12 @@ const SEATS = 4;
 const KEEP = 30 * 24 * 3600 * 1000;
 // From the moment everyone is ready to the hatch (ms): time for a countdown everywhere.
 const COUNTDOWN = 3500;
-// Guards: the longest message taken, and how many a player may send in a second.
+// Guards: the longest message taken, and how many a player may send in a second -- on
+// average: a line that held a player's messages back a few seconds lets them through all at
+// once, and those are not a flood (up to BURST of them at a time).
 const MAX_MESSAGE = 16 * 1024;
 const MAX_RATE = 90;
+const BURST = 3 * MAX_RATE;
 // How often a player's last state is written down for when they come back (ms).
 const KEEP_STATE = 5000;
 const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -80,7 +83,8 @@ export class Room extends DurableObject {
     // Per place, the last state as it came (not written down every time) and when it was.
     this.latest = new Map();
     this.written = new Map();
-    // Per socket, how many messages in the current second.
+    // Per socket, how many messages it may still send now (refilled at MAX_RATE a second, up
+    // to BURST), and when that was worked out.
     this.rate = new Map();
     ctx.blockConcurrencyWhile(async () => {
       this.room = (await ctx.storage.get("room")) ?? null;
@@ -145,9 +149,12 @@ export class Room extends DurableObject {
     if (typeof data !== "string" || data.length > MAX_MESSAGE) return;
     // (Flooding is dropped, not answered.)
     const now = Date.now();
-    const r = this.rate.get(ws);
-    if (!r || now - r.since > 1000) this.rate.set(ws, { since: now, n: 1 });
-    else if (++r.n > MAX_RATE) return;
+    let r = this.rate.get(ws);
+    if (!r) this.rate.set(ws, (r = { left: BURST, at: now }));
+    r.left = Math.min(BURST, r.left + ((now - r.at) / 1000) * MAX_RATE);
+    r.at = now;
+    if (r.left < 1) return;
+    r.left -= 1;
     let m;
     try {
       m = JSON.parse(data);

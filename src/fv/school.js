@@ -84,8 +84,10 @@ const HEAVY = new Set(["sawnoff", "pumpgun", "elephantgun", "minigun"]);
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 // The player's school: every enemy that means it is fair game, never one of the peaceful fish
-// stood in for (neutrals.js) nor one that only flees, nor a bird high over the water.
-const fair = (e) => !e.dead && !e.neutral && !e.passive && !(e.spec.flies && e.position.y > level(e.river.s) + SKY);
+// stood in for (neutrals.js) nor one that only flees, nor a bird high over the water. In a
+// room only what this page runs: the school's shots stay on this page (weapons.js: `kept`),
+// and an enemy another page runs is that page's to fight.
+const fair = (e) => !e.dead && !e.remote && !e.neutral && !e.passive && !(e.spec.flies && e.position.y > level(e.river.s) + SKY);
 const striking = (e) => e.mode === "coil" || e.mode === "strike" || e.mode === "aim" || e.mode === "fire";
 
 // ctx: game (life, scene, camera, hud, mirror, now), enemies, firing, gore, sfx, fx,

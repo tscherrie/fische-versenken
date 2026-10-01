@@ -151,8 +151,11 @@ export function createDirector({ random }) {
     },
     // players: in the room (for the numbers); the local player's fish is the anchor; armed:
     // the fish of its school about with their guns; dark: how dark it is (0 by day, 1 at
-    // night).
-    update(dt, { fish, stage, enemies, players = 1, armed = 0, count = 1, dark = 0 }) {
+    // night); counts(e): in co-op, whether an enemy is its group's to count -- what this page
+    // runs, and what the others of its group run (the enemies of a group change hands within
+    // it, and a director counting only its own would send a whole wave again after each
+    // change); another group's passing by is not.
+    update(dt, { fish, stage, enemies, players = 1, armed = 0, count = 1, dark = 0, counts = null }) {
       clock += dt;
       night = dark;
       // Which way the fish is going along the river, held a while.
@@ -165,7 +168,7 @@ export function createDirector({ random }) {
       // (A shoal counts as a few enemies, not as every fish in it; so does a field of
       // jellyfish.)
       let alive = 0;
-      for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive) alive += e.spec.school || e.spec.field ? 0.3 : 1;
+      for (const e of enemies.list) if (!e.dead && !e.neutral && !e.passive && (!counts || counts(e))) alive += e.spec.school || e.spec.field ? 0.3 : 1;
       if (calm || alive >= cap || clock < nextSpawn) return;
       const kind = choose(stage, fish.river.s, enemies, fish.position.y - bed(fish.river.s, fish.river.u), armed);
       if (!kind) {
