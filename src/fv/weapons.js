@@ -733,10 +733,36 @@ const ARC_INFO = Object.freeze({ mode: "arc", burn: true });
 // ctx: random (the game's stream: aim spread, pellets, anything that decides a hit), look (a
 // stream of its own for the looks), enemies, projectiles, smoke, ribbons, fx, sfx, gore,
 // models, aim, hud, game, camera, players (the list, local first), clock() (combat's time),
-// onKill(e, by, dir, weapon, info).
+// onKill(e, by, dir, weapon, info), and in co-op report(e, hit) (owners.js: what the local
+// player's shots did to an enemy another page runs).
+//
+// In co-op the mates' weapons are fired here too, replayed from what their pages send
+// (owners.js): an echo. It looks as the shot looked there -- the same verbs, from the mate's
+// drawn muzzle toward its aim -- but it decides nothing: no damage, no splatter, no push or
+// stun, no stats, and it passes through the fish only this page has. What a mate's shot
+// did comes in the mate's own report; its splatter with it. While a verb runs for a mate,
+// `echo` is set, `sight` is the mate's aim, and `random` is the looks' stream (a replay
+// never draws from the game's own). The mate's discrete shots (a bolt, a shell, a rocket,
+// a cut ...) are fired as its page counts them, not as its trigger would fire them here:
+// a replica's cooldown, ammunition and heat drift from the real ones, and then it would fire
+// shots that never were. The trigger drives only what is held: the beam, the jet, the
+// barrels winding up, the saw, the fuse.
 export function createFiring(ctx) {
-  const { random, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, onKill } = ctx;
+  const { enemies, projectiles, ribbons, sfx, gore, models, aim, hud, game, onKill } = ctx;
   const look = ctx.look ?? Math.random;
+  const baseRandom = ctx.random;
+  let random = baseRandom,
+    fx = ctx.fx,
+    smoke = ctx.smoke;
+  const baseFx = fx,
+    baseSmoke = smoke;
+  const NONE = [];
+  // (Far off in the fog a replayed shot shows only itself: no smoke, sparks or bubbles.)
+  const quietFx = { spark() {}, fizz() {}, burst() {}, bubble() {}, add() {} };
+  let echo = false;
+  // (Applying a mate's report of its hits: the stats are this player's own.)
+  let applying = false;
+  let sight = aim;
   const camera = ctx.camera ?? game?.camera ?? null;
   const options = { debug: false };
   const UP = new THREE.Vector3(0, 1, 0);
@@ -758,9 +784,19 @@ export function createFiring(ctx) {
   let clock = 0;
   let volleys = 0;
 
-  // What each weapon has done (for the tests): shots, hits, damage, kills.
+  // What each weapon has done (for the tests): shots, hits, damage, kills -- the local
+  // player's (a replay or another's report counts into a record nobody reads).
   const stats = {};
-  const stat = (id) => (stats[id] ??= { shots: 0, hits: 0, damage: 0, kills: 0 });
+  const elsewhere = { shots: 0, hits: 0, damage: 0, kills: 0 };
+  const stat = (id) => (echo || applying ? elsewhere : (stats[id] ??= { shots: 0, hits: 0, damage: 0, kills: 0 }));
+  // A shot into the water: an echo's is marked as one (projectiles.js).
+  const shoot = (owner, id, position, velocity, s) => projectiles.spawn(owner, id, position, velocity, s, echo);
+  // Each discrete shot of the local player counted by place (mates.js sends the counts: a
+  // mate's page fires as many).
+  const PLACE_INDEX = { back: 0, belly: 1 };
+  function tally(player, place) {
+    if (player.tally) player.tally[PLACE_INDEX[place]] = (player.tally[PLACE_INDEX[place]] + 1) & 255;
+  }
 
   // Per player: the katana's swings and dash.
   const blades = new Map();
@@ -787,6 +823,9 @@ export function createFiring(ctx) {
   const lastGore = new WeakMap();
 
   const isLocal = (owner) => owner === ctx.players[0]?.id;
+  // The fish a player's weapons are seen on: a mate's as it is drawn (a replay fires from
+  // there), the local player's own.
+  const bodyOf = (player) => player.drawn ?? player.fish;
   const playerOf = (owner) => ctx.players.find((p) => p.id === owner);
   const lengthOf = (owner) => playerOf(owner)?.fish.length ?? 1;
 
@@ -795,6 +834,20 @@ export function createFiring(ctx) {
   // the splatter and the kill want to know (mode, point, power, burst, cut, ...).
   function damage(owner, e, amount, dir, point, weapon, gory = true, info = null) {
     if (e.dead || !(amount > 0)) return false;
+    // (A mate's shot, replayed: it only flies. Its page says what it did.)
+    if (echo) return false;
+    // An enemy another page runs (a proxy): the hit is seen here at once -- the splatter,
+    // the mark -- and told to its owner, who decides what it does (favour the shooter).
+    if (e.remote) {
+      const s = stat(weapon);
+      s.hits++;
+      s.damage += amount;
+      if (gory) gore.hit(e, point ?? e.position, dir ?? UP, weapon, info, lengthOf(owner));
+      if (isLocal(owner) && gory) hud.hit(false);
+      e.hitAt = game?.now?.time ?? 0;
+      ctx.report?.(e, { owner, amount, dir, point, weapon, force: !!info?.force });
+      return false;
+    }
     // (A stun outlasts the flinch of the hits that follow it: enemies.hit keeps the longer.)
     const sunk = enemies.hit(e, amount, dir, owner);
     const s = stat(weapon);
@@ -814,7 +867,8 @@ export function createFiring(ctx) {
 
   // Thrown `distance` along `dir` over a moment (the water gives way, as air would).
   function shove(e, dir, distance) {
-    if (!(distance > 0)) return;
+    if (!(distance > 0) || echo) return;
+    if (e.remote) return void ctx.report?.(e, { owner: ctx.players[0].id, shove: distance, dir });
     const tau = 0.18;
     let s = shoves.get(e);
     if (!s) shoves.set(e, (s = { v: new THREE.Vector3(), tau }));
@@ -828,7 +882,13 @@ export function createFiring(ctx) {
   // an enemy cannot be stunned again for a few seconds, so no weapon holds it down for good;
   // a Konter (a cut into its strike) always lands.
   function stun(e, seconds, belly, L, konter = false) {
-    if (e.dead) return false;
+    if (e.dead || echo) return false;
+    if (e.remote) {
+      // (Its strike, if one was coming at this fish, is off: owners.js keeps the moment.)
+      e.foiledAt = game?.now?.time ?? 0;
+      ctx.report?.(e, { owner: ctx.players[0].id, stun: seconds, belly, konter });
+      return true;
+    }
     if (!konter) {
       if (clock < (stunGuard.get(e) ?? -1)) return false;
       if (heavy(e, L)) seconds *= 0.5;
@@ -844,7 +904,8 @@ export function createFiring(ctx) {
   // Panic: off and away from the fish for `seconds` (a swarm breaks up). A strike already
   // under way goes on; what can swallow the fish does not panic.
   function panic(e, seconds, L) {
-    if (e.dead || heavy(e, L)) return;
+    if (e.dead || echo || heavy(e, L)) return;
+    if (e.remote) return void ctx.report?.(e, { owner: ctx.players[0].id, panic: seconds });
     if (e.mode !== "approach" && e.mode !== "orbit" && e.mode !== "coil" && e.mode !== "recover" && e.mode !== "lurk") return;
     if (e.mode !== "recover" || e.t > -seconds * 0.5) {
       e.mode = "recover";
@@ -859,8 +920,8 @@ export function createFiring(ctx) {
   }
   // From the muzzle to the crosshair (or along the view when that is too close or behind).
   function aimFrom(from, L, out) {
-    out.subVectors(aim.point, from);
-    if (out.lengthSq() < 0.25 * L * L || out.dot(aim.direction) < 0) out.copy(aim.direction);
+    out.subVectors(sight.point, from);
+    if (out.lengthSq() < 0.25 * L * L || out.dot(sight.direction) < 0) out.copy(sight.direction);
     return out.normalize();
   }
   // A direction scattered by up to `spread` rad each way.
@@ -893,7 +954,7 @@ export function createFiring(ctx) {
   // The fish kicked back through the water (x its cruise).
   function kick(player, dir, amount) {
     const f = player.fish;
-    if (!amount || f.airborne || f.captive || player.down) return;
+    if (!amount || echo || f.airborne || f.captive || player.down) return;
     const cruise = player.salmon.speeds?.().cruise ?? 3.4 * Math.pow(f.length, 0.645);
     f.relative?.addScaledVector(dir, -amount * cruise);
   }
@@ -956,7 +1017,7 @@ export function createFiring(ctx) {
     scatter(aimDir, w.spread, tmp);
     const speed = w.speed(L);
     flight.copy(tmp).multiplyScalar(speed);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.damage * damageScale(L);
     p.radius = w.radius(L);
     p.life = w.reach(L) / speed;
@@ -1001,7 +1062,7 @@ export function createFiring(ctx) {
     let best = null,
       bestS = 1;
     for (const e of enemies.list) {
-      if (e.dead || pointSegment(e.position, muzzle, beamEnd, closest) > e.size * 0.6 + radius) continue;
+      if (e.dead || (echo && e.shared === false) || pointSegment(e.position, muzzle, beamEnd, closest) > e.size * 0.6 + radius) continue;
       bodyEnds(e, tail, head);
       const r = e.size * 0.09 + radius;
       if (segmentSegment(muzzle, beamEnd, tail, head) < r * r && nearS < bestS) {
@@ -1022,7 +1083,7 @@ export function createFiring(ctx) {
       // A searing beam does more the longer it stays on the same one (it cools off it again
       // at the same pace once the beam is gone).
       let more = 1;
-      if (w.sear) {
+      if (w.sear && !echo) {
         const was = Math.max(0, (best.seared ?? 0) - (clock - (best.searedAt ?? clock)));
         best.seared = Math.min(1, was + dt);
         best.searedAt = clock;
@@ -1129,6 +1190,7 @@ export function createFiring(ctx) {
         while (a.cooldown[place] <= 0) {
           a.cooldown[place] += w.interval;
           round(player, place, w, id);
+          tally(player, place);
           a.heat[id] += w.heat;
           if (a.heat[id] >= 1) {
             a.locked[id] = true;
@@ -1150,7 +1212,7 @@ export function createFiring(ctx) {
     const speed = w.speed(L) * (0.95 + 0.1 * random());
     flight.copy(tmp).multiplyScalar(speed);
     const reach = w.reach(L);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.damage * damageScale(L);
     p.radius = w.radius(L);
     p.water = true;
@@ -1179,7 +1241,7 @@ export function createFiring(ctx) {
     models.recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     flight.copy(aimDir).multiplyScalar(w.speed(L));
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.direct * damageScale(L);
     p.radius = w.radius(L);
     p.life = w.fuse;
@@ -1190,7 +1252,7 @@ export function createFiring(ctx) {
     p.solid = "torpedo";
     p.scale = L;
     p.shooter = L;
-    p.homing = aim.target && !aim.target.dead ? aim.target : null;
+    p.homing = sight.target && !sight.target.dead ? sight.target : null;
     fx.fizz(muzzle.x, muzzle.y, muzzle.z, { count: 6, size: 0.015 * L + 0.006, spread: 0.1 * L, rise: 1, random: look });
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
@@ -1215,8 +1277,9 @@ export function createFiring(ctx) {
         let best = w.sight(L);
         const cos = Math.cos(w.seek);
         for (const e of enemies.list) {
-          // (It looks for enemies, not for the peaceful fish about.)
-          if (e.dead || e.neutral) continue;
+          // (It looks for enemies, not for the peaceful fish about; a mate's, replayed, only
+          // for those the mate can see too.)
+          if (e.dead || e.neutral || (p.echo && e.shared === false)) continue;
           tmp.subVectors(e.position, p.position);
           const d = tmp.length();
           if (d < best && tmp.dot(seekDir) > cos * d) {
@@ -1251,6 +1314,7 @@ export function createFiring(ctx) {
     }
     if (st.held && able && ready) {
       slug(player, place, w, id, st.charge ?? 0);
+      tally(player, place);
       a.ammo[id]--;
       a.cooldown[place] = w.interval;
       a.fired[id] = 0;
@@ -1268,7 +1332,7 @@ export function createFiring(ctx) {
     const speed = w.speed(L);
     flight.copy(tmp).multiplyScalar(speed);
     const reach = w.reach(L);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.damage * damageScale(L);
     p.radius = w.radius(L);
     p.water = true;
@@ -1316,7 +1380,7 @@ export function createFiring(ctx) {
     let bestD = reach;
     for (const e of enemies.list) {
       // (The first arc goes to an enemy; on from it, it jumps to whatever is near.)
-      if (e.dead || e.neutral) continue;
+      if (e.dead || e.neutral || (echo && e.shared === false)) continue;
       tmp.subVectors(e.position, muzzle);
       const d = tmp.length();
       if (d < bestD && tmp.dot(aimDir) > cos * d) {
@@ -1367,7 +1431,7 @@ export function createFiring(ctx) {
       let next = null;
       let nextD = w.hop * L;
       for (const e of enemies.list) {
-        if (e.dead || struck.includes(e)) continue;
+        if (e.dead || struck.includes(e) || (echo && e.shared === false)) continue;
         const d = e.position.distanceTo(from);
         if (d < nextD) {
           nextD = d;
@@ -1396,6 +1460,7 @@ export function createFiring(ctx) {
       r.age = 0;
       r.hit.clear();
       models.recoil(player, place);
+      tally(player, place);
       stat(id).shots++;
       if (player.local) {
         if (sfx.whirl) sfx.whirl(player.fish.length);
@@ -1403,7 +1468,7 @@ export function createFiring(ctx) {
       }
     }
     if (on) player.arsenal.fired[id] = 0;
-    if (r.age < w.swing) {
+    if (r.age < w.swing && !echo) {
       const f = player.fish;
       const L = f.length;
       frameOf(f, fwd, right, upward);
@@ -1439,6 +1504,8 @@ export function createFiring(ctx) {
     st.spin = Math.min(1, Math.max(0, st.spin + (on ? dt / w.rev : -dt / (w.rev * 2))));
     if (player.local) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
     if (!on) return;
+    // (A mate's saw, replayed, only revs: what it cuts is its page's to say.)
+    if (echo) return void models.recoil(player, place);
     a.fired[id] = 0;
     a.heat[id] += w.heat * dt;
     if (a.heat[id] >= 1) {
@@ -1491,6 +1558,7 @@ export function createFiring(ctx) {
     }
     if (st.charge < 1) return;
     ball(player, place, w, id);
+    tally(player, place);
     a.ammo[id]--;
     a.cooldown[place] = w.interval;
     st.charge = 0;
@@ -1502,7 +1570,7 @@ export function createFiring(ctx) {
     models.recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     flight.copy(aimDir).multiplyScalar(w.speed(L));
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.damage * damageScale(L);
     p.radius = w.radius(L);
     p.life = w.reach(L) / w.speed(L) + 3;
@@ -1546,7 +1614,7 @@ export function createFiring(ctx) {
     aimFrom(muzzle, L, aimDir);
     const speed = w.speed(L);
     flight.copy(aimDir).multiplyScalar(speed);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = 0;
     p.radius = w.radius(L);
     p.life = 30;
@@ -1582,6 +1650,7 @@ export function createFiring(ctx) {
         lines.delete(p);
         continue;
       }
+      echo = p.echo;
       const w = WEAPONS[p.weapon];
       const L = p.shooter;
       seekDir.copy(p.velocity);
@@ -1593,7 +1662,7 @@ export function createFiring(ctx) {
         tail.copy(p.position);
         head.copy(p.position).addScaledVector(p.velocity, dt);
         for (const e of enemies.list) {
-          if (e.dead || p.skewered.includes(e)) continue;
+          if (e.dead || p.skewered.includes(e) || (echo && e.shared === false)) continue;
           bodyEnds(e, tmp, tmp2);
           const r = e.size * 0.1 + p.radius;
           if (segmentSegment(tail, head, tmp, tmp2) > r * r) continue;
@@ -1622,13 +1691,16 @@ export function createFiring(ctx) {
           p.life = p.age;
         }
       }
-      // The skewered ride on the shaft, one behind the other.
-      if (seekDir.lengthSq() < 1e-6) seekDir.copy(p.last).sub(line.player.fish.position).normalize();
-      for (let i = 0; i < p.skewered.length; i++) {
-        const e = p.skewered[i];
-        e.position.copy(p.position).addScaledVector(seekDir, -(0.15 + 0.35 * i) * L);
-      }
+      // The skewered ride on the shaft, one behind the other. (Only this page's own: a fish
+      // another page runs goes where its page says, and a replayed harpoon carries nothing.)
+      if (seekDir.lengthSq() < 1e-6) seekDir.copy(p.last).sub(bodyOf(line.player).position).normalize();
+      if (!echo)
+        for (let i = 0; i < p.skewered.length; i++) {
+          const e = p.skewered[i];
+          if (!e.remote) e.position.copy(p.position).addScaledVector(seekDir, -(0.15 + 0.35 * i) * L);
+        }
     }
+    echo = false;
   }
 
   // rockets: one from the pod whose turn it is, along the aim, slow off the rail; the motor
@@ -1647,7 +1719,7 @@ export function createFiring(ctx) {
     podSide.normalize().multiplyScalar(((a.ammo[id] ?? 0) % 2 ? 1 : -1) * w.pods * L);
     muzzle.add(podSide);
     flight.copy(aimDir).multiplyScalar(w.speed(L));
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.direct * damageScale(L);
     p.radius = w.radius(L);
     p.life = w.fuse;
@@ -1674,21 +1746,23 @@ export function createFiring(ctx) {
       const w = WEAPONS[p.weapon];
       const speed = Math.min(w.top(p.shooter), p.velocity.length() + w.thrust * dt);
       seekDir.copy(p.velocity).normalize();
-      seekDir.x += (random() - 0.5) * w.wobble;
-      seekDir.y += (random() - 0.5) * w.wobble;
-      seekDir.z += (random() - 0.5) * w.wobble;
+      // (A mate's rocket wavers by the looks' stream: never by the game's.)
+      const rnd = p.echo ? look : random;
+      seekDir.x += (rnd() - 0.5) * w.wobble;
+      seekDir.y += (rnd() - 0.5) * w.wobble;
+      seekDir.z += (rnd() - 0.5) * w.wobble;
       p.velocity.copy(seekDir.normalize()).multiplyScalar(speed);
     }
   }
 
   // mines: one off the rack under the belly, backward; the water stops it and it hangs there.
   function mine(player, place, w, id) {
-    const f = player.fish;
+    const f = bodyOf(player);
     const L = f.length;
     muzzleOf(player, place, muzzle);
     models.recoil(player, place);
     flight.copy(f.heading).multiplyScalar(-w.drop * L);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = 0;
     p.radius = w.radius(L);
     p.life = w.life;
@@ -1715,8 +1789,9 @@ export function createFiring(ctx) {
       if (p.solid !== "mine" || p.fuse || p.age < WEAPONS.minen.arm) continue;
       const reach = WEAPONS.minen.trigger * p.shooter;
       for (const e of enemies.list) {
-        // (A shoal fish drifting by does not set it off: it waits for a pursuer.)
-        if (e.dead || e.neutral) continue;
+        // (A shoal fish drifting by does not set it off: it waits for a pursuer. A mate's mine,
+        // replayed, goes off only for what the mate can see too.)
+        if (e.dead || e.neutral || (p.echo && e.shared === false)) continue;
         bodyEnds(e, tail, head);
         if (pointSegment(p.position, tail, head, closest) < reach + e.size * 0.1) {
           detonate(p, 0);
@@ -1750,7 +1825,7 @@ export function createFiring(ctx) {
       cone(aimDir, w.cone, tmp);
       // (Not all at once off the muzzle: a little stagger along the shot.)
       flight.copy(tmp).multiplyScalar(speed * (0.92 + 0.16 * random()));
-      const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+      const p = shoot(player.id, id, muzzle, flight, f.river.s);
       p.damage = dmg;
       p.radius = w.radius(L);
       p.life = life;
@@ -1783,8 +1858,8 @@ export function createFiring(ctx) {
     aimFrom(muzzle, L, aimDir);
     const v = w.speed(L);
     // The target: the crosshair's point, no further than the reach.
-    tmp.subVectors(aim.point, muzzle);
-    if (tmp.dot(aim.direction) < 0 || tmp.lengthSq() < 0.09 * L * L) tmp.copy(aimDir).multiplyScalar(4 * L);
+    tmp.subVectors(sight.point, muzzle);
+    if (tmp.dot(sight.direction) < 0 || tmp.lengthSq() < 0.09 * L * L) tmp.copy(aimDir).multiplyScalar(4 * L);
     const g = WATER_SINK;
     const k = WATER_DRAG;
     const reach = w.reach(L);
@@ -1824,7 +1899,7 @@ export function createFiring(ctx) {
     };
     solve();
     // A target under the crosshair is led: where it will be when the grenade gets there.
-    const target = aim.target;
+    const target = sight.target;
     if (target && !target.dead && target.velocity) {
       const time = d / Math.max(1e-3, v * Math.cos(angle));
       tmp.subVectors(target.position, muzzle).addScaledVector(target.velocity, Math.min(0.8, time));
@@ -1835,7 +1910,7 @@ export function createFiring(ctx) {
     const hz = d > 1e-4 ? tmp.z / Math.hypot(tmp.x, tmp.z) : aimDir.z;
     const norm = Math.hypot(hx, hz) || 1;
     flight.set((hx / norm) * Math.cos(angle) * v, Math.sin(angle) * v, (hz / norm) * Math.cos(angle) * v);
-    const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
+    const p = shoot(player.id, id, muzzle, flight, f.river.s);
     p.damage = w.direct * damageScale(L);
     p.radius = w.radius(L);
     p.life = w.fuse;
@@ -1860,7 +1935,11 @@ export function createFiring(ctx) {
 
   // A blast at `at`: everything in the radius takes the splash (less toward the edge), is
   // thrown outward, the outer half stunned belly-up; the fish that fired is only pushed.
-  function blast(owner, at, w, id, L, direct = null) {
+  // `own`: only the enemies this page runs (the enemies' charges, which go off on every page
+  // at once: each page's own blast hits what it runs, so nothing is hit twice). A mate's
+  // blast, replayed, is only seen and heard; it pushes nobody, not even this page's fish
+  // (no friendly fire), though it sets off the mines near it as any blast does.
+  function blast(owner, at, w, id, L, direct = null, own = false) {
     const R = w.blast(L);
     const dS = damageScale(L);
     const s = stat(id);
@@ -1877,8 +1956,9 @@ export function createFiring(ctx) {
       if (log.length > 8) log.shift();
       s.lastBlast = [at.x, at.y, at.z];
     }
-    for (const e of enemies.list) {
+    for (const e of echo ? NONE : enemies.list) {
       if (e.dead && e !== direct && e.corpse > 1.5) continue;
+      if (own && e.remote) continue;
       bodyEnds(e, tail, head);
       const d = Math.max(0, pointSegment(at, tail, head, closest) - e.size * 0.09);
       if (d > R) continue;
@@ -1895,7 +1975,7 @@ export function createFiring(ctx) {
     // Mines near it go off too, a moment later each (a chain along a line of them).
     for (const p of projectiles.live) if (p.solid === "mine" && !p.fuse && p.position.distanceTo(at) < R * 1.6) detonate(p, 0.12 + 0.08 * random());
     // The fish that fired, and any other player in reach: pushed, never hurt.
-    for (const p of ctx.players) {
+    for (const p of echo ? NONE : ctx.players) {
       if (p.down) continue;
       const d = p.fish.position.distanceTo(at);
       if (d > R * 1.3) continue;
@@ -1956,7 +2036,7 @@ export function createFiring(ctx) {
       game.ripples?.add?.(at.x, at.z, 3 + 4 * L);
     }
     // (A charge of the enemies' is heard as its own: combat.js plays it, `quiet` here.)
-    if (isLocal(owner) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
+    if ((isLocal(owner) || echo) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
   }
 
   // blade: a cut begins. The blade crosses the arc over `swing` seconds; what it passes is
@@ -1978,7 +2058,7 @@ export function createFiring(ctx) {
   // lunge is safe from its very first step.
   function dashCheck(player) {
     const b = bladeOf(player);
-    const f = player.fish;
+    const f = bodyOf(player);
     const lunges = f.lungeCount ?? 0;
     if (lunges === b.lunges) return;
     b.lunges = lunges;
@@ -1989,7 +2069,7 @@ export function createFiring(ctx) {
     if (!out || player.down) return;
     const from = (f.mouth ?? f.position).clone();
     b.dash = { age: 0, from, to: from.clone(), hit: new Set() };
-    player.safeUntil = Math.max(player.safeUntil ?? 0, (ctx.clock?.() ?? clock) + w.dashTime);
+    if (player.local) player.safeUntil = Math.max(player.safeUntil ?? 0, (ctx.clock?.() ?? clock) + w.dashTime);
     stat("katana").dashes = (stat("katana").dashes ?? 0) + 1;
     if (player.local) sfx.katanaDash();
   }
@@ -2012,7 +2092,7 @@ export function createFiring(ctx) {
     if (!b) return;
     const a = player.arsenal;
     const carried = a.back === "katana" || a.belly === "katana";
-    const f = player.fish;
+    const f = bodyOf(player);
     const L = f.length;
     const w = WEAPONS.katana;
     if (!carried) {
@@ -2034,7 +2114,7 @@ export function createFiring(ctx) {
         // The blade plane tilts 15 degrees, the other way on the other cut.
         const tilt = s.side * 0.26;
         // What it passes.
-        for (const e of enemies.list) {
+        for (const e of echo ? NONE : enemies.list) {
           if (e.dead || s.hit.has(e)) continue;
           bodyEnds(e, tail, head);
           const d = pointSegment(f.position, tail, head, closest);
@@ -2076,7 +2156,7 @@ export function createFiring(ctx) {
       if (dash.age < w.dashTime) {
         head.copy(f.mouth ?? f.position).addScaledVector(fwd, 0.25 * L);
         dash.to.copy(head);
-        for (const e of enemies.list) {
+        for (const e of echo ? NONE : enemies.list) {
           if (e.dead || dash.hit.has(e)) continue;
           const d = pointSegment(e.position, dash.from, head, closest);
           if (d > w.dashReach * L + e.size * 0.3) continue;
@@ -2161,7 +2241,7 @@ export function createFiring(ctx) {
       // (Born u of a step ago: placed a step back, and the step's move brings it out.)
       const u = (i + look()) / per;
       tmp2.copy(flameAt).addScaledVector(flight, (u - 1) * dt);
-      const p = projectiles.spawn(player.id, id, tmp2, flight, f.river.s);
+      const p = shoot(player.id, id, tmp2, flight, f.river.s);
       p.ghost = true;
       p.age = (u - 1) * dt;
       p.sky = w.sky * L;
@@ -2206,6 +2286,8 @@ export function createFiring(ctx) {
     return true;
   }
   function ignite(e, owner, seconds) {
+    if (echo || e.dead) return;
+    if (e.remote) return void ctx.report?.(e, { owner, ignite: seconds });
     const b = burning.get(e);
     if (b) {
       b.left = Math.max(b.left, seconds);
@@ -2224,7 +2306,8 @@ export function createFiring(ctx) {
         continue;
       }
       const L = lengthOf(b.owner);
-      if (!e.dead) {
+      // (A fish another page runs only shows its flames here: its page burns it.)
+      if (!e.dead && !e.remote) {
         damage(b.owner, e, w.burn * damageScale(L) * dt, null, e.position, "flammen", gorier(e, 0.3), BURN_INFO);
         // Neighbours catch (the closer, the sooner).
         for (const o of enemies.list) {
@@ -2286,10 +2369,14 @@ export function createFiring(ctx) {
   // trigger for that place.
   const PLACES = ["back", "belly"];
   function fire(player, dt, held, can) {
+    if (!player.local) return replay(player, dt);
     const a = player.arsenal;
     a.cool(dt);
     a.stage = player.fish.stage ?? 0;
     let beaming = false;
+    // (Which triggers fire this step, for the state the mates get: bits 1 back, 2 belly;
+    // 4, 8 the beam on there.)
+    let pulls = 0;
     for (const place of PLACES) {
       // (A beam is on only while a step keeps it on.)
       const beam = beams.get(player.id)?.[place];
@@ -2303,6 +2390,7 @@ export function createFiring(ctx) {
       const w = WEAPONS[id];
       if (!w) continue;
       const on = can && !player.down && held(place) && !a.locked[id];
+      if (on) pulls |= place === "back" ? 1 : 2;
       if (w.mode === "blade") bladeOf(player).held = on;
       if (w.mode === "flame") {
         if (on) {
@@ -2341,6 +2429,7 @@ export function createFiring(ctx) {
       }
       if (w.beam && beamStep(player, place, w, id, dt, on)) {
         beaming = true;
+        pulls |= place === "back" ? 4 : 8;
         continue;
       }
       if (!on) continue;
@@ -2362,6 +2451,7 @@ export function createFiring(ctx) {
         else if (w.mode === "mines") mine(player, place, w, id);
         else if (w.mode === "arc") arc(player, place, w, id);
         else if (w.mode === "harpoon") harpoon(player, place, w, id);
+        tally(player, place);
         a.fired[id] = 0;
         if (w.shells) a.ammo[id]--;
         if ((w.mode === "bolt" || w.mode === "arc") && w.heat) {
@@ -2381,6 +2471,127 @@ export function createFiring(ctx) {
     for (const id in a.locked) {
       if (a.wasLocked[id] && !a.locked[id] && player.local) sfx.unlocked(id);
       a.wasLocked[id] = a.locked[id];
+    }
+    player.pulls = pulls;
+    player.pulled = (player.pulled ?? 0) | pulls;
+  }
+
+  // ---- A mate's weapons, replayed for the eye (see the top of createFiring). What its page
+  // sent is in `player.replay` (owners.js): per place [back, belly] whether the trigger is
+  // held (`on`) and the beam on (`beam`), how many discrete shots are owed (`owed`), whether
+  // the magazine is reloading, and `refill` once it has; `player.aim` its aim.
+  const replayAt = new THREE.Vector3();
+  function replay(player, dt) {
+    const a = player.arsenal;
+    const r = player.replay;
+    if (!r) return;
+    a.stage = player.fish.stage ?? 0;
+    echo = true;
+    sight = player.aim;
+    random = look;
+    // (Far out in the fog, only the shots themselves; a minigun there fires every other
+    // round, still counting them all.)
+    const far = camera ? camera.getWorldPosition(replayAt).distanceTo(bodyOf(player).position) : 0;
+    if (far > 40) {
+      fx = quietFx;
+      smoke = null;
+    }
+    try {
+      for (let k = 0; k < 2; k++) {
+        const place = PLACES[k];
+        const beam = beams.get(player.id)?.[place];
+        if (beam) {
+          beam.was = beam.on;
+          beam.on = false;
+        }
+        const id = a[place];
+        const w = WEAPONS[id];
+        if (!w) continue;
+        a.ensure(id);
+        const on = !player.down && r.on[k];
+        const st = a.state[id];
+        // The magazine as its models show it: counted down shot by shot, refilled as the
+        // mate's page says its reload is done.
+        if (w.shells) {
+          if (r.refill[k] || a.ammo[id] == null) a.ammo[id] = a.shells(id);
+          r.refill[k] = false;
+          st.loaded = a.ammo[id];
+          st.reloading = r.reloading[k];
+        }
+        if (w.mode === "blade") bladeOf(player).held = on;
+        // What is held: shown as long as the trigger is.
+        if (w.mode === "flame" && on) jet(player, place, w, id, dt);
+        if (w.mode === "saw") sawStep(player, place, w, id, dt, on);
+        if (w.mode === "spin") st.spin = Math.min(1, Math.max(0, st.spin + (on ? dt / w.spinUp : -dt / w.spinDown)));
+        if (w.mode === "charge") st.charge = on ? Math.min(1, (st.charge ?? 0) + dt / w.steady) : 0;
+        if (w.mode === "fuse") {
+          st.charge = on ? Math.min(1, (st.charge ?? 0) + dt / w.fuse) : 0;
+          if (on && look() < dt * 20) {
+            muzzleOf(player, place, muzzle);
+            fx.spark(muzzle.x, muzzle.y + 0.05 * player.fish.length, muzzle.z, { vx: (look() - 0.5) * 0.4, vy: 0.6 * look(), vz: (look() - 0.5) * 0.4, size: 0.02 + 0.02 * player.fish.length, life: 0.2, r: 6, g: 3, b: 0.8, stretch: 1.5 });
+          }
+        }
+        if (w.beam && r.beam[k]) {
+          // (The emitter kicks as the beam comes on, as it does on the mate's own page.)
+          if (!r.beamWas[k]) models.recoil(player, place);
+          ray(player, place, w, id, dt);
+        }
+        r.beamWas[k] = !!(w.beam && r.beam[k]);
+        // What the mate's page counted: fired here as many, spaced as the weapon fires them.
+        r.gap[k] -= dt;
+        let n = 0;
+        while (r.owed[k] > 0 && r.gap[k] <= 0 && n < 8) {
+          r.owed[k]--;
+          r.gap[k] += w.mode === "whirl" ? w.swing : w.interval ?? 0.1;
+          n++;
+          if (r.fired) r.fired[k]++;
+          if (w.mode === "whirl") {
+            whirlStep(player, place, w, id, 0, true);
+            continue;
+          }
+          if (!(w.mode === "spin" && far > 25 && (r.every[k] = !r.every[k]))) emit(player, place, w, id);
+          if (w.shells) a.ammo[id] = Math.max(0, (a.ammo[id] ?? 1) - 1);
+        }
+        if (!r.owed[k] && r.gap[k] < 0) r.gap[k] = 0;
+        if (w.mode === "whirl") whirlStep(player, place, w, id, dt, false);
+        if (w.shells) st.loaded = a.ammo[id];
+      }
+      dashCheck(player);
+    } finally {
+      echo = false;
+      sight = aim;
+      random = baseRandom;
+      fx = baseFx;
+      smoke = baseSmoke;
+    }
+  }
+  // One discrete shot of a weapon, as its trigger would fire it.
+  function emit(player, place, w, id) {
+    switch (w.mode) {
+      case "bolt":
+        return bolt(player, place, w, id);
+      case "pellets":
+        return shell(player, place, w, id);
+      case "lob":
+        return lob(player, place, w, id);
+      case "blade":
+        return cut(player, place, w, id);
+      case "torpedo":
+        return launch(player, place, w, id);
+      case "rockets":
+        return rocket(player, place, w, id);
+      case "mines":
+        return mine(player, place, w, id);
+      case "arc":
+        return arc(player, place, w, id);
+      case "harpoon":
+        return harpoon(player, place, w, id);
+      case "spin":
+        return round(player, place, w, id);
+      case "charge":
+        return slug(player, place, w, id, 1);
+      case "fuse":
+        return ball(player, place, w, id);
     }
   }
 
@@ -2421,7 +2632,11 @@ export function createFiring(ctx) {
     rockets(dt);
     mines();
     harpoons(dt);
-    for (const p of ctx.players) bladeSteps(p, dt);
+    for (const p of ctx.players) {
+      echo = !p.local;
+      bladeSteps(p, dt);
+    }
+    echo = false;
   }
 
   // ---- The shots landing (projectiles.update's callbacks). A shot record goes back to its
@@ -2452,7 +2667,21 @@ export function createFiring(ctx) {
     r.weapon = weapon;
     r.power = power;
   }
+  // (Each as the shot's own: a mate's shot, replayed, as an echo.)
+  function as(shot) {
+    echo = !isLocal(shot.owner);
+    random = echo ? look : baseRandom;
+  }
+  function done(result) {
+    echo = false;
+    random = baseRandom;
+    return result;
+  }
   function onEnemy(shot, e) {
+    as(shot);
+    return done(struckBy(shot, e));
+  }
+  function struckBy(shot, e) {
     flight.copy(shot.velocity).normalize();
     const w = WEAPONS[shot.weapon];
     if (w?.blast) {
@@ -2487,12 +2716,13 @@ export function createFiring(ctx) {
       const splat = weak && n >= 4;
       if (shot.shove && e.size < L * 1.6) shove(e, flight, shot.shove * power * Math.min(1, Math.sqrt((L * 1.2) / e.size)));
       else if (shot.shove) shove(e, flight, shot.shove * power * 0.35);
-      sunk = damage(shot.owner, e, burst ? Math.max(amount, e.hp + 1) : amount, flight, shot.position, shot.weapon, false, { mode: "pellets", burst: burst || splat, power, point: shot.position });
-      if (!sunk) pelletGore(shot.owner, e, shot.volley, shot.position, flight, shot.weapon, power);
+      // (`force`: a burst that must sink it, told to its owner when another page runs it.)
+      sunk = damage(shot.owner, e, burst ? Math.max(amount, e.hp + 1) : amount, flight, shot.position, shot.weapon, false, { mode: "pellets", burst: burst || splat, power, point: shot.position, force: burst });
+      if (!sunk && !echo) pelletGore(shot.owner, e, shot.volley, shot.position, flight, shot.weapon, power);
     } else {
       sunk = damage(shot.owner, e, amount, flight, shot.position, shot.weapon, true, { mode: w?.mode ?? "bolt", power, point: shot.position });
       // The laser's pulse burns: an ember glowing a moment in the wound.
-      if (w?.mode === "bolt" && !sunk) fx.spark(shot.position.x, shot.position.y, shot.position.z, { size: 0.025 + 0.03 * L, life: 0.3, r: 5, g: 1.2, b: 0.3 });
+      if (w?.mode === "bolt" && !sunk && !echo) fx.spark(shot.position.x, shot.position.y, shot.position.z, { size: 0.025 + 0.03 * L, life: 0.3, r: 5, g: 1.2, b: 0.3 });
     }
     if (isLocal(shot.owner)) sfx.hit(shot.weapon);
     return sunk;
@@ -2516,6 +2746,10 @@ export function createFiring(ctx) {
   // A shot into the bed: pellets and bolts kick up a puff of silt (the laser also boils a
   // few beads); fire and grenades have their own endings.
   function onGround(shot) {
+    as(shot);
+    return done(groundBy(shot));
+  }
+  function groundBy(shot) {
     const w = WEAPONS[shot.weapon];
     if (w?.blast) return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
@@ -2530,6 +2764,10 @@ export function createFiring(ctx) {
   }
   // Off a stone: the same puff, and a pellet ricochets with a spark.
   function onStone(shot) {
+    as(shot);
+    return done(stoneBy(shot));
+  }
+  function stoneBy(shot) {
     const w = WEAPONS[shot.weapon];
     if (w?.blast) return blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
     if (shot.ghost) return;
@@ -2551,7 +2789,9 @@ export function createFiring(ctx) {
   }
   function onExpire(shot) {
     const w = WEAPONS[shot.weapon];
+    as(shot);
     if (w?.blast) blast(shot.owner, shot.position, w, shot.weapon, shot.shooter);
+    done();
   }
 
   // ---- Each step, after the shots have flown: what trails behind them. A grenade draws a
@@ -2657,7 +2897,7 @@ export function createFiring(ctx) {
       for (const player of ctx.players) {
         const r = whirls.get(player.id);
         if (!r || player.down || r.age >= WEAPONS.nodachi.swing + 2.5 * TRAIL) continue;
-        const f = player.fish;
+        const f = bodyOf(player);
         const L = f.length;
         const w = WEAPONS.nodachi;
         frameOf(f, fwd, right, upward);
@@ -2681,7 +2921,7 @@ export function createFiring(ctx) {
       for (const player of ctx.players) {
         const b = blades.get(player.id);
         if (!b || player.down) continue;
-        const f = player.fish;
+        const f = bodyOf(player);
         const L = f.length;
         const w = WEAPONS.katana;
         frameOf(f, fwd, right, upward);
@@ -2756,7 +2996,7 @@ export function createFiring(ctx) {
   function drawBeam(player, place, b, tall) {
     const w = WEAPONS[b.id];
     if (!w) return;
-    const L = player.fish.length;
+    const L = bodyOf(player).length;
     muzzleOf(player, place, muzzle);
     beamDir.subVectors(b.to, muzzle);
     const length = beamDir.length();
@@ -2834,6 +3074,47 @@ export function createFiring(ctx) {
     chain(a, b, width, tint, core, k, Math.min(24, Math.max(4, Math.ceil(a.distanceTo(b) / 0.8))), tall);
   }
 
+  // ---- Co-op (owners.js). What a mate's shots did to an enemy this page runs, as its page
+  // reported it (`hit`: amount, dir, point, weapon, force -- a burst that must sink it --,
+  // shove and shoveDir, stun, belly, konter, panic, ignite): done here as if the shot had
+  // been fired here, for `by` (the kill, the fire's damage, are the mate's).
+  const applyDir = new THREE.Vector3();
+  function apply(by, e, hit) {
+    if (e.dead || e.remote) return false;
+    applying = true;
+    try {
+      const L = lengthOf(by);
+      const dir = hit.dir ? applyDir.copy(hit.dir) : null;
+      if (hit.shove > 0 && (hit.shoveDir ?? dir)) shove(e, hit.shoveDir ?? dir, hit.shove);
+      if (hit.ignite > 0) ignite(e, by, hit.ignite);
+      if (hit.panic > 0) panic(e, hit.panic, L);
+      const amount = hit.force ? Math.max(hit.amount ?? 0, e.hp + 1) : hit.amount ?? 0;
+      const info = hit.info ?? null;
+      const sunk = amount > 0 && damage(by, e, amount, dir, hit.point ?? e.position, hit.weapon, false, info);
+      if (!sunk && hit.stun > 0) stun(e, hit.stun, !!hit.belly, L, !!hit.konter);
+      return sunk;
+    } finally {
+      applying = false;
+    }
+  }
+  // An enemy gone from this page's care (handed to another page, or gone altogether): no
+  // throw, stun or fire of this page's goes on with it, and nothing homes on it.
+  function forget(e) {
+    shoves.delete(e);
+    stuns.delete(e);
+    burning.delete(e);
+    for (const p of projectiles.live) {
+      if (p.homing === e) p.homing = null;
+      if (p.stuck === e) p.stuck = null;
+    }
+  }
+  // A fish another page runs, burning there: its flames shown here a moment longer.
+  function showBurning(e, seconds) {
+    const b = burning.get(e);
+    if (b) b.left = Math.max(b.left, seconds);
+    else burning.set(e, { left: seconds, owner: -1 });
+  }
+
   // (blast: for the enemies' charges too, combat's explode.)
-  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, line, blast, stunned, stats, burning, blades, beams, options };
+  return { fire, after, trails, flush, onEnemy, onGround, onStone, onBounce, onExpire, draw, line, blast, stunned, stats, burning, blades, beams, options, apply, forget, showBurning };
 }

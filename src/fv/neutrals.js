@@ -10,6 +10,10 @@
 // the stronger as an enemy with its weapon from the table. Either way its shoal scatters,
 // and from then on it is a fish of the enemy system, drawn by its kind's crowd where the
 // shoal's fish was.
+//
+// In co-op the shoals are each page's own (the base game's life), and so are their
+// stand-ins and the fish they turn into: nobody else sees them, they go only for this page's
+// fish, and a mate's shots, replayed here, go through them (enemies.js, projectiles.js).
 
 import { odds } from "../brawl.js";
 

@@ -4,6 +4,13 @@
 // the base game's own fish bodies, one instanced crowd per kind, created before the first
 // frame so their materials are compiled with everything else.
 //
+// In co-op (plan, part 5: "Jeder rechnet seine Umgebung") an enemy is run by one page, its
+// owner, and shown on the others as a proxy (`remote`): drawn, aimed at and hit there, but
+// moved only by what its owner sends (owners.js places it each step; here it only swims
+// on the spot, glide()). An enemy the others see too is `shared`, with an id unique in the
+// room; the few that stay each page's own -- the larvae in the gravel, the shoal fish and
+// what they turn into -- are not, and never go over the wire.
+//
 // A beaten enemy rolls onto its back and drifts up, belly first, as dead fish do -- limp,
 // not swimming; it drifts on the surface with the current a while and then goes. A small one can be eaten there.
 
@@ -298,6 +305,24 @@ export function createEnemies(scene, { random }) {
   // The kinds whose strike missed in this step (for the whiff the game plays).
   const whiffs = [];
   let nextId = 1;
+  // In co-op: the last number handed out for a shared enemy (its id is 4 x that + the place),
+  // and the count down of this page's own (negative ids).
+  let sharedN = 0,
+    ownN = 0;
+  // A new enemy's id. Solo, one after another. In a room an id must be the room's alone and
+  // never come again: the number never falls behind the room's clock in tenths of a second
+  // (from the room's start), so a page loaded afresh -- same place, all its counts gone --
+  // starts above everything it handed out before (a page sends far fewer than ten new
+  // enemies a second). The old king has 1 kept for him: two pages that raise him at once
+  // raise one king.
+  function newId(own) {
+    if (!api.room) return nextId++;
+    if (own) return --ownN;
+    // (Before the room has said when it started -- it always does -- this page's own start.)
+    if (!api.clock0) api.clock0 = api.now();
+    sharedN = Math.max(sharedN + 1, Math.floor((api.now() - api.clock0) / 100));
+    return 4 * sharedN + api.seat;
+  }
   // The game's clock at the last update (for when an enemy was last hit).
   let clockNow = 0;
 
@@ -324,6 +349,19 @@ export function createEnemies(scene, { random }) {
     for (const e of list) if (e.kind === kind && !e.neutral) n++;
     return n;
   }
+  // Whether a living one of `kind` fits: in a room the oldest body of its kind makes way
+  // (every page keeps the bodies of every kill near it, and a crowd full of floating bodies
+  // would leave the living ones undrawn); solo as ever, the crowd is full with its dead.
+  function fits(kind) {
+    const spec = KINDS[kind];
+    if (count(kind) < spec.capacity) return true;
+    if (!api.room) return false;
+    let oldest = null;
+    for (const e of list) if (e.kind === kind && e.dead && !e.neutral && (!oldest || e.corpse > oldest.corpse)) oldest = e;
+    if (!oldest) return false;
+    remove(oldest);
+    return true;
+  }
 
   // A new enemy at river place (s, u), height y (null: mid-water, or on the bed for kinds
   // that keep to it). Returns it, or null when the kind's crowd is full.
@@ -341,9 +379,11 @@ export function createEnemies(scene, { random }) {
     return null;
   }
 
-  function spawn(kind, s, u, y = null, { owner = 0, heading = null } = {}) {
+  // `own`: this page's alone in a room (the larvae in the gravel); `id`: a kept one (the
+  // king's).
+  function spawn(kind, s, u, y = null, { owner = 0, heading = null, own = false, id = null } = {}) {
     const spec = KINDS[kind];
-    if (!spec || count(kind) >= spec.capacity) return null;
+    if (!spec || !fits(kind)) return null;
     if (spec.wades) {
       const v = shallows(s, u);
       if (v === null) return null;
@@ -357,10 +397,13 @@ export function createEnemies(scene, { random }) {
     // (A bird comes in over the water, whatever height it is asked for.)
     const height = spec.flies ? top + spec.height * range(1, 1.3) : y ?? (spec.bottom ? floor + size * 0.12 : floor + (top - floor) * range(0.3, 0.7));
     const e = {
-      id: nextId++,
+      id: id ?? newId(own),
       kind,
       spec,
-      owner,
+      owner: api.room ? api.seat : owner,
+      shared: api.room && !own,
+      remote: false,
+      claim: { v: 0, by: api.room ? api.seat : owner },
       size,
       hp: spec.hp * api.hpScale,
       maxHp: spec.hp * api.hpScale,
@@ -412,10 +455,12 @@ export function createEnemies(scene, { random }) {
     if (!spec) return null;
     const mean = 0.5 * (spec.size[0] + spec.size[1]);
     const e = {
-      id: nextId++,
+      id: newId(true),
       kind,
       spec,
-      owner: 0,
+      owner: api.room ? api.seat : 0,
+      shared: false,
+      remote: false,
       size: member.size,
       hp: spec.hp * api.hpScale * (member.size / mean),
       maxHp: spec.hp * api.hpScale * (member.size / mean),
@@ -465,13 +510,122 @@ export function createEnemies(scene, { random }) {
     const i = list.indexOf(e);
     if (i >= 0) list.splice(i, 1);
   }
+  // Gone from the story: out of the list, and in a room marked gone (whatever still points at
+  // it -- a torpedo homing, the boss bar -- lets go), and for one this page runs and others
+  // see, told to them (`onGone`), so that no proxy of it is left behind.
+  function remove(e) {
+    const i = list.indexOf(e);
+    if (i >= 0) list.splice(i, 1);
+    if (!api.room) return;
+    if (e.shared && !e.remote && !e.dead) api.onGone?.(e);
+    e.dead = e.gone = true;
+  }
+
+  // ---- Co-op: the enemies other pages run, and the changes of hand.
+  // A proxy of an enemy another page runs (owners.js places it every step): a record of a
+  // spawned one's shape, at its owner's word; null when its crowd is full of living ones here.
+  function proxy({ id, kind, size, maxHp, hp = maxHp, owner, version = 0 }) {
+    const spec = KINDS[kind];
+    if (!spec || !fits(kind)) return null;
+    const e = {
+      id,
+      kind,
+      spec,
+      owner,
+      shared: true,
+      remote: true,
+      claim: { v: version, by: owner },
+      size,
+      hp,
+      maxHp,
+      position: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
+      heading: new THREE.Vector3(1, 0, 0),
+      speed: 0,
+      river: { s: null, u: 0 },
+      mode: spec.behaviour === "ambush" ? "lurk" : spec.flies ? "circle" : spec.behaviour === "drifter" ? "drift" : "approach",
+      t: 0,
+      target: null,
+      phase: (id * 0.618) % TAU,
+      finPhase: (id * 0.382) % TAU,
+      gape: 0,
+      strikeDir: new THREE.Vector3(),
+      orbit: id % 2 ? 1 : -1,
+      nextDart: 2,
+      rest: 1.5,
+      stagger: 0,
+      dead: false,
+      rolled: 0,
+      corpse: 0,
+      lastHitBy: -1,
+    };
+    if (spec.wades) {
+      e.stand = new THREE.Vector3();
+      e.facing = new THREE.Vector3(1, 0, 0);
+      e.muzzle = new THREE.Vector3();
+      e.aimDir = new THREE.Vector3(0, -1, 0);
+      e.mode = "stand";
+    }
+    list.push(e);
+    return e;
+  }
+  // This page runs it from now on, from where its owner last had it: a mode it cannot carry
+  // on from the middle of -- a record has the mode, not the line of a strike, the rounds left
+  // of a burst or the bombs still to drop -- becomes a breather (a bird promoted in its dive
+  // would copy a strike line of nought into its heading).
+  const MIDWAY = new Set(["coil", "strike", "aim", "fire"]);
+  function promote(e, { reload = 0.5, orbit = null, air = null } = {}) {
+    e.remote = false;
+    e.t = 0;
+    e.target = null;
+    e.reload = reload;
+    if (orbit === 1 || orbit === -1) e.orbit = orbit;
+    if (air !== null && e.spec.air) e.air = air;
+    e.dropping = 0;
+    e.shots = 0;
+    if (MIDWAY.has(e.mode)) {
+      e.mode = e.spec.wades ? "stand" : e.spec.behaviour === "drifter" ? "drift" : "recover";
+      e.reload = Math.max(e.reload, 0.5);
+      e.strikeDir.copy(e.heading).multiplyScalar(-1);
+    }
+    if (!MODES_OF.has(e.mode)) e.mode = e.spec.wades ? "stand" : e.spec.flies ? "circle" : e.spec.behaviour === "drifter" ? "drift" : e.spec.behaviour === "ambush" ? "lurk" : "approach";
+    locate(e.position.x, e.position.z, e.river.s, e.river);
+    if (e.spec.wades) {
+      e.stand.set(e.position.x, e.position.y - 0.5 * e.size, e.position.z);
+      e.facing.y = 0;
+      if (e.facing.lengthSq() < 1e-6) e.facing.set(1, 0, 0);
+      e.facing.normalize();
+    }
+  }
+  const MODES_OF = new Set(["approach", "orbit", "recover", "lurk", "hover", "breathe", "circle", "drift", "stand", "leave", "wander", "flee"]);
+  // Another page runs it from now on: this page only shows it.
+  function demote(e) {
+    e.remote = true;
+    e.dropping = 0;
+    e.shots = 0;
+  }
+  // Sunk (its owner said so): a body of this page's own from now on, floating up here.
+  function sink(e) {
+    if (!e.dead) {
+      e.dead = true;
+      e.mode = "dead";
+      e.corpse = 0;
+      e.speed = Math.min(e.speed, 0.5);
+    }
+    e.hp = Math.min(e.hp, 0);
+    e.remote = false;
+    e.shared = false;
+  }
 
   // The nearest player an enemy can go for (not dead, not taken, not in the air).
   function pick(e, players) {
     let best = null,
       bestD = Infinity;
+    // (One of this page's own goes only for this page's fish; nobody goes for a fish whose
+    // player has long been away.)
+    const own = api.room && e.shared === false;
     for (const p of players) {
-      if (!p.fish || p.down) continue;
+      if (!p.fish || p.down || p.shun || (own && !p.local)) continue;
       const d = p.fish.position.distanceToSquared(e.position);
       if (d < bestD) {
         bestD = d;
@@ -632,7 +786,7 @@ export function createEnemies(scene, { random }) {
           e.mode = "recover";
           e.t = 0;
         } else if (e.t > e.strikeTime || e.position.y < top - spec.depth) {
-          if (fish) whiffs.push(e.kind);
+          if (fish && p.local) whiffs.push(e.kind);
           e.mode = "recover";
           e.t = 0;
         }
@@ -821,7 +975,9 @@ export function createEnemies(scene, { random }) {
     mineFoot.copy(e.position).addScaledVector(e.heading, -0.4 * e.size);
     for (const q of players) {
       const f = q.fish;
-      if (!f || q.down || f.safe || f.captive || f.airborne) continue;
+      // (In a room each page tests only its own fish: a touch is a few tenths of a unit,
+      // less than a fish swimming at speed is off where another page sees it.)
+      if (!f || q.down || f.safe || f.captive || f.airborne || (api.room && !q.local)) continue;
       const L = f.length;
       fishTail.copy(f.position).addScaledVector(f.heading, -0.5 * L);
       fishHead.copy(f.position).addScaledVector(f.heading, 0.44 * L);
@@ -1025,6 +1181,7 @@ export function createEnemies(scene, { random }) {
     const fish = e.target?.fish;
     b.depth = fish ? Math.max(0.5, top - fish.position.y) : 4;
     bombs.push(b);
+    api.onBomb?.(e, b);
   }
   // How long after it goes in, at `vy` (u/s, down negative), a bomb takes to sink `depth`,
   // braked as fall() brakes it -- within the gun's fuse.
@@ -1322,7 +1479,7 @@ export function createEnemies(scene, { random }) {
           e.mode = "recover";
           e.t = 0;
         } else if (e.t > (e.strikeTime ?? 0.4)) {
-          if (!untouchable) whiffs.push(e.kind);
+          if (!untouchable && p.local) whiffs.push(e.kind);
           e.mode = "recover";
           e.t = 0;
         }
@@ -1386,6 +1543,24 @@ export function createEnemies(scene, { random }) {
     e.gape += (0.35 - e.gape) * (1 - Math.exp(-dt * 2));
   }
 
+  // A proxy between the moves its owner sends (owners.js places it): only what the look
+  // needs goes on here -- its tail and fins, its jaws by its mode, the roll of a stun, the
+  // bell's beat, how a rearing one lies.
+  function glide(e, dt) {
+    const spec = e.spec;
+    e.t += dt;
+    if (e.stagger > 0) e.stagger -= dt;
+    if (spec.behaviour === "drifter") e.phase = (e.phase + dt * TAU * spec.beat) % TAU;
+    else if (!spec.flies && !spec.wades) {
+      e.phase = (e.phase + dt * TAU * (0.6 + (e.speed / e.size) * 1.4)) % TAU;
+      const wantGape = e.mode === "strike" ? 1 : e.mode === "coil" || e.mode === "aim" ? 0.35 : 0.08;
+      e.gape += (wantGape - e.gape) * (1 - Math.exp(-dt * 12));
+    }
+    e.finPhase = (e.finPhase + dt * TAU * 1.4) % TAU;
+    e.rolled = e.rolling ? Math.min(Math.PI, e.rolled + dt * 9) : Math.max(0, e.rolled - dt * 4);
+    if (e.spec.weapon?.rear) lie(e);
+  }
+
   function update(dt, time, players, hooks) {
     whiffs.length = 0;
     clockNow = time;
@@ -1394,6 +1569,15 @@ export function createEnemies(scene, { random }) {
       const e = list[i];
       // (A stand-in for a shoal fish: the shoal moves it.)
       if (e.neutral) continue;
+      // (Where it is drawn catches up with where it is, after a change of hand.)
+      if (e.drawOffset) {
+        e.drawOffset.multiplyScalar(Math.exp(-dt / 0.08));
+        if (e.drawOffset.lengthSq() < 1e-6) e.drawOffset = null;
+      }
+      if (e.remote && !e.dead) {
+        glide(e, dt);
+        continue;
+      }
       if (e.dead) {
         drift(e, dt, time, hooks.ground);
         // (A burst body goes once the splatter has faded it out: at once, unless it keeps
@@ -1406,27 +1590,27 @@ export function createEnemies(scene, { random }) {
         (e.spec.behaviour === "bomber" ? bomber : dive)(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;
         if (e.leave) {
-          list.splice(i, 1);
+          leave(i);
           continue;
         }
       } else if (e.spec.behaviour === "drifter") {
         drifting(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;
         if (e.leave) {
-          list.splice(i, 1);
+          leave(i);
           continue;
         }
       } else if (e.spec.wades) {
         wade(e, dt, time, players, hooks);
         if (e.stagger > 0) e.stagger -= dt;
         if (e.leave) {
-          list.splice(i, 1);
+          leave(i);
           continue;
         }
       } else {
         let speed = think(e, dt, time, players, hooks);
         if (e.leave) {
-          list.splice(i, 1);
+          leave(i);
           continue;
         }
         // A boss keeps to its place: past its leash it turns for home.
@@ -1507,14 +1691,22 @@ export function createEnemies(scene, { random }) {
     draw();
   }
 
-  // Enemies of a kind keep a little apart instead of swimming through one another.
+  // One that has given up its place is gone (and in a room, the others hear of it).
+  function leave(i) {
+    const e = list[i];
+    if (api.room) remove(e);
+    else list.splice(i, 1);
+  }
+
+  // Enemies of a kind keep a little apart instead of swimming through one another. (Not
+  // a proxy: another page moves it, and moves its own apart.)
   function separate(dt) {
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (a.dead || a.neutral) continue;
+      if (a.dead || a.neutral || a.remote) continue;
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
-        if (b.dead || b.neutral || b.kind !== a.kind) continue;
+        if (b.dead || b.neutral || b.remote || b.kind !== a.kind) continue;
         tmp.subVectors(a.position, b.position);
         const d = tmp.length();
         const min = (a.size + b.size) * 0.3;
@@ -1546,8 +1738,12 @@ export function createEnemies(scene, { random }) {
     if (e.rolled > 0) quaternion.multiply(roll.setFromAxisAngle(FORWARD, e.rolled + (e.dead ? 0.12 * Math.sin(e.corpse * 1.7 + e.id) : 0)));
     const fade = e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1;
     const k = (e.size / MODEL_LENGTH) * fade * (e.shown ?? 1);
-    return out.compose(e.position, quaternion, scale.set(k, k, k));
+    return out.compose(drawnAt(e), quaternion, scale.set(k, k, k));
   }
+  // Where an enemy is drawn: where it is, and for a moment after it changed hands, where it
+  // was drawn before (its offset fading out in update()).
+  const drawn = new THREE.Vector3();
+  const drawnAt = (e) => (e.drawOffset ? drawn.addVectors(e.position, e.drawOffset) : e.position);
 
   // Kinds with models of their own (`render`) are drawn by those, once they are in; the
   // stand-in body shows them meanwhile.
@@ -1571,9 +1767,9 @@ export function createEnemies(scene, { random }) {
         const k = e.size * (e.dead ? clamp((CORPSE_SECONDS - e.corpse) / 1.5, 0, 1) : 1) * (e.shown ?? 1);
         if (k <= 0) continue;
         quaternion.setFromUnitVectors(UP, e.heading);
-        matrix.compose(e.position, quaternion, scale.set(k * (1 - 0.16 * beat), k * (1 + 0.08 * beat), k * (1 - 0.16 * beat)));
+        matrix.compose(drawnAt(e), quaternion, scale.set(k * (1 - 0.16 * beat), k * (1 + 0.08 * beat), k * (1 - 0.16 * beat)));
         jelly.bell.setMatrixAt(jelly.bell.count++, matrix);
-        matrix.compose(e.position, quaternion, scale.set(k, k, k));
+        matrix.compose(drawnAt(e), quaternion, scale.set(k, k, k));
         jelly.mine.setMatrixAt(jelly.mine.count++, matrix);
         continue;
       }
@@ -1684,6 +1880,8 @@ export function createEnemies(scene, { random }) {
   }
 
   function reset() {
+    // (In a room the others hear that what this page ran is gone.)
+    if (api.room) for (const e of list) if (e.shared && !e.remote && !e.dead) api.onGone?.(e);
     list.length = 0;
     bombs.length = 0;
     draw();
@@ -1695,6 +1893,14 @@ export function createEnemies(scene, { random }) {
     whiffs,
     // Hit points of new enemies are scaled by this (the difficulty).
     hpScale: 1,
+    // Co-op (owners.js sets them): in a room at all, this page's place, the room's clock and
+    // its start (ms), and what to tell the others -- an enemy gone, a bomb let go.
+    room: false,
+    seat: 0,
+    now: () => 0,
+    clock0: 0,
+    onGone: null,
+    onBomb: null,
     spawn,
     update,
     hit,
@@ -1703,9 +1909,14 @@ export function createEnemies(scene, { random }) {
     convert,
     forget,
     count,
-    count,
     reset,
     snout,
+    lead,
+    proxy,
+    promote,
+    demote,
+    sink,
+    remove,
     // The bombs falling and sinking ({ position, velocity, wet, source, gun, ... }).
     bombs,
     // How dark it is (0 day, 1 night): the jellyfish glow the more.

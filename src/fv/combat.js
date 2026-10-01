@@ -1,7 +1,9 @@
 // Combat: the players, their weapons, the enemies, the shots and what they do, wired into the
 // game's step (after the river's life has moved, before the game reacts to what happened to
-// the fish) and its frame (the picture). Everything is kept per player from the start, with
-// the local player as the only one for now, so co-op can add the others later.
+// the fish) and its frame (the picture). Everything is kept per player from the start, the
+// local player first. In co-op (owners.js, joined with join()) the mates come after it: in
+// `players` as they are drawn, whose weapons are replayed here for the eye, and in
+// `targets` as the enemies see them, to go for; solo the two lists are one.
 
 import * as THREE from "three";
 import { randomGenerator } from "../../shared/random.js";
@@ -30,6 +32,7 @@ import { createSfx } from "./sfx.js";
 import { createSignals } from "./signals.js";
 import { SKY, WEAPONS, createArsenal, createFiring, damageScale } from "./weapons.js";
 import { tameTheWild } from "./wild.js";
+import { seeded } from "./wire.js";
 
 // How far (as a tangent) from the middle of the view an enemy draws a phone's auto-fire: a
 // wider cone than with a mouse.
@@ -80,6 +83,12 @@ export function createCombat(game) {
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
   const local = players[0];
+  // Who the enemies may go for (co-op: a list of its own, filled by owners.js); what may
+  // take this page's capsules (the local player alone: each player has their own).
+  let targets = players;
+  const mine = [local];
+  // Co-op's owners of the enemies (owners.js), once joined; null solo.
+  let owners = null;
   // The peaceful fish of the shoals, open to attack (neutrals.js).
   neutrals = createNeutrals({ life, enemies, players, clock: () => game.now.time });
   // For trying the weapons out: ?weapon=<id> (and ?belly=<id>) starts with them, and then the
@@ -111,7 +120,7 @@ export function createCombat(game) {
   let clock = 0,
     wasDown = false;
   // The weapons' verbs and what their shots do (weapons.js).
-  const firing = createFiring({ random, look, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, camera, players, onKill, clock: () => clock });
+  const firing = createFiring({ random, look, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, camera, players, onKill, clock: () => clock, report: (e, hit) => owners?.report(e, hit) });
   // For tests: the last few deaths of the local fish that combat caused ({ t, by }).
   const deaths = [];
 
@@ -191,6 +200,8 @@ export function createCombat(game) {
   // rule), a knife stabs, a plain bite bites. After a strike a player is untouchable a
   // moment, after a bullet only a blink (a burst should count, not just its first round).
   function hurt(player, e, outcome, shot = null) {
+    // (Only this page's own fish: whether a mate was hit is its own page's to say.)
+    if (!player.local) return;
     const f = player.fish;
     if (clock < player.safeUntil || f.safe || game.now.dead > 0) return;
     const melee = e.spec.weapon?.kind === "melee" ? e.spec.weapon : null;
@@ -237,7 +248,16 @@ export function createCombat(game) {
   const round = { source: null, weapon: null, cause: null, position: enemyMuzzle, velocity: pellet, damage: 0, drag: undefined, shove: 0, air: false, radius: 0, life: 12, size: 0, tint: [7, 3.2, 0.7], stretch: 3.5, s: null };
   // (The muzzle's flash, one description for every shot too: fx.spark only reads it.)
   const flash = { size: 0, life: 0.08, r: 5, g: 2.6, b: 0.6 };
-  function enemyShoots(e, dir, gun) {
+  // In a room an enemy the others see fires its pellets from a seed, which goes to them with
+  // the shot (owners.js): the same pellets fly on every page. (Solo, and for this page's own,
+  // they draw from the game's stream as ever.) `rnd`: the seeded stream of a shot replayed.
+  function enemyShoots(e, dir, gun, rnd = null) {
+    if (!rnd && owners && e.shared && !e.remote) {
+      const seed = Math.floor(random() * 65536);
+      rnd = seeded(seed);
+      owners.shot(e, dir, gun, seed);
+    }
+    rnd ??= random;
     if (!models.enemyMuzzle?.(e, enemyMuzzle)) enemies.snout(e, enemyMuzzle);
     round.source = e;
     round.weapon = gun.id;
@@ -251,10 +271,10 @@ export function createCombat(game) {
     round.s = e.river.s;
     for (let i = 0; i < gun.pellets; i++) {
       pellet.copy(dir);
-      pellet.x += (random() - 0.5) * 2 * gun.spread;
-      pellet.y += (random() - 0.5) * 2 * gun.spread;
-      pellet.z += (random() - 0.5) * 2 * gun.spread;
-      pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * random()));
+      pellet.x += (rnd() - 0.5) * 2 * gun.spread;
+      pellet.y += (rnd() - 0.5) * 2 * gun.spread;
+      pellet.z += (rnd() - 0.5) * 2 * gun.spread;
+      pellet.normalize().multiplyScalar(gun.speed * (0.92 + 0.16 * rnd()));
       hostile.fire(round);
     }
     flash.size = 0.12 + 0.05 * e.size;
@@ -270,6 +290,12 @@ export function createCombat(game) {
   function enemySwings(e) {
     const blade = e.spec.weapon;
     if (blade?.kind === "melee") sfx.enemyStrike?.(blade.id, e.position.distanceTo(camera.position), false);
+  }
+  // (As a strike begins: heard, and in a room, when it is at a mate, told to the mate's page,
+  // which decides whether it lands -- owners.js.)
+  function swings(e) {
+    enemySwings(e);
+    if (owners && e.shared && e.target && !e.target.local) owners.strike(e, e.target.id);
   }
   // The salmon as the splatter sees it when an enemy's round strikes it (gore.hit takes an
   // enemy), and the round's direction handed in beside it. Each hit of a step gets a record
@@ -291,9 +317,12 @@ export function createCombat(game) {
   // step's outcome is handed to them in `stepOutcome` just before hostile.update.
   let stepOutcome = null;
   const hostileHooks = {
+    // (On a mate the round only shows: its own page decides whether it struck. A mate whose
+    // page is away cannot, so the page that fired it tells it -- owners.js.)
     onPlayer(shot, player) {
       hurt(player, shot.source, stepOutcome, shot);
       gore.hit?.(struckBody(player.fish), shot.position, struckAlong.copy(shot.velocity).normalize(), shot.weapon);
+      if (!player.local && player.away && owners && shot.source?.shared && !shot.source.remote) owners.strike(shot.source, player.id, shot.hitDamage ?? shot.damage);
     },
     onGround(shot) {
       fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
@@ -315,9 +344,18 @@ export function createCombat(game) {
     else f.progress = Math.min(1, f.progress + clamp(0.004 + 0.008 * Math.min(1, e.size / (2 * f.length)), 0.004, 0.012));
   }
 
+  // An enemy sunk here -- by the page that runs it: in a room one the others see goes out to
+  // them (owners.js), and every page shows the same death (sunkShown).
   function onKill(e, by, dir, weapon, info = null) {
+    if (owners && e.shared) owners.sunk(e, by, dir, weapon);
+    sunkShown(e, by, dir, weapon, info);
+  }
+  // A death as every page shows it: counted and rewarded for the killer on the killer's own
+  // page ("Kampf nährt das Leben"), its sound, the jellyfish's own mine, the body burst or
+  // floating up as the weapon decides.
+  function sunkShown(e, by, dir, weapon, info = null) {
     const player = players.find((p) => p.id === by);
-    if (player) {
+    if (player?.local) {
       player.kills++;
       reward(player, e);
     }
@@ -370,6 +408,8 @@ export function createCombat(game) {
     blastAt.copy(c.body ? e.position : c.at);
     if (c.body) gore.kill(e, UP, gun.id);
     const R = gun.blast;
+    // (Every player's fish in reach is struck; hurt() harms only this page's own, a mate's
+    // body only bleeds here.)
     for (const player of players) {
       const f = player.fish;
       if (player.down || f.airborne) continue;
@@ -387,7 +427,9 @@ export function createCombat(game) {
       if (blastDir.lengthSq() < 1e-8) blastDir.set(0, 1, 0);
       gore.hit?.(struckBody(f), bodyNear, blastDir.normalize(), gun.id);
     }
-    firing.blast(c.by, blastAt, chargeOf(gun), gun.id, chargeSize(gun));
+    // (In a room each page's blast hits only the enemies it runs: the charge goes off on every
+    // page, so each enemy in reach is struck once, by its owner.)
+    firing.blast(c.by, blastAt, chargeOf(gun), gun.id, chargeSize(gun), null, !!owners);
     // The charge's own sound -- a sea mine, bombs -- also when the salmon set it off.
     sfx.enemyBlast?.(gun.id, camera.position.distanceTo(blastAt), chargeSize(gun));
   }
@@ -408,6 +450,7 @@ export function createCombat(game) {
     touch(e) {
       if (e.dead) return;
       enemies.hit(e, e.hp + 1, null, -1);
+      if (owners && e.shared) owners.sunk(e, -1, UP, "seamine");
       charges.push({ source: e, gun: e.spec.weapon, at: e.position.clone(), fuse: 0, body: true, by: -1 });
     },
     blast(at, gun, source) {
@@ -427,15 +470,18 @@ export function createCombat(game) {
     if (player.down) return;
     for (const e of enemies.list) {
       // (Nor a jellyfish with its mine: a live one goes off at a touch, and a dead one's own
-      // mine is about to tear it apart.)
-      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact") continue;
+      // mine is about to tear it apart. Nor one another page runs, alive: its page decides.)
+      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact" || (e.remote && !e.dead)) continue;
       if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
         if (!e.dead) {
           // (Swallowed alive: a kill, but nothing is left to splatter.)
           enemies.hit(e, e.hp + 1, null, player.id);
           player.kills++;
+          if (owners && e.shared) owners.sunk(e, player.id, UP, "bite");
         }
+        // (A body the others see as well goes on their pages too.)
+        if (owners && e.shared === false && e.id > 0) owners.eaten(e);
         e.eaten = true;
         player.salmon.eat(35 * e.size, e.kind);
         fx.fizz(e.position.x, e.position.y, e.position.z, { count: 5, size: 0.015 + 0.01 * e.size, spread: e.size * 0.3, random: look });
@@ -461,8 +507,9 @@ export function createCombat(game) {
       for (const id of [a.back, a.belly]) if (id && id !== "piu") pickups.revenge(local, id, fish.position);
       a.back = "piu";
       a.belly = null;
+      // (Those this page runs: another page's go on as their page has them.)
       for (const e of enemies.list)
-        if (!e.dead) {
+        if (!e.dead && !e.remote) {
           e.mode = "recover";
           e.t = -4;
         }
@@ -470,6 +517,8 @@ export function createCombat(game) {
     }
     wasDown = local.down;
     rules.step(dt, local, enemies);
+    // Co-op: what the others sent, the mates and the proxies placed, their events due.
+    owners?.before(dt, outcome);
     wild.step();
     const L = fish.length;
     const w = WEAPONS[local.arsenal.back] ?? WEAPONS[local.arsenal.belly] ?? WEAPONS.piu;
@@ -478,11 +527,18 @@ export function createCombat(game) {
       else auto.back = auto.belly = false;
     } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, Math.max(w.reach(L), 4 * L));
     fireWeapons(local, dt);
+    // (The mates' weapons, replayed for the eye.)
+    owners?.replays(dt);
     enemies.hpScale = difficulty.level.hp;
-    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count, dark: 1 - (game.daylight?.state?.daylight ?? 1) });
-    gravel.update(dt, { fish, enemies, players: players.length });
+    // In a room one page of a group sends the enemies, for as many players as are in the
+    // room, counting what its group has about (owners.js); the larvae come to each alevin
+    // for its own gravel.
+    if (owners?.directs ?? true) director.update(dt, { fish, stage: fish.stage, enemies, players: owners?.roomSize ?? players.length, count: difficulty.level.count, dark: 1 - (game.daylight?.state?.daylight ?? 1), counts: owners?.counts });
+    gravel.update(dt, { fish, enemies, players: owners ? 1 : players.length });
     bosses.update(dt, {
       fish,
+      spawns: owners?.directs ?? true,
+      room: !!owners,
       onBeaten: (boss, e) => {
         game.hud.toast("Der alte König ist versenkt!", "Das Katana, das er bewacht hat, gehört dir.", 6);
         pickups.deliver(local, "katana", e.position);
@@ -494,7 +550,7 @@ export function createCombat(game) {
     }
     local.stageSeen = fish.stage;
     pickups.update(dt, {
-      players,
+      players: mine,
       terrain,
       onTake: (player, id) => {
         if (!player.local) return;
@@ -508,7 +564,7 @@ export function createCombat(game) {
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12, game.now.time);
     neutrals.update(fish);
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, aim: enemyAims, swing: enemySwings, ground: crawling ? ground : null, ...chargeHooks });
+    enemies.update(dt, game.now.time, targets, { hurt: (p, e) => (p.local ? hurt(p, e, outcome) : owners?.landed(e, p)), shoot: enemyShoots, aim: enemyAims, swing: swings, ground: crawling ? ground : null, ...chargeHooks });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
     // (The splatter's records for the salmon are free again: gore.update let go of them.)
@@ -529,11 +585,14 @@ export function createCombat(game) {
     fx.update(dt);
     smoke.update(dt);
     gore.update(dt, enemies.list);
+    // Co-op: the handovers, the groups, the stream of what this page runs, the batch out.
+    owners?.after(dt);
   }
 
   // The picture of this frame: the shots in flight, the weapons, the sparks, the capsules.
   function frame(dt) {
-    const shown = !game.now.paused || trigger.test;
+    // (In a room the world goes on behind the pause card: owners.js.)
+    const shown = !game.now.paused || trigger.test || !!owners?.running;
     hud.update(dt, shown ? local.arsenal : null);
     hud.bars(enemies.list, camera, game.now.time);
     fx.begin();
@@ -608,7 +667,8 @@ export function createCombat(game) {
       }
       if (e.mode === "aim" && e.target?.fish) {
         if (!models.enemyMuzzle?.(e, muzzleAt)) enemies.snout(e, muzzleAt);
-        aimAt.copy(e.target.fish.position);
+        // (At a mate: where it is drawn.)
+        aimAt.copy((e.target.drawn ?? e.target.fish).position);
         firing.line(muzzleAt, aimAt, 0.006 + 0.004 * e.size, LASER, LASER_CORE, 0.25 + 0.55 * night);
       }
     }
@@ -616,6 +676,10 @@ export function createCombat(game) {
 
   return {
     players,
+    get targets() {
+      return targets;
+    },
+    local,
     enemies,
     projectiles,
     hostile,
@@ -639,5 +703,25 @@ export function createCombat(game) {
       trigger.auto = !!on;
       if (!on) auto.back = auto.belly = false;
     },
+    // Co-op (owners.js): joined once in a room; what the owners call back into.
+    join(o, list) {
+      owners = o;
+      targets = list;
+      local.tally = [0, 0];
+    },
+    hurt: (player, e, outcome, shot) => hurt(player, e, outcome, shot),
+    enemyShoots,
+    enemyAims,
+    enemySwings,
+    sunkShown,
+    reward,
+    charges,
+    gore,
+    hud,
+    sfx,
+    fx,
+    difficulty,
+    canFire,
+    trigger,
   };
 }
