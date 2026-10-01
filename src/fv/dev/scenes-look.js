@@ -1735,6 +1735,10 @@ LOOK_SCENES.push(
   // close from the side and above; by day and at night.
   { name: "vogel-pruef", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   { name: "vogel-pruef-nacht", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 23 },
+  // The heron's scene again where the air is clear (its own place lies in the haze of a bank).
+  { name: "vogel-reiher-klar", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 11 },
+  // The goosander all round and close, swimming, on the water and dead.
+  { name: "vogel-saeger-rund", look: true, birds: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
   // A goosander filling half the picture: what the birds' shading costs at its worst.
   { name: "vogel-kosten-nah", look: true, birds: true, manual: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
 );

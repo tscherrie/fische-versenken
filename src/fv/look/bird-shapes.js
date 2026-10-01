@@ -355,13 +355,19 @@ function wing({ lead, trail, wrist, arm = 10, hand = 10, notch = 0.06, fingers =
 // (Laid so -- the span running back, the chord from the leading edge down the flank -- the
 // wing lies turned over: its upper side faces the body and its underside faces out, which is
 // why a folded wing takes its colours from foldPaint.)
-function folder(stations, { shoulder, sW, length, top, bottom, reach = 0.32, rise = 0, gap = 0.015 }) {
+// `tip` (radians round from the back, if given): where the wingtip lies, the hand drawn in
+// toward it from the wrist back. A swimming duck's primaries cross over its rump close to the
+// middle of the back; left on the upper flank of the narrowing rump, the goosander's stood off
+// it to either side like ears when seen from behind.
+function folder(stations, { shoulder, sW, length, top, bottom, reach = 0.32, rise = 0, gap = 0.015, tip = null }) {
   const size = sizeAlong(stations);
   return (s, c, isTop, lift) => {
     const g = s < sW ? reach * (s / sW) : reach + (1 - reach) * ((s - sW) / (1 - sW));
     const x = shoulder[0] + 0.06 * length - length * g;
     const narrow = 1 - 0.85 * Math.pow(g, 1.6);
-    const phi = top + (bottom - top) * c * narrow + 0.15 * g * g;
+    const rest = top + 0.15 * g * g;
+    const lead = tip === null ? rest : rest + (tip - rest) * smooth(reach, 1, g);
+    const phi = lead + (bottom - top) * c * narrow;
     const b = size(x);
     const w = b.w,
       h = b.h;
@@ -419,7 +425,8 @@ function ribbon(points, width, { flat = 0.18, radial = 6, up = new THREE.Vector3
 }
 
 // A leg from the hip down through the heel to the foot, with its toes (each [direction x, z,
-// length]), both sides; `paint(p, n, lower)` colours it, lower below the heel.
+// length]), both sides; `paint(p, n, lower, inWeb)` colours it, lower below the heel, inWeb
+// on a web between the toes.
 function addLegs(plumage, { hip, heel, foot, radius, toes, toeRadius, paint, web = null, radial = 7 }) {
   for (const side of [1, -1]) {
     const z = (v) => [v[0], v[1], v[2] * side];
@@ -441,9 +448,57 @@ function addLegs(plumage, { hip, heel, foot, radius, toes, toeRadius, paint, web
     }
     if (web) {
       const w = web(side);
-      plumage.add(w, { ...rig, weight: () => 1, paint: (p, n) => paint(p, n, true) });
+      plumage.add(w, { ...rig, weight: () => 1, paint: (p, n) => paint(p, n, true, true) });
     }
   }
+}
+
+// The web between a foot's front toes (`toes` as addLegs takes them, from `foot`, the right
+// foot's), both sides: a fan from the ankle, thin, closed both sides, its edge running from toe
+// tip to toe tip and drawn in between them in a curve, reaching `reach` of the way along each
+// toe. (Cut as a round fan wider than the toes, the goosander's foot read as a swim fin;
+// without one, the gannet's bare black toes hung under its body like a spider's legs.)
+function webbed(foot, toes, { reach = 0.96 } = {}) {
+  const front = toes.filter(([dx]) => dx > 0).map(([dx, dz, length]) => [Math.atan2(dz, dx), length * reach]);
+  // (Its sag below the toes as deep as the goosander's, for whose 7.5 cm toes it was cut.)
+  const k = front.reduce((sum, [, r]) => sum + r, 0) / front.length / 0.72;
+  return (side) => {
+    const g = new THREE.BufferGeometry();
+    const ankle = new THREE.Vector3(foot[0], foot[1], foot[2] * side);
+    const rim = [];
+    const steps = 8;
+    for (let j = 0; j + 1 < front.length; j++)
+      for (let i = j ? 1 : 0; i <= steps; i++) {
+        const t = i / steps;
+        const a = front[j][0] + (front[j + 1][0] - front[j][0]) * t;
+        const r = (front[j][1] + (front[j + 1][1] - front[j][1]) * t) * (1 - 0.3 * Math.sin(Math.PI * t));
+        const u = (j + t) / (front.length - 1);
+        rim.push(new THREE.Vector3(Math.cos(a) * r, k * (-0.04 - 0.05 * Math.sin(Math.PI * u)), Math.sin(a) * r * side).add(ankle));
+      }
+    const positions = [];
+    const index = [];
+    // Two layers of a fan, turned opposite ways: from either side one of them faces the eye.
+    const d = 0.012 * k;
+    for (const dy of [d, -d]) {
+      const base = positions.length / 3;
+      positions.push(ankle.x, ankle.y + dy, ankle.z);
+      for (const r of rim) positions.push(r.x, r.y + dy, r.z);
+      for (let i = 0; i < rim.length - 1; i++) index.push(base, base + 1 + i, base + 2 + i);
+    }
+    // (The underside faces the other way.)
+    const half = index.length / 2;
+    for (let i = half; i < index.length; i += 3) [index[i + 1], index[i + 2]] = [index[i + 2], index[i + 1]];
+    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    g.setIndex(index);
+    g.computeVertexNormals();
+    if (side < 0) {
+      const idx = g.index.array.slice();
+      for (let i = 0; i < idx.length; i += 3) [idx[i + 1], idx[i + 2]] = [idx[i + 2], idx[i + 1]];
+      g.setIndex(Array.from(idx));
+      g.computeVertexNormals();
+    }
+    return g;
+  };
 }
 
 // An eye: a glossy bead, its pupil dark where it looks out to the side (`pupil`: how much of
@@ -654,10 +709,18 @@ export function merganserShape() {
       // The black back from the mantle down to the rump, grey behind it; white-salmon below.
       // (The mantle begins behind the base of the neck: carried on to the front of the body,
       // it showed as a black wedge on the breast under the raised neck.)
-      const back = (1 - smooth(0.55, 0.72, phi)) * (1 - smooth(0.95, 1.25, p.x));
+      // (Its edges a little ragged, as feathers lie, and its end running out in a point down
+      // the middle of the rump into the grey: straight-edged and ended square across the back,
+      // the black read from above as a panel laid on a white hull.)
+      // (Behind the folded wings the grey of the rump comes down the sides to the middle of
+      // the flank, as on the drake: kept to the top of the back, the rear was a white egg from
+      // behind with the dark tail across it like a mouth.)
+      const rag = 0.07 * noise(p.x * 3.1, p.y * 2.3 + 4.2, p.z * 2.3);
+      const reach = 0.5 + 0.6 * smooth(-1.25, -2.0, p.x);
+      const back = (1 - smooth(reach, reach + 0.18, phi + rag)) * (1 - smooth(0.95, 1.25, p.x + rag));
+      const mantle = smooth(-1.85, -1.15, p.x - 0.6 * Math.min(phi, 1.2) + 2 * rag);
       let c = SALMON;
-      const upper = p.x > -1.3 ? BLACK : GREY;
-      c = mix3(c, mix3(GREY, BLACK, smooth(-1.5, -1.1, p.x)), back);
+      c = mix3(c, mix3(GREY, BLACK, mantle), back);
       // The rosy wash strongest on the breast and flanks, whiter toward the tail.
       c = mix3(c, hex(0xf4efe8), smooth(-0.5, -2, p.x) * (1 - back));
       const k = 0.94 + 0.1 * hash(p.x * 12, p.y * 12, p.z * 12);
@@ -721,14 +784,24 @@ export function merganserShape() {
     }
   addEyes(b, [2.74, 0.61, 0.245], 0.042, hex(0x5a1a10), head, 0.6);
   // The tail, short and grey.
+  // (Narrower than it was, and a little darker toward its tip: as wide as the rump and evenly
+  // grey, it read from behind as a flat board. Set high, on the line of the back, as a duck
+  // carries it: across the middle of the rump it read from behind as a mouth.)
   const tail = [
-    { x: -2.15, w: 0.22, h: 0.065, y: 0.16 },
-    { x: -2.5, w: 0.3, h: 0.05, y: 0.18 },
-    { x: -2.85, w: 0.26, h: 0.035, y: 0.2 },
-    { x: -3.0, w: 0.15, h: 0.025, y: 0.205 },
-    { x: -3.05, w: 0, h: 0, y: 0.205 },
+    { x: -2.15, w: 0.2, h: 0.065, y: 0.21 },
+    { x: -2.5, w: 0.25, h: 0.05, y: 0.24 },
+    { x: -2.82, w: 0.21, h: 0.035, y: 0.26 },
+    { x: -2.97, w: 0.12, h: 0.025, y: 0.265 },
+    { x: -3.02, w: 0, h: 0, y: 0.265 },
   ];
-  b.add(loft(tail, { radial: 12 }), { part: PART.tail, pivot: [-2.25, 0.15, 0], paint: (p) => [...tint(GREY, 0.8 + 0.2 * hash(p.x * 20, 0, p.z * 20)), DOWN] });
+  // (Its underside a paler, silvery grey, as tail feathers are below: in the shade of its
+  // own upper side the even grey showed black from behind and below, a dark slot across the
+  // rump.)
+  b.add(loft(tail, { radial: 12 }), {
+    part: PART.tail,
+    pivot: [-2.25, 0.2, 0],
+    paint: (p, n) => [...tint(mix3(GREY, hex(0xb4b8bb), smooth(0.1, -0.5, n.y)), (0.8 + 0.2 * hash(p.x * 20, 0, p.z * 20)) * (1 - 0.2 * smooth(-2.5, -2.95, p.x))), DOWN],
+  });
   const w = wing({
     lead: [
       [0.75, 0.45, 0.42],
@@ -750,7 +823,7 @@ export function merganserShape() {
     notch: 0.05,
     thick: 0.11,
     paint: () => [0, 0, 0],
-    fold: folder(body, { shoulder: [0.75, 0.45, 0.42], sW: 0.43, length: 2.85, top: 0.52, bottom: 1.3 }),
+    fold: folder(body, { shoulder: [0.75, 0.45, 0.42], sW: 0.43, length: 2.85, top: 0.52, bottom: 1.3, tip: 0.16 }),
   });
   addWings(b, w, (s, c, top) => {
     // The inner wing white (the secondaries and their coverts), its leading half black above
@@ -758,62 +831,38 @@ export function merganserShape() {
     // over the whole back, the white only low on the flank, most of it tucked under the flank
     // feathers); the hand black-brown; the root black. (The goosander never flies here: the
     // wing is seen folded.)
-    const hand = smooth(w.sW - 0.02, w.sW + 0.03, s);
+    // (The borders between the colours slanting and a little ragged, as the feathers' own
+    // edges: straight across and along the folded wing, its white showed as a square panel.
+    // The primaries' edge stepped back toward the trailing edge; the black reaching less far
+    // down the flank toward the back.)
+    const rag = 0.05 * noise(s * 11, c * 5, 1.7);
+    const hand = smooth(w.sW - 0.05, w.sW + 0.04, s - 0.06 * (c - 0.5) + rag);
     // (The white washed a little salmon as the flank it lies on, so the folded wing does not
     // show as a whiter panel stuck on it.)
     let col = hex(0xf2e4da);
-    if (top) col = mix3(hex(0x151517), col, smooth(0.5, 0.6, c));
+    if (top) col = mix3(hex(0x151517), col, smooth(0.47, 0.6, c + 0.12 * (s / w.sW) + rag));
     col = mix3(col, hex(0x1e1c1c), hand);
-    if (top) col = mix3(col, BLACK, 1 - smooth(0.06, 0.14, s));
+    if (top) col = mix3(col, BLACK, 1 - smooth(0.04, 0.18, s + rag));
     if (!top) col = mix3(col, hex(0xd6d6d2), hand * 0.3);
     return [...col, DOWN];
   });
   // The legs set far back; big webbed feet.
-  const web = (side) => {
-    const g = new THREE.BufferGeometry();
-    const ankle = new THREE.Vector3(-1.55, -0.88, 0.55 * side);
-    // A fan from the ankle forward between the outer toes, thin, closed both sides.
-    const rim = [];
-    for (let i = 0; i <= 6; i++) {
-      const a = -0.5 + i / 6;
-      rim.push(new THREE.Vector3(Math.cos(a) * 0.72, -0.04 - 0.05 * Math.sin(Math.PI * (i / 6)), Math.sin(a) * 0.72 * side).add(ankle));
-    }
-    const positions = [];
-    const index = [];
-    // Two layers of a fan, turned opposite ways: from either side one of them faces the eye.
-    for (const dy of [0.012, -0.012]) {
-      const base = positions.length / 3;
-      positions.push(ankle.x, ankle.y + dy, ankle.z);
-      for (const r of rim) positions.push(r.x, r.y + dy, r.z);
-      for (let i = 0; i < rim.length - 1; i++) index.push(base, base + 1 + i, base + 2 + i);
-    }
-    // (The underside faces the other way.)
-    const half = index.length / 2;
-    for (let i = half; i < index.length; i += 3) [index[i + 1], index[i + 2]] = [index[i + 2], index[i + 1]];
-    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    g.setIndex(index);
-    g.computeVertexNormals();
-    if (side < 0) {
-      const idx = g.index.array.slice();
-      for (let i = 0; i < idx.length; i += 3) [idx[i + 1], idx[i + 2]] = [idx[i + 2], idx[i + 1]];
-      g.setIndex(Array.from(idx));
-      g.computeVertexNormals();
-    }
-    return g;
-  };
+  const toes = [
+    [1, 0.45, 0.72],
+    [1, 0, 0.78],
+    [1, -0.5, 0.7],
+  ];
+  const web = webbed([-1.55, -0.88, 0.55], toes);
   addLegs(b, {
     hip: [-1.2, -0.3, 0.4],
     heel: [-1.35, -0.62, 0.52],
     foot: [-1.55, -0.88, 0.55],
     radius: (t) => 0.1 - 0.04 * t,
-    toes: [
-      [1, 0.45, 0.72],
-      [1, 0, 0.78],
-      [1, -0.5, 0.7],
-    ],
+    toes,
     toeRadius: 0.028,
     web,
-    paint: (p, n, lower) => [...(lower ? hex(0xdc5a22) : SALMON), lower ? BARE : DOWN],
+    // (The webs a deeper red than the toes, so the toes show through them.)
+    paint: (p, n, lower, inWeb) => [...(lower ? tint(hex(0xdc5a22), inWeb ? 0.72 : 1) : SALMON), lower ? BARE : DOWN],
   });
   return {
     geometry: b.build(),
@@ -905,15 +954,20 @@ export function heronShape() {
       return [...c, DOWN];
     },
   });
-  // The pale plumes hanging from the base of the neck over the breast.
-  for (let i = 0; i < 7; i++) {
-    const z = (i - 3) * 0.1;
-    const root = new THREE.Vector3(B[0], B[1], 0).addScaledVector(d0, 0.5 + 0.1 * (i % 2)).addScaledVector(front, 0.28);
+  // The pale plumes hanging from the base of the neck over the breast: many, thin, close
+  // together and lying on the breast down to the belly, each its own length and shade.
+  // (Seven broad ones a hand's breadth apart, hanging straight down clear of the breast, read
+  // as the slats of a grille; and on the heron dead afloat, its body tipped level, they stuck
+  // down under it into the water like a row of stakes.)
+  for (let i = 0; i < 13; i++) {
+    const z = (i - 6) * 0.048 + 0.012 * Math.sin(i * 4.1);
+    const root = new THREE.Vector3(B[0], B[1], 0).addScaledVector(d0, 0.5 + 0.08 * ((i * 5) % 3)).addScaledVector(front, 0.22);
     root.z = z;
-    const drop = 1.3 + 0.35 * Math.sin(i * 2.3);
-    const mid = root.clone().add(new THREE.Vector3(0.28, -drop * 0.5, z * 0.4));
-    const end = root.clone().add(new THREE.Vector3(0.18 - 0.05 * (i % 3), -drop, z * 0.8));
-    b.add(ribbon([root, mid, end], (t) => 0.07 * (1 - 0.7 * t), { flat: 0.2, up: new THREE.Vector3(1, 0, 0) }), { paint: () => [...hex(0xd6d6d2), DOWN] });
+    const drop = 1.05 + 0.3 * Math.sin(i * 2.3) + 0.12 * Math.cos(i * 5.7);
+    const mid = root.clone().add(new THREE.Vector3(-0.04, -drop * 0.5, z * 0.3));
+    const end = root.clone().add(new THREE.Vector3(-0.18 - 0.03 * (i % 3), -drop, z * 0.6));
+    const shade = 0.82 + 0.14 * hash(i, 3.1, 7.7);
+    b.add(ribbon([root, mid, end], (t) => 0.042 * (1 - 0.8 * t), { flat: 0.3, up: new THREE.Vector3(1, 0, 0) }), { paint: () => [...tint(hex(0xdcdcd8), shade), DOWN] });
   }
   // The head: its joint J0 at the back of the skull, the bill straight forward along +x.
   const S0 = [J0[0] + 0.32, J0[1] + 0.12, 0];
@@ -1009,7 +1063,9 @@ export function heronShape() {
       let col = mix3(GREY, hex(0xa4aaaf), smooth(0.1, 0.3, c) * (1 - smooth(0.4, 0.5, c)));
       col = mix3(col, BLACK, smooth(0.5, 0.6, c) * smooth(0.25, 0.4, s));
       col = mix3(col, BLACK, smooth(w.sW - 0.02, w.sW + 0.06, s) * smooth(0.25, 0.4, c));
-      col = mix3(col, tint(BLACK, 2), (1 - smooth(0.05, 0.15, c)) * smooth(w.sW - 0.08, w.sW - 0.03, s) * (1 - smooth(w.sW + 0.05, w.sW + 0.1, s)));
+      // (The bend's patch a soft oval on the leading edge: cut square by the span and the
+      // chord, on the folded wing it showed as a dark slot in the flank.)
+      col = mix3(col, tint(BLACK, 2), 1 - smooth(0.45, 1, Math.hypot((s - w.sW - 0.01) / 0.1, c / 0.17)));
       return [...col, DOWN];
     },
     matrix,
@@ -1130,7 +1186,8 @@ export function gannetShape() {
       // Blue-grey, with the black line along the cutting edge and round its base.
       const edge = Math.abs(p.y - (s.y - 0.1 * s.h)) < 0.025 && Math.abs(p.z) > s.w * 0.6;
       const base = p.x < 3.52;
-      return [...(edge || base ? BLACK : hex(0xb4bfca)), BARE];
+      // (A pale horn blue-grey: as dark as it was, the glossy bill read slate in the shade.)
+      return [...(edge || base ? BLACK : hex(0xd2dbe2)), BARE];
     },
   });
   addEyes(b, EYE_AT, 0.05, hex(0xcfe0ea), head, 0.3);
@@ -1172,18 +1229,21 @@ export function gannetShape() {
     const hand = smooth(w.sW - 0.01, w.sW + 0.05, s);
     return [...mix3(tint(WHITE, top ? 1 : 0.9), BLACK, hand), DOWN];
   });
+  const toes = [
+    [1, 0.4, 0.62],
+    [1, 0, 0.7],
+    [1, -0.45, 0.6],
+  ];
   addLegs(b, {
     hip: [-1.3, -0.45, 0.35],
     heel: [-1.5, -0.72, 0.4],
     foot: [-1.68, -0.84, 0.42],
     radius: (t) => 0.1 - 0.03 * t,
-    toes: [
-      [1, 0.4, 0.62],
-      [1, 0, 0.7],
-      [1, -0.45, 0.6],
-    ],
+    toes,
     toeRadius: 0.03,
-    paint: (p, n, lower) => [...(lower ? hex(0x1c201c) : WHITE), lower ? BARE : DOWN],
+    // (All its toes webbed, the webs black-grey as the toes, which show as darker lines.)
+    web: webbed([-1.68, -0.84, 0.42], toes),
+    paint: (p, n, lower, inWeb) => [...(lower ? (inWeb ? hex(0x2a302c) : hex(0x1c201c)) : WHITE), lower ? BARE : DOWN],
   });
   return {
     geometry: b.build(),

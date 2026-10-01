@@ -400,6 +400,13 @@ const SCENES = {
     const e = bird(THREE, "heron", stand.clone().setY(floor + 1.5), up, { mode: "stand", t: 1, river: { s, u }, stand, facing, muzzle, aimDir: rest.clone(), speed: 0 });
     const list = [e];
     record.push({ label: "place", depth: +(top - floor).toFixed(2), muzzleOverWater: 16 });
+    // (Where the air is to be clear, the banks' plants and trees are hidden as well: the
+    // cameras stand out over the water, and on a narrow river they stood in the far bank's
+    // ferns, a blade of which filled half of every picture.)
+    if (ctx.scene.name.endsWith("-klar"))
+      scene.traverse((o) => {
+        if (/^(Plants|Forest|Trees)$/.test(o.name)) o.visible = false;
+      });
     const look = looker(salmon, 0.05);
     const body = stand.clone().setY(floor + 13);
     // (The cameras out over the water: behind the heron is the bank and its bushes.)
@@ -444,11 +451,16 @@ const SCENES = {
     await picture(ctx, "tot-kippt", flock, list, 0.1);
     Object.assign(e, { corpse: 4, rolled: Math.PI });
     e.position.copy(stand).addScaledVector(facing, 1.5).setY(top);
-    look(stand.clone().setY(top), facing, [20, 12, 6]);
+    // (Looked at where the body lies, toppled forward its own height out from its feet.)
+    const lies = stand.clone().addScaledVector(facing, 10).setY(top);
+    look(lies, facing, [8, 14, 6]);
     await picture(ctx, "tot-treibt", flock, list, 2.5);
     // (Low over the water from out on the river: how the wings lie on it.)
-    look(stand.clone().setY(top), facing, [18, 1.5, 5]);
+    look(lies, facing, [14, 1.5, 9]);
     await picture(ctx, "tot-treibt-seite", flock, list, 0.1);
+    // (From under the water, as the salmon finds it.)
+    salmon.view(lies.clone().addScaledVector(facing, 9).setY(Math.max(floor + 0.4, top - 1.5)).toArray(), lies.toArray(), 0.05);
+    await picture(ctx, "tot-treibt-unten", flock, list, 0.1);
   },
 
   // The gannet over the sea: gliding high, seen from under the water as the salmon sees it,
@@ -845,7 +857,55 @@ async function closeCost(ctx, record) {
   record.push({ label: "close cost", backend: renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2", without: median(times.without), with: median(times.with), added: added("with", "without"), alone: { without: median(times.aloneWithout), with: median(times.aloneWith), added: added("aloneWith", "aloneWithout") } });
 }
 
+// The goosander all round, close: swimming under the water from behind, behind and above,
+// above, below and ahead; on the water from above, from behind and from below; dead on the
+// water from above. (Where a smooth, evenly lit body with a black panel on it reads as a
+// hull or a toy, and where the folded wings, the tail or the feet stand off the body.)
+async function goosanderRound(ctx, record) {
+  const { salmon } = ctx;
+  const { fish, THREE, scene } = salmon;
+  const flock = createBirds(scene);
+  const { ahead, at } = stage(salmon);
+  await salmon.run(0.2);
+  const look = looker(salmon, 0.02);
+  const c = fish.position.clone().addScaledVector(ahead, 9);
+  const here = at(c);
+  const mid = c.clone().setY(Math.max(here.floor + 1.4, Math.min(here.top - 1.4, (here.top + here.floor) / 2)));
+  const river = { s: here.s, u: here.u };
+  const g = bird(THREE, "merganser", mid, ahead, { mode: "approach", river, speed: 4 });
+  const list = [g];
+  const room = Math.min(2.2, mid.y - here.floor - 0.3);
+  look(mid, ahead, [-4.2, 1.1, 0.9]);
+  await picture(ctx, "schwimmt-hinten-oben", flock, list, 0.6);
+  look(mid, ahead, [-4.6, 0.05, 0.25]);
+  await picture(ctx, "schwimmt-hinten", flock, list, 0.3);
+  look(mid, ahead, [0.3, Math.min(1.25, here.top - mid.y - 0.1), 0.15]);
+  await picture(ctx, "schwimmt-oben", flock, list, 0.3);
+  look(mid, ahead, [-0.6, -room, 1.2]);
+  await picture(ctx, "schwimmt-unten", flock, list, 0.3);
+  look(mid, ahead, [4.2, -0.3, 1.6]);
+  await picture(ctx, "schwimmt-vorn", flock, list, 0.3);
+  look(mid, ahead, [0.2, 0.15, 4.6]);
+  await picture(ctx, "schwimmt-seite", flock, list, 0.3);
+  Object.assign(g, { mode: "breathe", t: 1, speed: 1, heading: ahead.clone().setY(0.15).normalize() });
+  g.position.copy(c).setY(here.top - g.size * 0.06);
+  look(g.position, ahead, [0.4, 5, 1.4]);
+  await picture(ctx, "atmet-oben", flock, list, 1.6);
+  look(g.position, ahead, [-4.5, 0.9, 1.2]);
+  await picture(ctx, "atmet-hinten", flock, list, 0.3);
+  look(g.position, ahead, [1.0, 1.3, 4.4]);
+  await picture(ctx, "atmet-seite", flock, list, 0.3);
+  look(g.position, ahead, [-1.5, -Math.min(2.4, here.top - here.floor - 0.4), 2.5], g.position.clone().setY(here.top));
+  await picture(ctx, "atmet-unten", flock, list, 0.3);
+  Object.assign(g, { dead: true, mode: "dead", corpse: 5, rolled: Math.PI, heading: ahead.clone() });
+  g.position.y = here.top - g.size * 0.07;
+  look(g.position, ahead, [0.6, 5.5, 1.2]);
+  await picture(ctx, "tot-oben", flock, list, 2.5);
+}
+
 Object.assign(SCENES, {
+  "vogel-saeger-rund": goosanderRound,
+  "vogel-reiher-klar": SCENES["vogel-reiher"],
   "vogel-kosten-nah": closeCost,
   "vogel-pruef": review,
   "vogel-pruef-nacht": review,

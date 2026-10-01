@@ -277,33 +277,49 @@ function tuck(p, dt, rate, hip = -1.4, heel = -1.6) {
   p.heel = toward(p.heel, heel, rate, dt);
 }
 // The limp, crumpled wings of a bird shot dead: a flutter in the first moment as it falls,
-// half open and hanging; once it lies on the water (`floating`) spread flat on it, swept back
-// and drooping onto it. (Opened all the way: between spread and folded a wing is twisted
-// half round, and on the water that showed as a wing standing on its edge.)
-// (Its settings are plain arguments: an object of them made anew for every dead bird on
-// every step was garbage for nothing.)
-function limp(st, e, dt, fold, droop, floating) {
+// half open and hanging; once it lies on the water (`floating`) as `afloat` says -- by
+// default spread flat on it, swept back and drooping onto it. (Opened all the way: between
+// spread and folded a wing is twisted half round, and on the water that showed as a wing
+// standing on its edge.) The legs hang back, one further than the other: swung forward, the
+// feet lay flat on the belly and the flank.
+// (Its settings are plain arguments and constant tables: an object of them made anew for
+// every dead bird on every step was garbage for nothing. And a kind that lies otherwise
+// afloat passes its own table rather than easing toward its pose after this has: two eases
+// toward two poses at once settled halfway between them.)
+const AFLOAT = { sweep: 0.3, armFlap: -0.12, handFlap: -0.08, hipL: -0.45, hipR: -0.85, heel: 0.35 };
+function limp(st, e, dt, fold, droop, floating, afloat = AFLOAT) {
   const p = st.pose;
   const spasm = Math.max(0, 1 - (e.corpse ?? 0) / 0.5);
   st.phase = (st.phase + dt * 9 * TAU) % TAU;
   p.fold = toward(p.fold, floating ? 0 : fold, 3, dt);
-  p.sweep = toward(p.sweep, floating ? 0.3 : 0.12, 3, dt);
-  p.armFlap = toward(p.armFlap, (floating ? -0.12 : droop) + 0.35 * spasm * Math.sin(st.phase), 5, dt);
-  p.handFlap = toward(p.handFlap, floating ? -0.08 : -0.35, 4, dt);
+  p.sweep = toward(p.sweep, floating ? afloat.sweep : 0.12, 3, dt);
+  p.armFlap = toward(p.armFlap, (floating ? afloat.armFlap : droop) + 0.35 * spasm * Math.sin(st.phase), 5, dt);
+  p.handFlap = toward(p.handFlap, floating ? afloat.handFlap : -0.35, 4, dt);
   p.tailSpread = toward(p.tailSpread, 0.35, 3, dt);
   p.tailPitch = toward(p.tailPitch, 0, 3, dt);
-  // (The legs hang back, one further than the other: swung forward, the feet lay flat on the
-  // belly and the flank.)
-  p.hipL = toward(p.hipL, -0.45, 3, dt);
-  p.hipR = toward(p.hipR, -0.85, 3, dt);
-  p.heel = toward(p.heel, 0.35, 3, dt);
+  p.hipL = toward(p.hipL, floating ? afloat.hipL : AFLOAT.hipL, 3, dt);
+  p.hipR = toward(p.hipR, floating ? afloat.hipR : AFLOAT.hipR, 3, dt);
+  p.heel = toward(p.heel, floating ? afloat.heel : AFLOAT.heel, 3, dt);
 }
+// The heron afloat: on the water on its belly, its body level (placeHeron), so its wings
+// turn about the standing bird's axes tipped forward by the body's tilt: there a sweep lifts
+// the wingtips as it takes them back (both wings rose into a V over the water), and a flap
+// lowers them. So the wings lie spread, not swept: the arms sloping from the shoulders down
+// into the water and the hands turned up again at the wrists to lie in it, just under the
+// surface, as a sodden wing lies. (Drooped straight from the shoulders only as far as their
+// tips reached the water, they were held out stiff over it like a wreck's wings.) The legs
+// trail back from the hips, folded back at the heel so the long toes hang from the feet a
+// little under the surface (left standing, the legs reached down from the floating body to
+// the bed like poles; trailed straight, the toes hung down from them like a rake's tines).
+const HERON_AFLOAT = { sweep: 0, armFlap: -0.2, handFlap: 0.17, hipL: -0.8, hipR: -0.9, heel: -0.65 };
 // How a dead bird lies: tumbling as it falls, then on the water on its belly, hardly tipped
 // (which way its id says; tipped further, the wing on the high side would stand up out of the
-// water as no limp wing does), the head down in the water.
+// water as no limp wing does), the head down in the water. It flops level as it lands: eased
+// over seconds from the steep roll of its fall, a gannet shot out of its circle lay on its
+// side on the sea with a wing standing up out of it like a sail.
 function lying(st, e, dt, floating, tumble) {
   const side = e.id % 2 ? 1 : -1;
-  if (floating) st.roll = toward(st.roll, side * 0.07, 2, dt);
+  if (floating) st.roll = toward(st.roll, side * 0.07, 7, dt);
   else st.roll = side * Math.min(e.rolled ?? 0, 1.4) + tumble * Math.sin((e.corpse ?? 0) * 9);
   st.pitch = toward(st.pitch, 0, 3, dt);
   const p = st.pose;
@@ -457,23 +473,18 @@ const POSES = {
     const p = st.pose;
     if (e.dead) {
       const floating = (e.corpse ?? 0) > 1.2;
-      limp(st, e, dt, 0.55, -0.3, floating);
-      // (Afloat it lies toppled forward, so its wings' turns are the standing bird's: about
-      // its upright, which now lies along the water, a sweep lifts both wings into a V and a
-      // sweep forward lowers them; about its length, which now points down, a flap sweeps
-      // them back. So they are flapped back, and swept forward just enough to bring their
-      // tips down from the shoulders onto the water.)
-      if (floating) {
-        p.sweep = toward(p.sweep, -0.12, 3, dt);
-        p.armFlap = toward(p.armFlap, -0.3, 3, dt);
-        p.handFlap = toward(p.handFlap, -0.2, 3, dt);
-      }
-      p.headPitch = toward(p.headPitch, -0.9, 2.5, dt);
+      limp(st, e, dt, 0.55, -0.3, floating, HERON_AFLOAT);
+      // The neck limp, reaching forward and down from the breast, the head under the water
+      // ahead of the body, the bill down and turned a little aside. (In the model's own frame,
+      // in which the floating body is tipped forward by its tilt: the head's joint 2.6 ahead
+      // of the neck's base and 0.6 below it as the body lies, the neck leaving the breast
+      // straight ahead. Drawn in to the breast instead, the head lay folded into the body.)
+      p.headPitch = toward(p.headPitch, 0.1, 2.5, dt);
       p.headYaw = toward(p.headYaw, 0.3, 2.5, dt);
-      p.basePitch = toward(p.basePitch, -1.9, 2.5, dt);
+      p.basePitch = toward(p.basePitch, -0.71, 2.5, dt);
       p.curl = toward(p.curl, 0.3, 2.5, dt);
-      p.headX = toward(p.headX, -1.3, 2.5, dt);
-      p.headY = toward(p.headY, -3.9, 2.5, dt);
+      p.headX = toward(p.headX, 1.37, 2.5, dt);
+      p.headY = toward(p.headY, -3.18, 2.5, dt);
       p.headZ = toward(p.headZ, 0, 2.5, dt);
       return;
     }
@@ -608,7 +619,12 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     turn = new THREE.Matrix4(),
     shift = new THREE.Matrix4(),
     back = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
+  const fromAt = new THREE.Vector3(),
+    toAt = new THREE.Vector3(),
+    size = new THREE.Vector3(),
+    fromTurn = new THREE.Quaternion(),
+    toTurn = new THREE.Quaternion(),
+    floated = new THREE.Matrix4();
 
   // The head's own turn (as the shader does it: pitch about z, then yaw about y) and where
   // that puts its joint, as a matrix in the model's frame.
@@ -620,8 +636,8 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
   }
 
   // The heron: stood on its legs at e.stand, facing e.facing, drawn HERON.scale times life;
-  // the head put where the plan keeps it and turned along its aim. Dead, it topples over
-  // sideways into the water, and floats there, drifting with the record.
+  // the head put where the plan keeps it and turned along its aim. Dead, it topples forward
+  // into the water and then floats there on its belly, drifting with the record.
   function placeHeron(e, st, entry, out) {
     const { shape } = entry;
     const pose = st.pose;
@@ -651,22 +667,37 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
     // (Shrinking away at the end of a corpse's time, and by `shown` while a burst one fades.)
     if (S <= 0) return out.makeScale(0, 0, 0);
     // Toppling: about its feet, forward into the river (out from the bank it stood by) and a
-    // little to one side, until its body lies at the surface; then afloat, rocking.
+    // little to one side, until its body lies at the surface.
     const fall = e.id % 2 ? 1 : -1;
     const t = e.corpse ?? 0;
     const top = st.top;
     const floor = e.stand.y;
     const middle = HERON.centre[1] * HERON.scale;
     const tip = Math.acos(clamp((top - floor + 0.4) / middle, 0, 1));
-    const angle = tip * ease(0, 1.1, t) + 0.06 * Math.sin(t * 1.3) * ease(1.1, 2, t);
-    out.makeRotationY(st.lastYaw ?? yaw).multiply(turn.makeRotationZ(-angle)).multiply(back.makeRotationX(fall * 0.35 * ease(0.3, 1.4, t))).scale(v.set(S, S, S));
+    const headed = st.lastYaw ?? yaw;
+    out.makeRotationY(headed).multiply(turn.makeRotationZ(-tip * ease(0, 1.1, t))).multiply(back.makeRotationX(fall * 0.35 * ease(0.3, 1.4, t))).scale(v.set(S, S, S));
     // (Its feet where the record drifts, lifted as the body comes to rest on the water.)
     v.set(e.position.x, floor, e.position.z);
     out.setPosition(v);
     w.set(HERON.centre[0], HERON.centre[1], 0).applyMatrix4(out);
     const lift = Math.max(0, top - 0.3 - w.y) * ease(0.8, 1.6, t);
     out.elements[13] += lift;
-    return out;
+    w.y += lift;
+    // Then afloat: the body brought level on the water on its belly, rocking a little, its
+    // middle where the fall left it, a little under the surface. (Left toppled, it floated nose
+    // down with its tail and one wing up in the air -- the roll to one side tips a spread
+    // wing up as far as it tips the other under -- and its feet still on the bed.)
+    const k = ease(0.9, 2.0, t);
+    if (k <= 0) return out;
+    out.decompose(fromAt, fromTurn, size);
+    floated.makeRotationY(headed).multiply(turn.makeRotationZ(-HERON.tilt + 0.03 * Math.sin(t * 1.3))).multiply(back.makeRotationX(fall * 0.03 * Math.sin(t * 0.9)));
+    toTurn.setFromRotationMatrix(floated);
+    fromTurn.slerp(toTurn, k);
+    // (The middle eased from where the fall has it to its place afloat, the model hung from it.)
+    toAt.set(w.x, top - 0.42 * S, w.z);
+    w.lerp(toAt, k);
+    v.set(HERON.centre[0], HERON.centre[1], 0).multiplyScalar(S).applyQuaternion(fromTurn);
+    return out.compose(w.sub(v), fromTurn, size);
   }
 
   // A flying or swimming bird: its model along its heading (the middle where the enemy is),
@@ -801,11 +832,13 @@ export function createBirds(scene, { capacity = { kingfisher: 2, merganser: 2, h
       if (!st || st.frame < 0 || !spot) return null;
       out.copy(st.matrix);
       if (spot.part === "head") out.multiply(st.head);
-      v.set(...spot.along).normalize();
+      // (Read by index: the gear asks for every bird's mounts every frame.)
+      const { along, at } = spot;
+      v.set(along[0], along[1], along[2]).normalize();
       w.set(0, 1, 0);
       Z.crossVectors(v, w).normalize();
       w.crossVectors(Z, v).normalize();
-      turn.makeBasis(v, w, Z).setPosition(...spot.at);
+      turn.makeBasis(v, w, Z).setPosition(at[0], at[1], at[2]);
       out.multiply(turn);
       // (Scale taken out: the axes made unit length again, square to one another.)
       out.extractBasis(X, Y, Z);
