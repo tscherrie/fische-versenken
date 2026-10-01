@@ -110,6 +110,38 @@ export const SCENES = [
   // only to a salmon swimming that low, and mid-water over the deep sea bed is too high.)
   { name: "lauf-barsch-hecht", stage: "parr", at: 10500, season: "summer", hour: 14, pilot: 60 },
   { name: "lauf-dorsch", stage: "postsmolt", at: 16200, season: "summer", hour: 12, pilot: 60, low: 5 },
+  // The salmon's own school armed (fv/school.js), for the balance: the smolt down the lower
+  // river below the goosanders' stretch, and the postsmolt out at sea, each a minute and a
+  // half with the director sending what it sends -- once with the school round it from the
+  // start, once with the school sent away (`school: false`), the same place and stage.
+  { name: "schwarm-fluss", stage: "smolt", at: 14450, season: "spring", hour: 12, pilot: 90, school: true },
+  { name: "schwarm-fluss-ohne", stage: "smolt", at: 14450, season: "spring", hour: 12, pilot: 90, school: false },
+  { name: "schwarm-meer", stage: "postsmolt", at: 16800, season: "summer", hour: 12, pilot: 90, school: true },
+  { name: "schwarm-meer-ohne", stage: "postsmolt", at: 16800, season: "summer", hour: 12, pilot: 90, school: false },
+  // The school at work, watched from beside the fight (the salmon holds its fire, so what
+  // sinks is the school's): the smolt run in the lower river against a perch pack and a pike;
+  // the postsmolt out at sea against herring and mackerel; and a hunter striking into the
+  // school (`school: "wehrlos"`: the school holds its fire): an otter and a pike come at the
+  // smolt through its school and take a school fish, which floats up with its gun on.
+  // (`modes`: a picture the first time ... "salvo": four or more of the school firing at
+  // once; "fallen": the first school fish killed.)
+  { name: "schwarm-fluss-kampf", stage: "smolt", at: 14450, season: "spring", hour: 12, school: true, fire: false, watch: 10, side: true, modes: ["salvo", "fallen"], spawn: [["perch", 9, -1.5], ["perch", 9.5, 0], ["perch", 9, 1.5], ["perch", 10, 0.8], ["pike", 12, 2]] },
+  { name: "schwarm-meer-kampf", stage: "postsmolt", at: 16800, season: "summer", hour: 12, school: true, fire: false, watch: 10, side: true, modes: ["salvo", "fallen"], spawn: [["herring", 6, -1], ["herring", 6.5, -0.4], ["herring", 6, 0.3], ["herring", 6.6, 1], ["herring", 7, 0], ["herring", 7.2, -0.8], ["mackerel", 9, 0.5], ["mackerel", 9.5, -0.5], ["mackerel", 10, 0]] },
+  // The goosanders' drive (the base game's, drive.js) at the top of its stretch, with the
+  // armed school round the smolt: it must begin, count the school, and the school fight on.
+  { name: "schwarm-treibjagd", stage: "smolt", at: 14120, season: "spring", hour: 12, school: true, fire: false, watch: 8, drive: true },
+  { name: "schwarm-stoss", stage: "smolt", at: 14450, season: "spring", hour: 12, school: "wehrlos", fire: false, watch: 20, side: true, modes: ["strike", "fallen"], spawn: [["otter", 7, 2.5], ["otter", 7, -2.5], ["pike", 8, -3]] },
+  // The school's guns close up, turned toward what comes (the salmon still): the smolt's mix
+  // in the river, and the grilse's at sea.
+  { name: "schwarm-nah", stage: "smolt", at: 14450, season: "spring", hour: 12, school: true, closeup: [2.6, 0.7, 0.6], spawn: [["perch", 9, -1], ["perch", 9, 1]] },
+  { name: "schwarm-nah-meer", stage: "grilse", at: 16800, season: "summer", hour: 12, school: true, closeup: [2.2, 0.6, 0.5], spawn: [["mackerel", 5, -1], ["mackerel", 5, 1]] },
+  // The run home in the middle river: the spawners going up together, armed with the sea
+  // salmon's guns.
+  { name: "schwarm-nah-heim", stage: "spawner", at: 14300, season: "autumn", hour: 12, school: true, closeup: [0.3, 0.25, -1.1], spawn: [["pike", 5, -1], ["otter", 5, 1]] },
+  // Two school fish killed where they swim: one by a pistol round (it floats up belly first,
+  // its gun still strapped on), one by a pump-action's shell (it bursts); pictures as they go
+  // and three seconds later, from beside the whole one.
+  { name: "schwarm-gefallen", stage: "smolt", at: 14450, season: "spring", hour: 12, school: "wehrlos", fell: true },
   // The same with each weapon (`arm`), the trigger only within `fireRange` fish lengths.
   { name: "lauf-flinte", stage: "fry", at: 200, season: "summer", hour: 13, pilot: 60, arm: "flinte", fireRange: 6 },
   { name: "lauf-granate", stage: "fingerling", at: 400, season: "summer", hour: 13, pilot: 60, arm: "granate", fireRange: 12 },
@@ -189,6 +221,10 @@ export const SCENES = [
   // being near), and a stress case (some 150). (The shots' own update is timed as well.)
   { name: "perf-schuesse-vier", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 0.9, spawn: PACK },
   { name: "perf-schuesse", stage: "fry", at: 215, season: "summer", hour: 13, weapon: "piu", seconds: 8, perf: [4, 7.9], hold: true, bolts: 15, spawn: PACK },
+  // What the armed school costs: the smolt with its sixteen, all firing at a pack of forty held
+  // where they are (the salmon with its minigun as well), and the same without the school.
+  { name: "perf-schwarm", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "minigun", school: true, seconds: 8, perf: [4, 7.9], hold: true, spawn: PACK },
+  { name: "perf-schwarm-ohne", stage: "smolt", at: 11790, season: "spring", hour: 12, weapon: "minigun", school: false, seconds: 8, perf: [4, 7.9], hold: true, spawn: PACK },
   // The same with more guns and the fish held low over the bed (`low`: that far above it, in
   // u, as the bench's soak holds it): the rounds that miss strike the bed or come down onto it
   // and lie there, so that the list holds many rounds at rest.
@@ -295,6 +331,13 @@ async function runScene(salmon, extreme, query) {
   await salmon.run(1);
   await salmon.settle(20);
   extreme.testing = true;
+  // The salmon's own school (fv/school.js): only where a scene asks for it (`school`), round
+  // the fish from the start (holding its fire: "wehrlos"); everywhere else it is sent away, so
+  // that the scenes of the salmon alone stay as they were.
+  if (scene.school) {
+    combat.school.gather(fish);
+    combat.school.holdFire = scene.school === "wehrlos";
+  } else combat.school?.disband();
   // The enemies, placed [kind, ahead, across] from the fish, facing it, at its height (or,
   // with a fourth field, where their kind lies: a bottom kind on the bed).
   const heading = fish.heading.clone().setY(0).normalize();
@@ -330,6 +373,7 @@ async function runScene(salmon, extreme, query) {
   if (scene.probe) return probe(salmon, extreme, set, scene, list, index, extra, errors);
   if (scene.rounds) return roundsCheck(salmon, set, scene, list, index, extra, errors);
   if (scene.watch) return watch(salmon, extreme, set, scene, list, index, extra, errors, aimAt);
+  if (scene.fell) return fell(salmon, extreme, set, scene, list, index, extra, errors);
   aimAt();
   await salmon.run(0.4, aimAt);
   const record = [];
@@ -370,6 +414,64 @@ async function runScene(salmon, extreme, query) {
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
 }
 
+// What the salmon's school is doing (fv/school.js), for the reports: how many are about with
+// their guns, how many fire now, what they have sunk, how many have fallen (and float), their
+// strength, and how many enemies are after the school and how many after the salmon.
+function schoolState(combat) {
+  const school = combat.school;
+  if (!school) return null;
+  const live = school.records.filter((r) => !r.down);
+  const after = { school: 0, salmon: 0 };
+  for (const e of combat.enemies.list) if (!e.dead && e.target) after[e.target.school ? "school" : "salmon"]++;
+  return { armed: school.armed, firing: live.filter((r) => r.trigger).length, kills: school.kills, lost: school.lost, floating: school.fallen.length, strength: live.map((r) => +r.hp.toFixed(2)), weapons: live.map((r) => r.weapon), after };
+}
+
+// School fish killed (`fell`): the two nearest the salmon, by a precise round and a heavy one
+// (school.js: a school fish's death), and the whole one's body watched as it goes.
+async function fell(salmon, extreme, set, scene, list, index, extra, errors) {
+  const { fish, THREE } = salmon;
+  const combat = extreme.combat;
+  const school = combat.school;
+  combat.director.hold(1e6);
+  await salmon.run(0.5);
+  const record = [];
+  const live = school.records.filter((r) => !r.down).sort((a, b) => a.fish.position.distanceTo(fish.position) - b.fish.position.distanceTo(fish.position));
+  const along = fish.heading.clone().multiplyScalar(-1);
+  for (const [rec, weapon] of [
+    [live[0], "pistol"],
+    [live[1], "pumpgun"],
+  ])
+    if (rec) school.hurt(rec, null, { damage: 5, hitDamage: 5, weapon, velocity: along });
+  const body = () => school.fallen[0]?.e ?? null;
+  const note = (label) => {
+    const e = body();
+    record.push({ label, lost: school.lost, floating: school.fallen.length, gear: school.gear.counts(), body: e ? { kind: e.kind, dead: e.dead, burst: !!e.burst, rolled: +e.rolled.toFixed(2), rise: +(e.position.y - fish.position.y).toFixed(2), shown: e.shown ?? 1 } : null });
+  };
+  const eye = new THREE.Vector3(),
+    across = new THREE.Vector3();
+  const picture = async (name) => {
+    const e = body();
+    if (e) {
+      across.set(-e.heading.z, 0, e.heading.x).normalize();
+      eye.copy(e.position).addScaledVector(across, 2.2 * e.size);
+      eye.y += 0.6 * e.size;
+      salmon.view(eye.toArray(), e.position.toArray(), 0.02);
+    }
+    await salmon.run(1 / 30);
+    extreme.frame(1 / 60);
+    await salmon.capture(`${set}/${scene.name}-${name}`, 1280, 720);
+    note(`picture ${name}`);
+  };
+  await salmon.run(0.15);
+  await picture("1");
+  await salmon.run(3);
+  await picture("2");
+  salmon.view(null);
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
+  await nextTask();
+  if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
+}
+
 // A fight watched longer than a plain scene's five seconds (`watch`: how many), for an enemy
 // whose plan takes that long to play out: the fish faces the nearest enemy and fires or not
 // (`fire`), as in a plain scene, and nobody else comes (the director is held). There is a
@@ -398,7 +500,11 @@ async function watch(salmon, extreme, set, scene, list, index, extra, errors, ai
       dead: extreme.game.now.dead > 0,
       deaths: combat.deaths.map((d) => `${d.by}@${d.t}`),
       threats: salmon.life.hunters.threats(fish, []).map((x) => `${x.kind}:${x.level}`),
-      enemies: combat.enemies.list.filter((e) => !e.neutral).map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, air: e.air === undefined ? null : +e.air.toFixed(1), rear: +(e.rear ?? 0).toFixed(2), d: +e.position.distanceTo(fish.position).toFixed(2), under: +(course.level(e.river.s) - e.position.y).toFixed(2) })),
+      school: schoolState(combat),
+      // (The base game's goosander drive, which reads the school: whether it is on, how many
+      // smolts it began with, how many are with the fish now.)
+      drive: scene.drive ? { on: !!extreme.game.drive?.on, size: extreme.game.drive?.size ?? null, school: salmon.life.school.count } : undefined,
+      enemies: combat.enemies.list.filter((e) => !e.neutral).map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, on: e.target?.school ? "school" : e.target ? "salmon" : null, air: e.air === undefined ? null : +e.air.toFixed(1), rear: +(e.rear ?? 0).toFixed(2), d: +e.position.distanceTo(fish.position).toFixed(2), under: +(course.level(e.river.s) - e.position.y).toFixed(2) })),
     });
   // The camera beside the fight: level with the middle between the fish and the nearest
   // enemy (a dead one too, to see where it goes), off to whichever side the water is deeper,
@@ -478,7 +584,10 @@ async function watch(salmon, extreme, set, scene, list, index, extra, errors, ai
       await picture("1");
     }
     for (const m of modes) {
-      if (!combat.enemies.list.some((e) => due(e, m))) continue;
+      // ("salvo": four or more of the school firing at once; "fallen": a school fish killed.)
+      const school = combat.school;
+      const now = m === "salvo" ? (school?.records.filter((r) => !r.down && r.trigger).length ?? 0) >= 4 : m === "fallen" ? (school?.lost ?? 0) > 0 : combat.enemies.list.some((e) => due(e, m));
+      if (!now) continue;
       modes.delete(m);
       await picture(m);
       break;
@@ -491,7 +600,7 @@ async function watch(salmon, extreme, set, scene, list, index, extra, errors, ai
   await picture("ende");
   combat.fire(false);
   if (scene.side) salmon.view(null);
-  record.push({ label: "end", t: +t.toFixed(2), energy: +fish.energy.toFixed(3), minEnergy: +minEnergy.toFixed(3), kills: combat.players[0].kills, strikes, blows, breaths, deaths: combat.deaths.map((d) => `${d.by}@${d.t}`) });
+  record.push({ label: "end", t: +t.toFixed(2), energy: +fish.energy.toFixed(3), minEnergy: +minEnergy.toFixed(3), kills: combat.players[0].kills, strikes, blows, breaths, deaths: combat.deaths.map((d) => `${d.by}@${d.t}`), school: schoolState(combat) });
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
@@ -502,7 +611,8 @@ async function watch(salmon, extreme, set, scene, list, index, extra, errors, ai
 async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   const { course, fish, look, held } = salmon;
   const combat = extreme.combat;
-  if (scene.arm) combat.players[0].arsenal.back = scene.arm;
+  const player = combat.players[0];
+  if (scene.arm) player.arsenal.back = scene.arm;
   let deaths = 0,
     wasDead = false,
     bites = 0,
@@ -512,7 +622,20 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   const deathLog = [];
   const seen = new Set();
   let t0 = 0;
+  // (The enemies about, the peaceful and the fleeing left out, summed every step for the
+  // mean; and the strength the fights took, from combat's own count.)
+  let aboutSum = 0,
+    aboutSteps = 0,
+    aboutMost = 0;
+  const takenAtStart = player.taken ?? 0;
+  const about = () => combat.enemies.list.reduce((n, e) => n + (!e.dead && !e.neutral && !e.passive ? 1 : 0), 0);
+  const teamKills = () => player.kills + (combat.school?.kills ?? 0);
+  const schoolCount = () => (salmon.life.school?.count ?? 0) + (salmon.life.run?.count ?? 0);
   const steer = (t) => {
+    const n = about();
+    aboutSum += n;
+    aboutSteps++;
+    aboutMost = Math.max(aboutMost, n);
     // (An alevin holds on in the gravel with S, as a player would.)
     held.add(scene.still ? "KeyS" : "KeyW");
     const reach = 12 + 10 * fish.length;
@@ -550,7 +673,7 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
     // (How many of each kind are about and after the fish, the peaceful shoal fish left out.)
     const foes = {};
     for (const e of combat.enemies.list) if (!e.dead && !e.neutral && !e.passive) foes[e.kind] = (foes[e.kind] ?? 0) + 1;
-    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, alive: combat.enemies.list.filter((e) => !e.dead).length, foes, deaths, killedBy: combat.deaths.map((d) => `${d.by}@${d.t}`) , near: combat.enemies.list.filter((e) => !e.dead).slice(0, 4).map((e) => `${e.kind}:${e.mode}:${e.position.distanceTo(fish.position).toFixed(2)}:dy${(e.position.y - fish.position.y).toFixed(2)}`)  });
+    samples.push({ t: t + 10, s: +fish.river.s.toFixed(0), stage: fish.stage, progress: +fish.progress.toFixed(3), energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, teamKills: teamKills(), taken: +((player.taken ?? 0) - takenAtStart).toFixed(3), about: about(), school: schoolCount(), schoolTaken: +(combat.school?.taken ?? 0).toFixed(3), after: schoolState(combat)?.after, alive: combat.enemies.list.filter((e) => !e.dead).length, foes, deaths, killedBy: combat.deaths.map((d) => `${d.by}@${d.t}`) , near: combat.enemies.list.filter((e) => !e.dead).slice(0, 4).map((e) => `${e.kind}:${e.mode}:${e.position.distanceTo(fish.position).toFixed(2)}:dy${(e.position.y - fish.position.y).toFixed(2)}`)  });
     if (t === 20) {
       extreme.frame(1 / 60);
       await salmon.capture(`${set}/${scene.name}-1`, 1280, 720);
@@ -561,7 +684,33 @@ async function pilot(salmon, extreme, set, scene, list, index, extra, errors) {
   combat.fire(false);
   extreme.frame(1 / 60);
   await salmon.capture(`${set}/${scene.name}-2`, 1280, 720);
-  const record = [{ label: "end", energy: +fish.energy.toFixed(3), kills: combat.players[0].kills, deaths, deathLog, bites, minEnergy: +minEnergy.toFixed(3), weapon: combat.players[0].arsenal.back, stats: structuredClone(combat.firing?.stats[combat.players[0].arsenal.back] ?? {}) }];
+  const minutes = scene.pilot / 60;
+  const taken = (player.taken ?? 0) - takenAtStart;
+  const record = [
+    {
+      label: "end",
+      energy: +fish.energy.toFixed(3),
+      kills: combat.players[0].kills,
+      deaths,
+      deathLog,
+      bites,
+      minEnergy: +minEnergy.toFixed(3),
+      weapon: combat.players[0].arsenal.back,
+      stats: structuredClone(combat.firing?.stats[combat.players[0].arsenal.back] ?? {}),
+      // The balance numbers: enemies about (mean, most), the team's kills a minute (the
+      // salmon's and its school's), the strength the fights took a minute, and how many of the
+      // school are left.
+      about: +(aboutSum / Math.max(1, aboutSteps)).toFixed(2),
+      aboutMost,
+      teamKillsPerMinute: +(teamKills() / minutes).toFixed(1),
+      schoolKills: combat.school?.kills ?? 0,
+      schoolTaken: +(combat.school?.taken ?? 0).toFixed(3),
+      takenBy: Object.fromEntries(Object.entries(player.takenBy ?? {}).map(([k, v]) => [k, +v.toFixed(3)])),
+      takenPerMinute: +(taken / minutes).toFixed(3),
+      school: schoolCount(),
+      schoolLost: combat.school?.lost ?? 0,
+    },
+  ];
   await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record, samples, errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
@@ -586,7 +735,7 @@ async function closeup(salmon, extreme, set, scene, list, index, extra, errors, 
   await salmon.run(0.05);
   extreme.frame(1 / 60);
   await salmon.capture(`${set}/${scene.name}`, 1280, 720);
-  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "closeup", back: a.back, belly: a.belly, stage: fish.stage, length: L }], errors }, null, 1) });
+  await fetch(`/__report/${set}/${scene.name}`, { method: "POST", body: JSON.stringify({ scene: scene.name, record: [{ label: "closeup", back: a.back, belly: a.belly, stage: fish.stage, length: L, school: schoolState(extreme.combat), gear: extreme.combat.school?.gear.counts(), triangles: extreme.combat.school?.gear.triangles() }], errors }, null, 1) });
   await nextTask();
   if (index + 1 < list.length) location.href = sceneURL(set, list[index + 1], extra);
 }
@@ -1252,6 +1401,7 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       shots: combat.projectiles.live.length,
       bombs: combat.enemies.bombs?.length ?? 0,
       deaths: combat.deaths.length,
+      school: schoolState(combat),
       enemies: combat.enemies.list.map((e) => ({ kind: e.kind, mode: e.mode, hp: +e.hp.toFixed(1), dead: e.dead, d: +(e.position.distanceTo(fish.position) / L).toFixed(2), above: +(e.position.y - fish.position.y).toFixed(2) })),
     });
   note("start", 0);
@@ -1351,6 +1501,31 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       timing.step += performance.now() - t0;
       timing.steps++;
     };
+    // (And the parts of the step and the frame that grow with the shots fired: the school's own
+    // step with its firing, the smoke, the trails, the sparks, the splatter, the enemies; the
+    // school's guns on its fish in the frame.)
+    timing.parts = {};
+    const part = (owner, key, label) => {
+      const fn = owner?.[key];
+      if (!fn) return;
+      owner[key] = function () {
+        const t0 = performance.now();
+        const result = fn.apply(this, arguments);
+        timing.parts[label] = (timing.parts[label] ?? 0) + performance.now() - t0;
+        return result;
+      };
+    };
+    part(combat.school, "step", "school");
+    part(combat.school, "frame", "schoolFrame");
+    part(combat.smoke, "update", "smoke");
+    part(combat.smoke, "frame", "smokeFrame");
+    part(combat.firing, "trails", "trails");
+    part(combat.firing, "after", "after");
+    part(combat.firing, "draw", "draw");
+    part(combat.enemies, "update", "enemies");
+    part(combat.fx, "update", "fx");
+    part(combat.gore, "update", "gore");
+    part(combat.gore, "frame", "goreFrame");
     combat.frame = (...args) => {
       const t0 = performance.now();
       frame(...args);
@@ -1364,6 +1539,11 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
   const measure = async (label) => {
     extreme.frame(1 / 60);
     const groups = { all: ["Combat glow", "Combat smoke", "Combat bubbles", "Combat ribbons", "Combat grenades"], "Combat glow": ["Combat glow"], "Combat smoke": ["Combat smoke"], "Combat bubbles": ["Combat bubbles"] };
+    // (The school's guns, and the school's fish themselves, when there is a school.)
+    if (combat.school) {
+      groups["School gear"] = combat.school.gear.meshes.map((m) => m.name);
+      groups["School fish"] = ["Smolt school", "Smolt school fins"];
+    }
     const median = (list) => [...list].sort((x, y) => x - y)[Math.floor(list.length / 2)];
     const parts = {};
     const wholes = [];
@@ -1381,8 +1561,9 @@ async function weapon(salmon, extreme, set, scene, list, index, extra, errors) {
       }
       parts[key] = +median(differences).toFixed(2);
     }
-    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3), hostileMs: +(timing.hostile / Math.max(1, timing.steps)).toFixed(4), rounds: Math.round(timing.rounds / Math.max(1, timing.steps)), shotsMs: +(timing.shots / Math.max(1, timing.steps)).toFixed(4) });
+    timings.push({ label, t: +t.toFixed(2), frame: +median(wholes).toFixed(2), parts, shots: combat.projectiles.live.length, smoke: combat.smoke.live, stepMs: +(timing.step / Math.max(1, timing.steps)).toFixed(3), frameMs: +(timing.frame / Math.max(1, timing.frames)).toFixed(3), hostileMs: +(timing.hostile / Math.max(1, timing.steps)).toFixed(4), rounds: Math.round(timing.rounds / Math.max(1, timing.steps)), shotsMs: +(timing.shots / Math.max(1, timing.steps)).toFixed(4), partsMs: Object.fromEntries(Object.entries(timing.parts ?? {}).map(([k, v]) => [k, +(v / Math.max(1, k.endsWith("Frame") || k === "draw" ? timing.frames : timing.steps)).toFixed(4)])) });
     timing.step = timing.steps = timing.frame = timing.frames = timing.hostile = timing.rounds = timing.shots = 0;
+    if (timing.parts) for (const k in timing.parts) timing.parts[k] = 0;
   };
   if (perf.length) await measure("before");
   let steps = 0;
