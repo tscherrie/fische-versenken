@@ -1678,6 +1678,7 @@ export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
   if (ctx.scene.gear) return (await import("../look/dev/gear-scenes.js")).runGearScene(ctx);
   if (ctx.scene.shots) return (await import("../look/dev/shot-scenes.js")).runShotScene(ctx);
+  if (ctx.scene.gore) return (await import("../look/dev/gore-scenes.js")).runGoreScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1778,4 +1779,31 @@ LOOK_SCENES.push(
   { name: "geschosse-oben", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
   // The harpoon stopped in the water: still pointing the way it flew.
   { name: "harpune-halt", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+);
+
+// ---- The marks the fighting leaves (look/wounds.js, look/scorch.js, gore.js), close up: run
+// in src/fv/look/dev/gore-scenes.js. Pictures: shots/<set>/<scene>-<picture>.jpg.
+LOOK_SCENES.push(
+  // Enemies held broadside, hit after hit: healthy, hurt, badly hurt, close up, the far side,
+  // and let go to swim off bleeding.
+  { name: "wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The same from right beside two of them, and the worse hurt let go to swim off bleeding.
+  { name: "wunden-nah", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The salmon's own wounds as its strength goes down and comes back.
+  { name: "lachs-wunden", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The flamethrower's char on the living and a burnt one floating up.
+  { name: "brand", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The arc thrower's scorch lines.
+  { name: "blitz", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // Blast marks on the bed and the cannon's furrow, fading over a minute.
+  { name: "krater", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // The same with a bigger fish in the middle river (bigger blasts, no loose gravel drawn).
+  { name: "krater-fluss", look: true, gore: true, run: "krater", stage: "smolt", at: 11790, season: "spring", hour: 12 },
+  // And on open gravel further down the brook, at noon.
+  { name: "krater-kies", look: true, gore: true, run: "krater", stage: "parr", at: 1800, season: "summer", hour: 12 },
+  // A badly hurt enemy swimming on with the thread of blood behind it.
+  { name: "blutspur", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  // Blood in the water by day and at night.
+  { name: "blut", look: true, gore: true, stage: "parr", at: 2500, season: "summer", hour: 15 },
+  { name: "blut-nacht", look: true, gore: true, run: "blut", stage: "parr", at: 2500, season: "summer", hour: 23 },
 );
