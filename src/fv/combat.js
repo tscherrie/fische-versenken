@@ -17,6 +17,7 @@ import { createFx } from "./fx.js";
 import { createLarvae } from "./look/larvae.js";
 import { createNeutrals } from "./neutrals.js";
 import { createCapsules } from "./look/capsule.js";
+import { createOrdnance } from "./look/ordnance.js";
 import { createHostile } from "./hostile.js";
 import { createGore } from "./gore.js";
 import { createGravel } from "./gravel.js";
@@ -80,6 +81,10 @@ export function createCombat(game) {
 
   const players = [{ id: 0, local: true, fish, salmon, arsenal: createArsenal(), down: false, safeUntil: 0, kills: 0 }];
   const local = players[0];
+  // The rounds, the cases and the ordnance as things (the look's, look/ordnance.js): made now,
+  // before the first frame, so the warm-up compiles them; from here on they draw the rounds
+  // the glow drew, the torpedoes, rockets, mines, harpoons and balls, and the bombs.
+  const ordnance = createOrdnance(scene, camera, { fx, models, enemies, projectiles, players, light });
   // The peaceful fish of the shoals, open to attack (neutrals.js).
   neutrals = createNeutrals({ life, enemies, players, clock: () => game.now.time });
   // For trying the weapons out: ?weapon=<id> (and ?belly=<id>) starts with them, and then the
@@ -259,6 +264,7 @@ export function createCombat(game) {
     }
     flash.size = 0.12 + 0.05 * e.size;
     fx.spark(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, flash);
+    ordnance.shot(e, gun);
     sfx.enemyShot?.(gun.id, enemyMuzzle.distanceTo(camera.position));
     models.enemyShot?.(e);
   }
@@ -298,6 +304,8 @@ export function createCombat(game) {
     },
     onGround(shot) {
       fx.fizz(shot.position.x, shot.position.y, shot.position.z, { count: 2, size: shot.size * 0.4, spread: shot.size, rise: 0.6, random: look });
+      // (A bolt, a star, a knife that strikes the bed stays stuck in it: the look keeps it.)
+      ordnance.struck(shot);
     },
     // (A round fired from over the water -- the heron's harpoon -- going in: heard.)
     onWater(shot) {
@@ -528,6 +536,7 @@ export function createCombat(game) {
     eatCorpses(local);
     rules.after(local);
     fx.update(dt);
+    ordnance.update(dt, projectiles.live);
     smoke.update(dt);
     gore.update(dt, enemies.list);
   }
@@ -551,6 +560,8 @@ export function createCombat(game) {
         const k = p.spent ? 0.06 : 1;
         fx.add(p.position.x, p.position.y, p.position.z, p.spent ? p.size * 0.4 : p.size, p.tint[0] * k, p.tint[1] * k, p.tint[2] * k, p.spent ? 1 : p.stretch, p.velocity.x, p.velocity.y, p.velocity.z);
       }
+    // The rounds' tracers and bodies, the cases, the ordnance and the bombs.
+    ordnance.draw(projectiles.live, hostile.live, enemies.bombs);
     fx.end();
     // The larvae and the capsules (held still in the pause), and the weapons inside the
     // capsules once the weapon models dock there (capsules.anchor).
@@ -621,6 +632,7 @@ export function createCombat(game) {
     enemies,
     projectiles,
     hostile,
+    ordnance,
     smoke,
     firing,
     deaths,

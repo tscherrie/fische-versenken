@@ -2607,8 +2607,9 @@ export function createFiring(ctx) {
       }
       fx.add(p.position.x, p.position.y, p.position.z, size, r * fade, g * fade, b * fade, p.stretch, v.x, v.y, v.z);
     }
-    // The harpoons' lines, from the gun under the belly to the harpoon (dark red).
-    if (camera && lines.size) {
+    // The harpoons' lines, from the gun under the belly to the harpoon (dark red; once the
+    // look draws the rounds and the ordnance, it draws the line with its harpoon, in hemp).
+    if (camera && lines.size && !fx.drawsRounds) {
       camera.getWorldDirection(forward);
       for (const [p, line] of lines) {
         if (line.player.down || p.born !== line.born) continue;
@@ -2617,9 +2618,10 @@ export function createFiring(ctx) {
         chain(muzzle, p.position, 0.008 * p.shooter + 0.004, w.line, w.line, 0.35, 12, tall);
       }
     }
-    // The rockets' motors: a hot point at the tail.
+    // The rockets' motors: a hot point at the tail (the look draws the flame with its rocket,
+    // once it draws the rounds).
     for (const p of projectiles.live) {
-      if (p.solid !== "rocket") continue;
+      if (p.solid !== "rocket" || fx.drawsRounds) continue;
       const v = p.velocity;
       const k = 0.5 * p.scale;
       tmp.copy(v).normalize();

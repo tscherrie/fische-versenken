@@ -311,6 +311,10 @@ async function measure(ctx, here, name, undo) {
     // (signals.js lays Extreme's enemies into the game's threat list, which the game asks
     // for in its own step, outside combat.step.)
     threats: meter(salmon.life.hunters, "threats"),
+    // (The rounds, the cases and the ordnance as things, look/ordnance.js: its step is a part
+    // of combat.step's rest, its frame of combat.frame; the report's parts have them apart.)
+    ordnanceStep: meter(combat.ordnance ?? { update() {} }, "update"),
+    ordnanceFrame: meter(combat.ordnance ?? { draw() {} }, "draw"),
   };
   for (const m of Object.values(meters)) undo.push(m.restore);
   const phasedStep = meters.step.fn;
@@ -636,7 +640,7 @@ async function measure(ctx, here, name, undo) {
   for (const key of SERIES) series[key] = new Float64Array(Math.max(frames, 1));
   const queries = [];
   const kinds = {};
-  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "firing", "after", "smoke", "colliders", "gravel", "groundStones", "threats"];
+  const PARTS = ["step", "frame", "enemies", "projectiles", "hostile", "aim", "director", "pickups", "firing", "after", "smoke", "colliders", "gravel", "groundStones", "threats", "ordnanceStep", "ordnanceFrame"];
   // Frames timed one by one, each begun with the card idle, so the script's time is not
   // held up by the card: the world's step, combat's frame, the draw.
   async function timedFrames(n) {
@@ -840,6 +844,7 @@ async function measure(ctx, here, name, undo) {
     parts.get(key).push(o);
   });
   const everything = [...parts.values()].flat();
+  const ordnanceMeshes = Object.values(combat.ordnance?.meshes ?? {}).map((m) => m.mesh);
   // The draw calls and triangles of `objects`, shown against hidden: the scene's own count
   // changes from frame to frame (some passes run only every few frames), so the difference
   // of two single frames, or of a fight and a calm, would not be theirs alone. The fewest of
@@ -974,6 +979,9 @@ async function measure(ctx, here, name, undo) {
     const ref = await condition(OFF, { settleFor: 1 });
     const stress = await condition(STRESS);
     stress.aa = await pairedCost([]);
+    // (The look's rounds, cases and ordnance alone, look/ordnance.js, the same way: their own
+    // share of the card, which the whole of combat's meshes is too noisy to show.)
+    if (ordnanceMeshes.length) stress.ordnance = await pairedCost(ordnanceMeshes);
     combat.hostile.reset();
     const four = await condition(FOUR, { settleFor: 4, card: false, backToBackToo: false });
     runs.push({ ref, stress, four });
@@ -1669,6 +1677,7 @@ export const LOOK_SCENES = [
 export async function runLook(ctx) {
   if (ctx.scene.models) return (await import("../look/dev/model-scenes.js")).runModelScene(ctx);
   if (ctx.scene.gear) return (await import("../look/dev/gear-scenes.js")).runGearScene(ctx);
+  if (ctx.scene.shots) return (await import("../look/dev/shot-scenes.js")).runShotScene(ctx);
   if (ctx.scene.name === "bench") await bench(ctx);
   await ctx.next();
 }
@@ -1736,4 +1745,37 @@ LOOK_SCENES.push(
   // state (dead, burst, eaten, neutral, fleeing, faded) must show or hide the gear.
   { name: "waffen-kampf", look: true, gear: [], fight: FIGHT, close: ["perch", "trout", "minnow", "grayling", "merganser", "beetleLarva"], stage: "smolt", at: 12500, season: "summer", hour: 14 },
   { name: "waffen-kampf-nacht", look: true, gear: [], fight: FIGHT, close: ["perch", "mackerel"], stage: "smolt", at: 12500, season: "summer", hour: 23 },
+);
+
+// ---- The rounds, the cases and the ordnance (look/ordnance.js), close up and in the game's
+// steps. Run in src/fv/look/dev/shot-scenes.js. Pictures: shots/<set>/<scene>-<picture>.jpg.
+LOOK_SCENES.push(
+  // The players' torpedo, rocket, mine, harpoon (and its line) and ball posed close by.
+  { name: "geschosse-nah", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The launchers fired for real, seen from beside the fish.
+  { name: "geschosse-flug", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The cases of the minigun, the shotgun and the rifle, flying and on the bed.
+  { name: "huelsen", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The enemies' guns throwing out their cases (fired through the game's own path).
+  { name: "gegner-huelsen", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // Each of the enemies' things close by, flying and on the bed.
+  { name: "gegner-nah", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // The enemies' bolts, spear, stars, knives and nails (flying, lying, stuck in the bed),
+  // tracers fading, spent rounds, bombs.
+  { name: "gegner-dinge", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  // The same at one in the night: what the tracers, the flame and the fuse still show, and
+  // how dark the bodies go.
+  { name: "geschosse-nah-nacht", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 1 },
+  { name: "gegner-dinge-nacht", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 1 },
+  { name: "huelsen-nacht", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 1 },
+  // The enemies' guns fired at a parr through the game's own path, seen from the side: the
+  // tracers fading as the water takes their speed, the spent rounds sinking; by day and night.
+  { name: "gegner-feuer", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 14 },
+  { name: "gegner-feuer-nacht", look: true, shots: true, stage: "parr", at: 11790, season: "summer", hour: 1 },
+  // The minigun held down for six seconds: the ring of cases full, the stream still whole.
+  { name: "huelsen-dauerfeuer", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // From above the water, looking down through the surface; bombs and the spear in the air.
+  { name: "geschosse-oben", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
+  // The harpoon stopped in the water: still pointing the way it flew.
+  { name: "harpune-halt", look: true, shots: true, stage: "postsmolt", at: 11790, season: "summer", hour: 12 },
 );
