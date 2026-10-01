@@ -122,6 +122,15 @@ const WORDS = [
   ["Basstölpel", "Gannet", "鲣鸟", "カツオドリ", "Рибояд"],
   ["Fliegerbomben", "Aerial bombs", "航空炸弹", "航空爆弾", "Авиобомби"],
   ["Von einem Basstölpel mit Fliegerbomben zerfetzt", "Blown to pieces by a gannet with aerial bombs", "被一只带着航空炸弹的鲣鸟炸成碎片", "航空爆弾を抱えたカツオドリに木っ端みじんにされた", "Разкъсана на парчета от рибояд с авиобомби"],
+  // The salmon's own school, armed (school.js).
+  [
+    "<b>Dein Schwarm kämpft mit.</b> Jeder Fisch deines Schwarms trägt jetzt eine Waffe und schießt auf alles, was dich oder ihn angreift – zuerst auf die, die gerade zustoßen. Dafür kommen mehr Feinde. Ein gefallener Schwarmfisch kommt nicht wieder.",
+    "<b>Your school fights with you.</b> Every fish of your school now carries a weapon and fires at whatever attacks you or it – first at those about to strike. More enemies come for it. A school fish that falls does not come back.",
+    "<b>你的鱼群与你并肩作战。</b>鱼群里的每条鱼现在都带着武器，会向攻击你或它们的一切开火——先打那些正要扑上来的。为此会来更多敌人。倒下的鱼群伙伴不会再回来。",
+    "<b>群れも一緒に戦う。</b>群れの魚はみんな武器を持ち、きみや仲間を襲うものを撃つ――まずは今にも襲いかかろうとしているものから。そのぶん敵も多くやって来る。倒れた仲間は戻ってこない。",
+    "<b>Пасажът ти се бие с теб.</b> Всяка риба от пасажа ти вече носи оръжие и стреля по всичко, което напада теб или нея – първо по онези, които тъкмо се хвърлят. Затова идват повече врагове. Паднала риба от пасажа не се връща.",
+  ],
+  ["Ein Schwarmfisch ist gefallen", "A fish of your school has fallen", "一条鱼群伙伴倒下了", "群れの仲間が一匹倒れた", "Риба от пасажа ти падна"],
 ];
 
 for (const [de, en, zh, ja, bg] of WORDS) {

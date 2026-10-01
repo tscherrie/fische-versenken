@@ -33,7 +33,7 @@ const SPUN = 150;
 export const nearness = (d) => (d > FAR ? 0 : Math.min(1, 7 / (3 + Math.max(0, d))));
 // The top of what still comes through from that far (Hz): open near by, a dull thud far off
 // (the water takes the highs first).
-const cutoff = (k) => 400 + 9600 * Math.pow(k, 1.6);
+export const cutoff = (k) => 400 + 9600 * Math.pow(k, 1.6);
 // A little different every time.
 const vary = (x, by = 0.06) => x * (1 + by * (Math.random() * 2 - 1));
 const any = (a, b) => a + (b - a) * Math.random();

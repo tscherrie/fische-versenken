@@ -27,6 +27,7 @@ import { createCombatHud } from "./hud.js";
 import { ARSENAL, createPickups } from "./pickups.js";
 import { createProjectiles, createRibbons, createSmoke } from "./projectiles.js";
 import { createRules } from "./rules.js";
+import { createArmedSchool } from "./school.js";
 import { createSfx } from "./sfx.js";
 import { createSignals } from "./signals.js";
 import { SKY, WEAPONS, createArsenal, createFiring, damageScale } from "./weapons.js";
@@ -117,8 +118,11 @@ export function createCombat(game) {
   const stones = [];
   let clock = 0,
     wasDown = false;
-  // The weapons' verbs and what their shots do (weapons.js).
-  const firing = createFiring({ random, look, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, camera, players, onKill, clock: () => clock });
+  // The weapons' verbs and what their shots do (weapons.js); the salmon's own school fires
+  // through them too (school.js: each fish a shooter of its own, found by its id).
+  let school = null;
+  const firing = createFiring({ random, look, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, camera, players, onKill, clock: () => clock, shooter: (id) => school?.recordOf(id) });
+  school = createArmedSchool({ game, enemies, firing, gore, fx, sfx, difficulty, players, clock: () => clock });
   // For tests: the last few deaths of the local fish that combat caused ({ t, by }).
   const deaths = [];
 
@@ -198,12 +202,15 @@ export function createCombat(game) {
   // rule), a knife stabs, a plain bite bites. After a strike a player is untouchable a
   // moment, after a bullet only a blink (a burst should count, not just its first round).
   function hurt(player, e, outcome, shot = null) {
+    // (A fish of the salmon's school, struck: school.js keeps its strength.)
+    if (player.school) return school.hurt(player, e, shot);
     const f = player.fish;
     if (clock < player.safeUntil || f.safe || game.now.dead > 0) return;
     const melee = e.spec.weapon?.kind === "melee" ? e.spec.weapon : null;
     const level = difficulty.level;
     const swallows = !shot && e.spec.swallows && e.size >= 2.2 * f.length;
     if (swallows && level.swallow) {
+      player.taken = (player.taken ?? 0) + f.energy;
       outcome.killed = e.spec.name;
       died(e);
       return;
@@ -211,6 +218,11 @@ export function createCombat(game) {
     // (On Tourist a fish that would swallow the salmon only bites it, hard.)
     const damage = (swallows ? 0.35 : shot ? shot.hitDamage ?? shot.damage : melee ? melee.damage : e.spec.bite * clamp(e.size / f.length, 0.25, 1)) * level.taken;
     player.safeUntil = clock + (shot ? 0.12 : 0.8);
+    // (What the fights have taken of its strength in all, and by what kind: the balance tests
+    // weigh it.)
+    player.taken = (player.taken ?? 0) + Math.min(f.energy, damage);
+    const by = (player.takenBy ??= {});
+    by[e.kind] = (by[e.kind] ?? 0) + Math.min(f.energy, damage);
     f.energy = Math.max(0, f.energy - damage);
     // (The blade's own part of the blow; the game plays the body's knock: outcome.bitten.)
     if (melee && !shot) sfx.enemyStrike?.(melee.id, e.position.distanceTo(camera.position), true);
@@ -301,6 +313,11 @@ export function createCombat(game) {
   let stepOutcome = null;
   const hostileHooks = {
     onPlayer(shot, player) {
+      // (A school fish is a body of its own for the splatter.)
+      if (player.school) {
+        gore.hit?.(player, shot.position, struckAlong.copy(shot.velocity).normalize(), shot.weapon);
+        return hurt(player, shot.source, stepOutcome, shot);
+      }
       hurt(player, shot.source, stepOutcome, shot);
       gore.hit?.(struckBody(player.fish), shot.position, struckAlong.copy(shot.velocity).normalize(), shot.weapon);
     },
@@ -332,11 +349,17 @@ export function createCombat(game) {
       player.kills++;
       reward(player, e);
     }
+    // (A kill of the school's is counted as the school's: it does not feed the salmon, which
+    // grows by its own fights.)
+    const shooter = player ? null : school.recordOf(by);
+    if (shooter) school.killed(shooter);
     if (by === local.id) {
       hud.hit(true);
       hud.say("Versenkt!", e.spec.title);
     }
-    sfx.sunk(e.size);
+    // (The school's kills are heard from where they sink.)
+    if (shooter) sfx.from(e.position.distanceTo(camera.position), () => sfx.sunk(e.size));
+    else sfx.sunk(e.size);
     // A jellyfish's mine goes off as it dies, whatever killed it: at once when a shot did, a
     // moment later when another blast did, so that a field goes up one after another. Its
     // own mine tears it apart then, not what killed it; the chain is the killer's too.
@@ -346,7 +369,7 @@ export function createCombat(game) {
       return;
     }
     // What it leaves in the water is the splatter's (gore.js); here only the air it had.
-    gore.kill(e, dir, weapon, info, player?.fish.length);
+    gore.kill(e, dir, weapon, info, (player ?? shooter)?.fish.length);
     fx.fizz(e.position.x, e.position.y, e.position.z, { count: Math.round(4 + 2 * e.size), size: 0.01 + 0.008 * e.size, spread: e.size * 0.3, random: look });
   }
 
@@ -398,6 +421,8 @@ export function createCombat(game) {
       if (blastDir.lengthSq() < 1e-8) blastDir.set(0, 1, 0);
       gore.hit?.(struckBody(f), bodyNear, blastDir.normalize(), gun.id);
     }
+    // (And the salmon's school, as the salmon.)
+    school.blast(blastAt, gun, e);
     firing.blast(c.by, blastAt, chargeOf(gun), gun.id, chargeSize(gun));
     // The charge's own sound -- a sea mine, bombs -- also when the salmon set it off.
     sfx.enemyBlast?.(gun.id, camera.position.distanceTo(blastAt), chargeSize(gun));
@@ -439,7 +464,8 @@ export function createCombat(game) {
     for (const e of enemies.list) {
       // (Nor a jellyfish with its mine: a live one goes off at a touch, and a dead one's own
       // mine is about to tear it apart.)
-      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact") continue;
+      // (Nor one of its own school, fallen.)
+      if (e.eaten || e.burst || e.size > 1.1 * f.length || e.spec.weapon?.kind === "contact" || e.spec.kin) continue;
       if (!e.dead && !firing.stunned(e)) continue;
       if (f.mouth.distanceTo(e.position) < 0.25 * f.length + 0.35 * e.size) {
         if (!e.dead) {
@@ -489,8 +515,10 @@ export function createCombat(game) {
       else auto.back = auto.belly = false;
     } else if (trigger.back || trigger.belly || trigger.test) aim.update(enemies.list, Math.max(w.reach(L), 4 * L));
     fireWeapons(local, dt);
+    // The salmon's school fights too (from the smolt on), and the director sends more for it.
+    school.step(dt, { stage: fish.stage });
     enemies.hpScale = difficulty.level.hp;
-    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, count: difficulty.level.count, dark: 1 - (game.daylight?.state?.daylight ?? 1) });
+    director.update(dt, { fish, stage: fish.stage, enemies, players: players.length, armed: school.armed, count: difficulty.level.count, dark: 1 - (game.daylight?.state?.daylight ?? 1) });
     gravel.update(dt, { fish, enemies, players: players.length });
     bosses.update(dt, {
       fish,
@@ -519,13 +547,14 @@ export function createCombat(game) {
     const crawling = enemies.list.some((e) => e.spec.crawls);
     if (crawling) ground.refresh(fish.position, 12, game.now.time);
     neutrals.update(fish);
-    enemies.update(dt, game.now.time, players, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, aim: enemyAims, swing: enemySwings, ground: crawling ? ground : null, ...chargeHooks });
+    // (The enemies go for the players and the armed school fish alike: school.targets.)
+    enemies.update(dt, game.now.time, school.targets, { hurt: (p, e) => hurt(p, e, outcome), shoot: enemyShoots, aim: enemyAims, swing: enemySwings, ground: crawling ? ground : null, ...chargeHooks });
     // Thrown and stunned enemies, fire, the katana's swings: after the enemies have moved.
     firing.after(dt);
     // (The splatter's records for the salmon are free again: gore.update let go of them.)
     stepOutcome = outcome;
     struckUsed = 0;
-    hostile.update(dt, players, hostileHooks);
+    hostile.update(dt, school.targets, hostileHooks);
     signals.whiffs(outcome);
     if (projectiles.live.length) terrain.collidersNear(fish.position.x, fish.position.z, WEAPONS.piu.reach(L) + 4, stones);
     else stones.length = 0;
@@ -540,7 +569,7 @@ export function createCombat(game) {
     fx.update(dt);
     ordnance.update(dt, projectiles.live);
     smoke.update(dt);
-    gore.update(dt, enemies.list);
+    gore.update(dt, school.bleeding(enemies.list));
   }
 
   // The picture of this frame: the shots in flight, the weapons, the sparks, the capsules.
@@ -571,6 +600,8 @@ export function createCombat(game) {
     // The enemies' own weapons, strapped on the same way (after the larvae: theirs ride on the
     // larvae's matrices of this frame).
     models.enemies?.(enemies.list, larvae);
+    // The school's guns on its fish (and on the fallen, floating up).
+    school.frame();
     capsules.draw(pickups.items, game.now.time);
     models.capsules?.(pickups.items, capsules);
     smoke.frame();
@@ -637,6 +668,8 @@ export function createCombat(game) {
     ordnance,
     smoke,
     firing,
+    school,
+    fx,
     // (For the look's tests: the splatter and the marks it leaves.)
     gore,
     deaths,

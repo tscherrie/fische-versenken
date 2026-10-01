@@ -193,6 +193,27 @@ export const ENEMY_SCENES = [
     });
   })(),
 
+  // ---- The salmon's own school (src/fv/school.js): the salmon's own guns heard from where
+  // its fish are (sfx.from) -- near by a little under the salmon's own, far off quieter and
+  // duller -- and the whole school of sixteen firing in the same moment, four times, with the
+  // salmon's own shotgun among it, which the school must never silence.
+  four("sc_flinte", (s, t, fx) => fx.from(NEAR, () => fx.flinte(1.7))),
+  four("sc_flinte_far", (s, t, fx) => fx.from(FARTHER, () => fx.flinte(1.7))),
+  (() => {
+    const own = [];
+    const guns = ["flinte", "granate", "torpedo", "rocket"];
+    const events = [1, 2.2, 3.4, 4.6].map((at) => [
+      at,
+      (s, t, fx) => {
+        for (let i = 0; i < 16; i++) fx.from(3 + (i % 8), () => fx[guns[i % 4]](1.7));
+        const before = fx.playing;
+        fx.flinte(0.4);
+        own.push(fx.playing > before);
+      },
+    ]);
+    return scene("sc_volley", events, { measure: (m) => ({ own: `${own.filter(Boolean).length}/${own.length}`, ownAll: own.every(Boolean) ? 1 : 0, loudest: m.loudest(1, 6, 0.4) }) });
+  })(),
+
   // ---- Over the river's bed, as one-shots: how far they stand out (Δ, and on a phone) --
   // the salmon's own shotgun and grenade as the yardstick.
   { name: "ref_bed_flinte", kind: "shot", params: {}, events: [[4, (s, t, fx) => fx.flinte(0.4)]] },
@@ -215,7 +236,7 @@ export const ENEMY_SCENES = [
 
 // The table of these scenes, for sound-check.mjs.
 export function enemyTable(results, pad) {
-  const rows = results.filter((r) => r.kind === "weapon" && r.name.startsWith("en_"));
+  const rows = results.filter((r) => r.kind === "weapon" && (r.name.startsWith("en_") || r.name.startsWith("sc_")));
   if (!rows.length) return;
   const flinte = rows.find((r) => r.name === "en_ref_flinte")?.full;
   console.log(`\ncombat, on their own     LUFS(400ms) vs flinte  peak  centroid  voices max/end  nodes  measured`);
@@ -297,6 +318,12 @@ export function enemyChecks(get, check) {
   if (bombs) check(`en_bombs: the whistle heard as they fall (+${bombs.extra.whistle} dB at 0.5-1.6 kHz ≥ 10)`, bombs.extra.whistle >= 10);
   const chain = get("en_seamine_chain");
   if (chain) check(`en_seamine_chain: every mine of the field heard going off (${chain.extra.booms} booms of 7 ≥ 6), no louder than one by much (${chain.extra.loudest} vs ${get("en_seamine")?.full})`, chain.extra.booms >= 6 && chain.extra.loudest - (get("en_seamine")?.full ?? chain.extra.loudest) <= 5);
+  // The school's guns: near, a little under the salmon's own; far off, quieter and duller; the
+  // whole school at once never silences the salmon's own, nor is it much louder than one shot.
+  const [sc, scFar, volley] = [get("sc_flinte"), get("sc_flinte_far"), get("sc_volley")];
+  if (sc && flinte !== undefined) check(`sc_flinte: a school fish's shotgun near by ${(sc.full - flinte).toFixed(1)} dB against the salmon's own (-9..-2)`, sc.full - flinte >= -9 && sc.full - flinte <= -2);
+  if (sc && scFar) check(`sc_flinte_far: ${(scFar.full - sc.full).toFixed(1)} dB (≤ -8), duller (highs against lows ${scFar.extra.tilt} dB against ${sc.extra.tilt}, ≥ 6 less)`, scFar.full - sc.full <= -8 && scFar.extra.tilt <= sc.extra.tilt - 6);
+  if (volley && flinte !== undefined) check(`sc_volley: the salmon's own shotgun heard every time among the school's sixteen (${volley.extra.own}), the volley ${(volley.extra.loudest - flinte).toFixed(1)} dB over one shot of the salmon's (≤ +6)`, volley.extra.ownAll === 1 && volley.extra.loudest - flinte <= 6);
   const stress = get("en_stress");
   if (stress) check(`en_stress: the salmon's shotgun heard every time among the guns and blades (${stress.extra.own}; under a blast ${stress.extra.ownBlast})`, stress.extra.ownAll === 1);
   // Over the bed (its loudest 50 ms, and on a phone): a gun near stands out as the salmon's

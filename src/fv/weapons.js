@@ -733,9 +733,25 @@ const ARC_INFO = Object.freeze({ mode: "arc", burn: true });
 // ctx: random (the game's stream: aim spread, pellets, anything that decides a hit), look (a
 // stream of its own for the looks), enemies, projectiles, smoke, ribbons, fx, sfx, gore,
 // models, aim, hud, game, camera, players (the list, local first), clock() (combat's time),
-// onKill(e, by, dir, weapon, info).
+// onKill(e, by, dir, weapon, info), shooter(id) (a shooter that is no player -- a fish of the
+// salmon's school -- by its id).
 export function createFiring(ctx) {
-  const { random, enemies, projectiles, smoke, ribbons, fx, sfx, gore, models, aim, hud, game, onKill } = ctx;
+  const { random, enemies, projectiles, smoke, ribbons, fx, gore, models, hud, game, onKill } = ctx;
+  // The aim and the sounds are the local player's, except while another shooter's weapons
+  // fire (fire()): a fish of the salmon's school (fv/school.js) is a record of its own, with
+  // `aim` (where it aims), `models` (its gun on its body: the muzzle and the kick) and `sfx`
+  // (its shots heard from where it is).
+  let aim = ctx.aim;
+  let sfx = ctx.sfx;
+  // (How much of a shot's look the shooter's weapons make: the salmon's all of it; a school
+  // fish, one of many firing at once, less of the sparks, smoke and bubbles round each shot:
+  // `player.detail`.)
+  let detail = 1;
+  const detailOf = (owner) => playerOf(owner)?.detail ?? 1;
+  const modelsOf = (player) => player.models ?? models;
+  // (Whether this shooter's weapons are heard: the local player's, and a shooter with a way
+  // of being heard of its own.)
+  const heard = (player) => player.local || !!player.sfx;
   const look = ctx.look ?? Math.random;
   const camera = ctx.camera ?? game?.camera ?? null;
   const options = { debug: false };
@@ -787,7 +803,8 @@ export function createFiring(ctx) {
   const lastGore = new WeakMap();
 
   const isLocal = (owner) => owner === ctx.players[0]?.id;
-  const playerOf = (owner) => ctx.players.find((p) => p.id === owner);
+  // (A shot's owner: a player, or another shooter -- a school fish -- by its id.)
+  const playerOf = (owner) => ctx.players.find((p) => p.id === owner) ?? ctx.shooter?.(owner);
   const lengthOf = (owner) => playerOf(owner)?.fish.length ?? 1;
 
   // ---- Damage, with everything a hit brings: the splatter, the mark, the kill.
@@ -800,7 +817,9 @@ export function createFiring(ctx) {
     const s = stat(weapon);
     s.hits++;
     s.damage += amount;
-    if (gory) gore.hit(e, point ?? e.position, dir ?? UP, weapon, info, lengthOf(owner));
+    // (A school fish's hits splash at most three times a second on each enemy: a school
+    // firing at once would otherwise drown the water in the one cloud.)
+    if (gory && (detailOf(owner) >= 1 || gorier(e, 0.33))) gore.hit(e, point ?? e.position, dir ?? UP, weapon, info, lengthOf(owner));
     if (isLocal(owner) && !sunk && gory) hud.hit(false);
     if (sunk) {
       s.kills++;
@@ -854,7 +873,7 @@ export function createFiring(ctx) {
 
   // ---- The muzzle and the aim.
   function muzzleOf(player, place, out) {
-    if (!models.muzzle(player, place, out)) player.arsenal.mount(player.salmon, place, out);
+    if (!modelsOf(player).muzzle(player, place, out)) player.arsenal.mount(player.salmon, place, out);
     return out;
   }
   // From the muzzle to the crosshair (or along the view when that is too close or behind).
@@ -930,18 +949,18 @@ export function createFiring(ctx) {
     // shows. So a small white-hot core and a tongue along the shot, and no wide bloom.)
     fx.spark(at.x + dir.x * 0.05 * k, at.y + dir.y * 0.05 * k, at.z + dir.z * 0.05 * k, { size: 0.2 * k, life: 0.09, r: r * 1.3, g: g * 1.5, b: b * 2 });
     fx.spark(at.x + dir.x * 0.16 * k, at.y + dir.y * 0.16 * k, at.z + dir.z * 0.16 * k, { size: 0.3 * k, life: 0.1, r: r * 0.45, g: g * 0.4, b: b * 0.35, stretch: 2.2, vx: dir.x * 1e-3, vy: dir.y * 1e-3, vz: dir.z * 1e-3 });
-    for (let i = 0; i < 5 * scale; i++) {
+    for (let i = 0; i < 5 * scale * detail; i++) {
       cone(dir, 0.25, tmp, look);
       const v = (4 + 6 * look()) * k;
       fx.spark(at.x, at.y, at.z, { vx: tmp.x * v, vy: tmp.y * v, vz: tmp.z * v, size: 0.06 * k, life: 0.07 + 0.05 * look(), r: r * 0.6, g: g * 0.5, b: b * 0.4, stretch: 3.5 });
     }
     // Powder smoke: pushed out along the shot, then it slows, swells and hangs.
-    for (let i = 0; i < 3 * scale; i++) {
+    for (let i = 0; i < 3 * scale * detail; i++) {
       cone(dir, 0.35, tmp, look);
       const v = (1.5 + 3 * look()) * k;
       puff(POWDER, at.x + dir.x * 0.1 * k, at.y + dir.y * 0.1 * k, at.z + dir.z * 0.1 * k, tmp.x * v, tmp.y * v, tmp.z * v, 0.12 * k, 3.2, 1.3 + 0.6 * look(), 0.45, 3.5, 0.15 * k, s);
     }
-    fx.fizz(at.x + dir.x * 0.2 * L, at.y + dir.y * 0.2 * L, at.z + dir.z * 0.2 * L, { count: Math.round(3 * scale), size: 0.012 * L + 0.005, spread: 0.2 * L, rise: 0.8, random: look });
+    fx.fizz(at.x + dir.x * 0.2 * L, at.y + dir.y * 0.2 * L, at.z + dir.z * 0.2 * L, { count: Math.round(3 * scale * detail), size: 0.012 * L + 0.005, spread: 0.2 * L, rise: 0.8, random: look });
   }
 
   // ---- The verbs.
@@ -951,7 +970,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     scatter(aimDir, w.spread, tmp);
     const speed = w.speed(L);
@@ -969,7 +988,7 @@ export function createFiring(ctx) {
     // The emitter's lens flashes (a red glint, held a few frames).
     fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: w.size(L) * 2.2, life: 0.07, r: 4, g: 0.5, b: 0.3 });
     stat(id).shots++;
-    if (player.local) sfx.piu(L, player.arsenal.heat[id] ?? 0);
+    if (heard(player)) sfx.piu(L, player.arsenal.heat[id] ?? 0);
   }
 
   // beam: the laser held steady, a step of it. It goes straight from the emitter to the
@@ -1095,7 +1114,7 @@ export function createFiring(ctx) {
     if (!c.beam && c.pulses >= Math.round(between(w.beam.pulses, L)) && a.cooldown[place] <= 0) {
       c.beam = true;
       c.left = between(w.beam.seconds, L);
-      models.recoil(player, place);
+      modelsOf(player).recoil(player, place);
     }
     if (!c.beam) return false;
     ray(player, place, w, id, dt);
@@ -1104,7 +1123,7 @@ export function createFiring(ctx) {
     c.left -= dt;
     if (a.heat[id] >= 1) {
       a.locked[id] = true;
-      if (player.local) sfx.overheat(id);
+      if (heard(player)) sfx.overheat(id);
     }
     if (c.left <= 0 || a.locked[id]) {
       // (A breath between the beam and the next pulses, so the two read apart.)
@@ -1132,19 +1151,19 @@ export function createFiring(ctx) {
           a.heat[id] += w.heat;
           if (a.heat[id] >= 1) {
             a.locked[id] = true;
-            if (player.local) sfx.overheat(id);
+            if (heard(player)) sfx.overheat(id);
             break;
           }
         }
     }
     // (The motor's whine and the stream of shots, when the sound has them.)
-    if (player.local) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
+    if (heard(player)) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
   }
   function round(player, place, w, id) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     scatter(aimDir, w.spread, tmp);
     const speed = w.speed(L) * (0.95 + 0.1 * random());
@@ -1156,7 +1175,8 @@ export function createFiring(ctx) {
     p.water = true;
     p.drag = (0.75 * speed) / reach;
     p.speed0 = speed;
-    p.life = (3 * reach) / speed + 5;
+    // (A school fish's rounds lie on the bed a shorter while: there are so many of them.)
+    p.life = (3 * reach) / speed + 5 * detail;
     p.size = w.size(L);
     p.tint = w.tint;
     p.stretch = w.stretch;
@@ -1164,7 +1184,7 @@ export function createFiring(ctx) {
     p.sky = SKY;
     // A flash on every third round or so (the temporal blend makes a flicker of them), a
     // glint at the muzzle on the others.
-    if (look() < 0.35) flash(muzzle, aimDir, L, w.flash, 0.45, f.river.s);
+    if (look() < 0.35 * detail) flash(muzzle, aimDir, L, w.flash, 0.45, f.river.s);
     else fx.spark(muzzle.x, muzzle.y, muzzle.z, { size: 0.12 * Math.max(L, 0.45), life: 0.05, r: 6, g: 3.4, b: 1.2 });
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
@@ -1176,7 +1196,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     flight.copy(aimDir).multiplyScalar(w.speed(L));
     const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
@@ -1194,7 +1214,7 @@ export function createFiring(ctx) {
     fx.fizz(muzzle.x, muzzle.y, muzzle.z, { count: 6, size: 0.015 * L + 0.006, spread: 0.1 * L, rise: 1, random: look });
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.torpedo) sfx.torpedo(L);
       else sfx.granate(L);
     }
@@ -1262,7 +1282,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     scatter(aimDir, w.spread * (1 - steady), tmp);
     const speed = w.speed(L);
@@ -1290,7 +1310,7 @@ export function createFiring(ctx) {
     }
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.rifle) sfx.rifle(L);
       else sfx.flinte(L * 1.5);
     }
@@ -1378,7 +1398,7 @@ export function createFiring(ctx) {
     }
     fx.fizz(muzzle.x, muzzle.y, muzzle.z, { count: 2, size: 0.008 + 0.006 * L, spread: 0.05 * L, rise: 0.8, random: look });
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.arc) sfx.arc(L, struck.length);
       else sfx.piu(L * 2, 0);
     }
@@ -1395,9 +1415,9 @@ export function createFiring(ctx) {
     if (r.age >= w.swing && on) {
       r.age = 0;
       r.hit.clear();
-      models.recoil(player, place);
+      modelsOf(player).recoil(player, place);
       stat(id).shots++;
-      if (player.local) {
+      if (heard(player)) {
         if (sfx.whirl) sfx.whirl(player.fish.length);
         else sfx.katanaSwing(1);
       }
@@ -1424,7 +1444,7 @@ export function createFiring(ctx) {
         r.hit.add(e);
         tmp2.copy(right).multiplyScalar(-1).applyAxisAngle(upward, angle).normalize();
         damage(player.id, e, w.damage * dS, tmp2, closest, id, true, { mode: "blade", cut: true, point: closest });
-        if (player.local) sfx.katanaHit(e.size);
+        if (heard(player)) sfx.katanaHit(e.size);
       }
     }
     // (Counting on after the turn: its ring of light fades.)
@@ -1437,13 +1457,13 @@ export function createFiring(ctx) {
     const a = player.arsenal;
     const st = a.state[id];
     st.spin = Math.min(1, Math.max(0, st.spin + (on ? dt / w.rev : -dt / (w.rev * 2))));
-    if (player.local) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
+    if (heard(player)) sfx.hold?.(id, st.spin, a.heat[id], player.fish.length, on && st.spin >= 1);
     if (!on) return;
     a.fired[id] = 0;
     a.heat[id] += w.heat * dt;
     if (a.heat[id] >= 1) {
       a.locked[id] = true;
-      if (player.local) sfx.overheat(id);
+      if (heard(player)) sfx.overheat(id);
       return;
     }
     if (st.spin < 1) return;
@@ -1467,8 +1487,8 @@ export function createFiring(ctx) {
     if (cutting) kick(player, f.heading, -w.pull * dt);
     // (The engine bogs down and the chain grinds while it is in something, when the sound
     // has that.)
-    if (cutting && player.local) sfx.bite?.(id);
-    models.recoil(player, place);
+    if (cutting && heard(player)) sfx.bite?.(id);
+    modelsOf(player).recoil(player, place);
     stat(id).time = (stat(id).time ?? 0) + dt;
   }
 
@@ -1499,7 +1519,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     flight.copy(aimDir).multiplyScalar(w.speed(L));
     const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
@@ -1527,7 +1547,7 @@ export function createFiring(ctx) {
     }
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.cannon) sfx.cannon(L);
       else sfx.explosion(L, 1);
     }
@@ -1542,7 +1562,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     const speed = w.speed(L);
     flight.copy(aimDir).multiplyScalar(speed);
@@ -1571,7 +1591,7 @@ export function createFiring(ctx) {
     flash(muzzle, aimDir, L, w.flash, 0.6, f.river.s);
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.harpoon) sfx.harpoon(L);
       else sfx.flinte(L);
     }
@@ -1639,7 +1659,7 @@ export function createFiring(ctx) {
     const L = f.length;
     const a = player.arsenal;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     // (Left and right by turns: the rounds left say which pod.)
     podSide.crossVectors(aimDir, UP);
@@ -1662,7 +1682,7 @@ export function createFiring(ctx) {
     flash(muzzle, aimDir, L, w.flash, 0.6, f.river.s);
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.rocket) sfx.rocket(L);
       else sfx.granate(L);
     }
@@ -1686,7 +1706,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     flight.copy(f.heading).multiplyScalar(-w.drop * L);
     const p = projectiles.spawn(player.id, id, muzzle, flight, f.river.s);
     p.damage = 0;
@@ -1703,7 +1723,7 @@ export function createFiring(ctx) {
     // (A shot does not set it off, nor do the fish it belongs to: something must swim in.)
     p.ghost = true;
     stat(id).shots++;
-    if (player.local) {
+    if (heard(player)) {
       if (sfx.mine) sfx.mine(L);
       else sfx.reload(id, 0.3);
     }
@@ -1737,13 +1757,13 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     const speed = w.speed(L);
     // Water stops the pellets: at the end of the reach they have a quarter of their speed left
     // (d = 0.75 v / k); after that they sink and lie a few seconds.
     const drag = (0.75 * speed) / w.reach(L);
-    const life = (3 * w.reach(L)) / speed + 7;
+    const life = (3 * w.reach(L)) / speed + 7 * detail;
     const volley = ++volleys;
     const dmg = w.damage * damageScale(L);
     for (let i = 0; i < w.pellets; i++) {
@@ -1769,7 +1789,7 @@ export function createFiring(ctx) {
     flash(muzzle, aimDir, L, w.flash, 1.3, f.river.s);
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) sfx.flinte(L);
+    if (heard(player)) sfx.flinte(L);
   }
 
   // lob: a grenade on an arc to land at the crosshair. Under water it is slowed (`WATER_DRAG`)
@@ -1779,7 +1799,7 @@ export function createFiring(ctx) {
     const f = player.fish;
     const L = f.length;
     muzzleOf(player, place, muzzle);
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     aimFrom(muzzle, L, aimDir);
     const v = w.speed(L);
     // The target: the crosshair's point, no further than the reach.
@@ -1855,7 +1875,7 @@ export function createFiring(ctx) {
     flash(muzzle, aimDir, L, w.flash, 0.8, f.river.s);
     kick(player, aimDir, w.recoil);
     stat(id).shots++;
-    if (player.local) sfx.granate(L);
+    if (heard(player)) sfx.granate(L);
   }
 
   // A blast at `at`: everything in the radius takes the splash (less toward the edge), is
@@ -1958,7 +1978,8 @@ export function createFiring(ctx) {
     // Near the bed, the mark it leaves there.
     gore.blast?.(at, R, id, floor, where.s);
     // (A charge of the enemies' is heard as its own: combat.js plays it, `quiet` here.)
-    if (isLocal(owner) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
+    // (A school fish's blast is heard as the salmon's own, from where it goes off.)
+    if ((isLocal(owner) || shooter?.school) && !w.quiet) sfx.explosion(L, camera ? camera.position.distanceTo(at) / Math.max(0.3, L) : 4);
   }
 
   // blade: a cut begins. The blade crosses the arc over `swing` seconds; what it passes is
@@ -1967,14 +1988,14 @@ export function createFiring(ctx) {
     const b = bladeOf(player);
     if (!b.drawn) {
       b.drawn = true;
-      if (player.local) sfx.katanaDraw();
+      if (heard(player)) sfx.katanaDraw();
     }
     b.side = -b.side;
     b.lastCut = clock;
     b.swings.push({ age: 0, side: b.side, from: b.side * w.arc * 0.5, hit: new Set() });
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     stat(id).shots++;
-    if (player.local) sfx.katanaSwing(b.side);
+    if (heard(player)) sfx.katanaSwing(b.side);
   }
   // A lunge with the blade out is a dash cut: looked for before the enemies move, so the
   // lunge is safe from its very first step.
@@ -1993,7 +2014,7 @@ export function createFiring(ctx) {
     b.dash = { age: 0, from, to: from.clone(), hit: new Set() };
     player.safeUntil = Math.max(player.safeUntil ?? 0, (ctx.clock?.() ?? clock) + w.dashTime);
     stat("katana").dashes = (stat("katana").dashes ?? 0) + 1;
-    if (player.local) sfx.katanaDash();
+    if (heard(player)) sfx.katanaDash();
   }
 
   // The fish's own frame: forward (with pitch), right, up.
@@ -2054,11 +2075,11 @@ export function createFiring(ctx) {
           const striking = e.mode === "coil" || e.mode === "strike";
           tmp2.copy(right).multiplyScalar(-s.side).addScaledVector(fwd, 0.4).normalize();
           const sunk = damage(player.id, e, w.damage * dS, tmp2, closest, "katana", true, { mode: "blade", cut: true, plane: tmp2.clone(), point: closest });
-          if (player.local) sfx.katanaHit(e.size);
+          if (heard(player)) sfx.katanaHit(e.size);
           if (striking) {
             stat("katana").konter = (stat("katana").konter ?? 0) + 1;
             if (!sunk) stun(e, w.konter, false, L, true);
-            if (player.local) {
+            if (heard(player)) {
               sfx.konter();
               hud.say("Konter!", "", 0.7);
             }
@@ -2085,7 +2106,7 @@ export function createFiring(ctx) {
           dash.hit.add(e);
           tmp2.copy(right).multiplyScalar(look() < 0.5 ? 1 : -1).addScaledVector(fwd, 0.5).normalize();
           damage(player.id, e, w.damage * w.dash * dS, tmp2, e.position, "katana", true, { mode: "blade", cut: true, dash: true, plane: tmp2.clone(), point: e.position.clone() });
-          if (player.local) sfx.katanaHit(e.size);
+          if (heard(player)) sfx.katanaHit(e.size);
         }
       }
       dash.age += dt;
@@ -2094,7 +2115,7 @@ export function createFiring(ctx) {
     // Back into the scabbard after a while without a cut.
     if (b.drawn && !b.held && clock - b.lastCut > w.sheathe && !b.dash) {
       b.drawn = false;
-      if (player.local) sfx.sheathe();
+      if (heard(player)) sfx.sheathe();
     }
   }
 
@@ -2197,7 +2218,7 @@ export function createFiring(ctx) {
       tmp.copy(flameAt).addScaledVector(flameDir, reach * (0.2 + 0.7 * look()));
       fx.fizz(tmp.x, tmp.y, tmp.z, { count: 1, size: 0.01 * L + 0.004, spread: 0.3 * L, rise: 1.4, random: look });
     }
-    models.recoil(player, place);
+    modelsOf(player).recoil(player, place);
     stat(id).time = (stat(id).time ?? 0) + dt;
   }
   // Only now and then a splatter call for damage that comes every step.
@@ -2280,7 +2301,7 @@ export function createFiring(ctx) {
     if (a.ammo[id] <= 0 || (spent && a.fired[id] > (w.idleReload ?? Infinity))) {
       a.reloading[id] = w.reload;
       stat(id).reloads = (stat(id).reloads ?? 0) + 1;
-      if (player.local) sfx.reload(id, w.reload);
+      if (heard(player)) sfx.reload(id, w.reload);
     }
   }
 
@@ -2288,6 +2309,18 @@ export function createFiring(ctx) {
   // trigger for that place.
   const PLACES = ["back", "belly"];
   function fire(player, dt, held, can) {
+    aim = player.aim ?? ctx.aim;
+    sfx = player.sfx ?? ctx.sfx;
+    detail = player.detail ?? 1;
+    try {
+      fireWith(player, dt, held, can);
+    } finally {
+      aim = ctx.aim;
+      sfx = ctx.sfx;
+      detail = 1;
+    }
+  }
+  function fireWith(player, dt, held, can) {
     const a = player.arsenal;
     a.cool(dt);
     a.stage = player.fish.stage ?? 0;
@@ -2313,10 +2346,10 @@ export function createFiring(ctx) {
           a.fired[id] = 0;
           if (a.heat[id] >= 1) {
             a.locked[id] = true;
-            if (player.local) sfx.flameEmpty();
+            if (heard(player)) sfx.flameEmpty();
           }
         }
-        if (player.local) sfx.flame(on && !a.locked[id], a.heat[id], player.fish.length);
+        if (heard(player)) sfx.flame(on && !a.locked[id], a.heat[id], player.fish.length);
         continue;
       }
       if (w.mode === "spin") {
@@ -2370,18 +2403,18 @@ export function createFiring(ctx) {
           a.heat[id] += w.heat;
           if (a.heat[id] >= 1) {
             a.locked[id] = true;
-            if (player.local) sfx.overheat(id);
+            if (heard(player)) sfx.overheat(id);
             break;
           }
         }
       }
     }
     // (The beam's hum, when the sound has one.)
-    if (player.local) sfx.hold?.("beam", beaming, a.heat[a.back] ?? 0, player.fish.length);
+    if (heard(player)) sfx.hold?.("beam", beaming, a.heat[a.back] ?? 0, player.fish.length);
     dashCheck(player);
     // A weapon that has cooled enough clicks back on.
     for (const id in a.locked) {
-      if (a.wasLocked[id] && !a.locked[id] && player.local) sfx.unlocked(id);
+      if (a.wasLocked[id] && !a.locked[id] && heard(player)) sfx.unlocked(id);
       a.wasLocked[id] = a.locked[id];
     }
   }
@@ -2565,15 +2598,17 @@ export function createFiring(ctx) {
     for (const p of projectiles.live) {
       if (!p.solid || p.solid === "mine" || (p.solid === "harpoon" && p.stopped >= 0)) continue;
       const L = p.scale;
+      // (A school fish's shots leave thinner trails: half as many bubbles and puffs.)
+      const n = detailOf(p.owner) < 1 ? 2 : 4;
       if (p.solid === "rocket") {
         // The motor's smoke: grey puffs left along the way, swelling and hanging.
-        for (let k = 0; k < 3; k++) {
-          tmp.lerpVectors(p.last, p.position, (k + look()) / 3);
+        for (let k = 0; k < n - 1; k++) {
+          tmp.lerpVectors(p.last, p.position, (k + look()) / (n - 1));
           puff(POWDER, tmp.x, tmp.y, tmp.z, 0, 0.05 * L, 0, 0.06 * L + 0.015, 3.5, 1.4 + 0.6 * look(), 0.4, 3, 0.1 * L, p.river.s);
         }
       }
-      for (let k = 0; k < 4; k++) {
-        const u = (k + look()) / 4;
+      for (let k = 0; k < n; k++) {
+        const u = (k + look()) / n;
         tmp.lerpVectors(p.last, p.position, u);
         fx.bubble(tmp.x, tmp.y, tmp.z, 0.008 + 0.022 * L * (0.6 + 0.8 * look()), { rise: 0.4, life: 0.5, random: look });
         if (k % 2 === 0) puff(GAS, tmp.x, tmp.y, tmp.z, 0, 0.1 * L, 0, 0.05 * L + 0.012, 3, 0.55 + 0.25 * look(), 0.5, 3, 0.2 * L, p.river.s);
